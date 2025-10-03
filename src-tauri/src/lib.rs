@@ -23,7 +23,8 @@ pub fn run() {
             db::db_recent_items,
             db::db_search,
             db::db_delete_item,
-            db::db_get_count
+            db::db_get_count,
+            db::db_flush
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -58,48 +59,38 @@ pub fn run() {
                 }
             });
 
-            // Listen for change-clipboard events to log clipboard changes and save to database
+            // Listen for change-clipboard events to save items to database
             app.listen("change-clipboard", move |event| {
+                println!("Clipboard changed - saving to database");
+
                 if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
                     if let Some(item) = payload.get("item") {
-                        let timestamp = item.get("timestamp")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0);
-                        let byte_size = item.get("byteSize")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(0) as usize;
-
-                        // Extract searchable text (prioritize plain text)
-                        let searchable_text = item.get("formats")
-                            .and_then(|f| f.get("txt"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string());
-
-                        // Create ClipboardItem for database storage
-                        if let Ok(formats) = serde_json::from_value::<structs::ClipboardFormats>(
-                            item.get("formats").unwrap_or(&serde_json::Value::Object(Default::default())).clone()
-                        ) {
-                            let clipboard_item = structs::ClipboardItem {
-                                id: 0, // Will be assigned by database
-                                text: searchable_text,
-                                timestamp,
-                                byte_size,
-                                formats,
-                            };
-
+                        // Parse the clipboard item from the event
+                        if let Ok(clipboard_item) = serde_json::from_value::<structs::ClipboardItem>(item.clone()) {
                             // Save to database asynchronously
                             let app_handle_clone = app_handle.clone();
                             tauri::async_runtime::spawn(async move {
-                                if let Err(e) = db::db_save_item(app_handle_clone, clipboard_item) {
-                                    eprintln!("Failed to save clipboard item to database: {}", e);
+                                match db::db_save_item(app_handle_clone, clipboard_item) {
+                                    Ok(result) => {
+                                        if result.success {
+                                            println!("Successfully saved clipboard item with ID: {:?}", result.id);
+                                        } else {
+                                            eprintln!("Failed to save clipboard item: {:?}", result.error);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Error saving clipboard item: {}", e);
+                                    }
                                 }
                             });
+                        } else {
+                            eprintln!("Failed to parse clipboard item from event payload");
                         }
                     } else {
-                        println!("Clipboard changed (no item data found)");
+                        println!("Clipboard changed but no item data found in payload");
                     }
                 } else {
-                    println!("Clipboard changed (unable to parse payload)");
+                    eprintln!("Failed to parse clipboard change event payload");
                 }
             });
 

@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import ClipboardItem from "./components/ClipboardItem.vue";
 
 const clipboardItems = ref([]);
 const searchQuery = ref("");
@@ -10,7 +11,7 @@ const isLoading = ref(false);
 // Computed property for filtered items
 const filteredItems = computed(() => {
     if (!searchQuery.value.trim()) {
-        return clipboardItems.value.slice(0, 10);
+        return clipboardItems.value.slice(0, 20);
     }
     return clipboardItems.value
         .filter(
@@ -20,15 +21,14 @@ const filteredItems = computed(() => {
                     .toLowerCase()
                     .includes(searchQuery.value.toLowerCase()),
         )
-        .slice(0, 10);
+        .slice(0, 20);
 });
 
 // Load recent clipboard items
 async function loadRecentItems() {
     try {
         isLoading.value = true;
-        const items = await invoke("db_recent_items", { count: 10, offset: 0 });
-        console.log("Returned", items);
+        const items = await invoke("db_recent_items", { count: 20, offset: 0 });
         clipboardItems.value = items;
     } catch (error) {
         console.error("Failed to load recent items:", error);
@@ -41,7 +41,6 @@ async function loadRecentItems() {
 async function deleteItem(id) {
     try {
         await invoke("db_delete_item", { id });
-        // Remove from local state
         clipboardItems.value = clipboardItems.value.filter(
             (item) => item.id !== id,
         );
@@ -50,33 +49,16 @@ async function deleteItem(id) {
     }
 }
 
-// Format timestamp for display
-function formatTimestamp(timestamp) {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-
-    return date.toLocaleDateString();
-}
-
-// Format byte size
-function formatByteSize(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+// Close window on Escape key
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        window.__TAURI__.window.getCurrent().close();
+    }
+});
 
 // Load items on component mount
 onMounted(async () => {
     await loadRecentItems();
-
     // Listen for clipboard changes to refresh the list
     await listen("change-clipboard", async () => {
         await loadRecentItems();
@@ -86,31 +68,29 @@ onMounted(async () => {
 
 <template>
     <div class="app">
-        <header class="header">
-            <h1 class="title">Clipboard History</h1>
-            <div class="search-container">
-                <input
-                    v-model="searchQuery"
-                    type="text"
-                    placeholder="Search clipboard items..."
-                    class="search-input"
-                />
-            </div>
-        </header>
+        <!-- Search bar -->
+        <div class="search-container">
+            <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="Search..."
+                class="search-input"
+                autofocus
+            />
+        </div>
 
-        <main class="main">
+        <!-- Clipboard items list -->
+        <div class="items-container">
             <div v-if="isLoading" class="loading">
                 <div class="spinner"></div>
-                <p>Loading clipboard items...</p>
             </div>
 
-            <div v-else-if="filteredItems.length === 0" class="empty-state">
+            <div v-else-if="filteredItems?.length === 0" class="empty-state">
                 <div class="empty-icon">📋</div>
-                <h3>No clipboard items found</h3>
                 <p>
                     {{
                         searchQuery
-                            ? "Try a different search term"
+                            ? "No results"
                             : "Copy something to get started"
                     }}
                 </p>
@@ -124,53 +104,40 @@ onMounted(async () => {
                     @delete="deleteItem(item.id)"
                 />
             </div>
-        </main>
+        </div>
     </div>
 </template>
 
 <style scoped>
 .app {
     font-family:
-        -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-        system-ui, sans-serif;
-    background: #f5f5f7;
-    min-height: 100vh;
+        -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: rgba(246, 246, 246, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    width: 300px;
+    height: 600px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     color: #1d1d1f;
 }
 
-.header {
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-    padding: 1rem 2rem;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-
-.title {
-    font-size: 2rem;
-    font-weight: 700;
-    margin: 0 0 1rem 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
 .search-container {
-    max-width: 600px;
-    margin: 0 auto;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.7);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .search-input {
     width: 100%;
-    padding: 0.75rem 1rem;
-    border: 1px solid #d1d1d6;
-    border-radius: 12px;
-    font-size: 1rem;
-    background: white;
+    padding: 8px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    font-size: 14px;
+    background: rgba(255, 255, 255, 0.8);
     transition: all 0.2s ease;
     box-sizing: border-box;
 }
@@ -178,32 +145,51 @@ onMounted(async () => {
 .search-input:focus {
     outline: none;
     border-color: #007aff;
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+    background: rgba(255, 255, 255, 0.95);
 }
 
-.main {
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
+.search-input::placeholder {
+    color: #8e8e93;
+}
+
+.items-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.items-container::-webkit-scrollbar {
+    width: 4px;
+}
+
+.items-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.items-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+}
+
+.items-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
 }
 
 .loading {
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    padding: 4rem 2rem;
-    color: #86868b;
+    align-items: center;
+    padding: 40px 20px;
 }
 
 .spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid #e5e5ea;
-    border-top: 3px solid #007aff;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(0, 0, 0, 0.1);
+    border-top: 2px solid #007aff;
     border-radius: 50%;
     animation: spin 1s linear infinite;
-    margin-bottom: 1rem;
 }
 
 @keyframes spin {
@@ -217,31 +203,25 @@ onMounted(async () => {
 
 .empty-state {
     text-align: center;
-    padding: 4rem 2rem;
-    color: #86868b;
+    padding: 40px 20px;
+    color: #8e8e93;
 }
 
 .empty-icon {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-    opacity: 0.5;
-}
-
-.empty-state h3 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: #1d1d1f;
+    font-size: 32px;
+    margin-bottom: 8px;
+    opacity: 0.6;
 }
 
 .empty-state p {
     margin: 0;
-    font-size: 1rem;
+    font-size: 13px;
+    font-weight: 400;
 }
 
 .clipboard-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 4px;
 }
 </style>

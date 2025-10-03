@@ -1,26 +1,14 @@
 use crate::structs::{ClipboardItem, DatabaseItem, SaveResult};
-use sled::{Db, Tree};
-use std::sync::atomic::{AtomicU64, Ordering};
+use rusqlite::{Connection, params};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use anyhow::Result;
 
-// Database tree names
-const ITEMS_TREE: &str = "items";
-const TEXT_INDEX_TREE: &str = "text_index";
-const TIMESTAMP_INDEX_TREE: &str = "timestamp_index";
-
-// Global ID counter
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-
 // Global database instance (singleton)
-static DB_INSTANCE: Mutex<Option<Arc<ClipboardDatabase>>> = Mutex::new(None);
+static DB_INSTANCE: Mutex<Option<Arc<Mutex<ClipboardDatabase>>>> = Mutex::new(None);
 
 pub struct ClipboardDatabase {
-    db: Db,
-    items_tree: Tree,
-    text_index_tree: Tree,
-    timestamp_index_tree: Tree,
+    conn: Connection,
 }
 
 impl ClipboardDatabase {
@@ -31,38 +19,48 @@ impl ClipboardDatabase {
         std::fs::create_dir_all(&app_data_dir)?;
 
         // Create database path
-        let db_path = app_data_dir.join("clipboard_db");
+        let db_path = app_data_dir.join("clipboard.db");
 
-        // Open sled database
-        let db = sled::open(&db_path)?;
+        // Open SQLite database
+        let conn = Connection::open(&db_path)?;
 
-        // Open trees
-        let items_tree = db.open_tree(ITEMS_TREE)?;
-        let text_index_tree = db.open_tree(TEXT_INDEX_TREE)?;
-        let timestamp_index_tree = db.open_tree(TIMESTAMP_INDEX_TREE)?;
+        let db = ClipboardDatabase { conn };
 
-        // Initialize next_id from database
-        if let Some(max_id_bytes_result) = items_tree.iter().keys().rev().next() {
-            if let Ok(max_id_bytes) = max_id_bytes_result {
-                if let Ok(max_id_str) = String::from_utf8(max_id_bytes.to_vec()) {
-                    if let Ok(max_id) = max_id_str.parse::<u64>() {
-                        NEXT_ID.store(max_id + 1, Ordering::Relaxed);
-                    }
-                }
-            }
-        }
+        // Initialize database schema
+        db.init_schema()?;
 
-        Ok(ClipboardDatabase {
-            db,
-            items_tree,
-            text_index_tree,
-            timestamp_index_tree,
-        })
+        Ok(db)
+    }
+
+    /// Initialize database schema
+    fn init_schema(&self) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT,
+                timestamp INTEGER NOT NULL,
+                byte_size INTEGER NOT NULL,
+                formats TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        // Create indexes for performance
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_timestamp ON items(timestamp)",
+            [],
+        )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_text ON items(text)",
+            [],
+        )?;
+
+        Ok(())
     }
 
     /// Get the global database instance (singleton pattern)
-    pub fn get_instance(app_handle: &AppHandle) -> Result<Arc<Self>> {
-        // Use Once to ensure initialization happens only once
+    pub fn get_instance(app_handle: &AppHandle) -> Result<Arc<Mutex<Self>>> {
         let mut db_instance = DB_INSTANCE.lock().unwrap();
 
         if let Some(ref db) = *db_instance {
@@ -71,107 +69,120 @@ impl ClipboardDatabase {
 
         // Initialize the database
         let db = Self::new(app_handle)?;
-        let arc_db = Arc::new(db);
+        let arc_db = Arc::new(Mutex::new(db));
         *db_instance = Some(Arc::clone(&arc_db));
         Ok(arc_db)
     }
 
     /// Save a clipboard item to the database
-    pub fn save_item(&self, item: ClipboardItem) -> SaveResult {
-        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    pub fn save_item(&mut self, item: ClipboardItem) -> SaveResult {
         let mut db_item = DatabaseItem::from(item);
-        db_item.id = id;
 
-        // Serialize the item
-        let serialized = match serde_json::to_vec(&db_item) {
+        // Serialize the formats
+        let serialized_formats = match serde_json::to_string(&db_item.formats) {
             Ok(data) => data,
             Err(e) => return SaveResult {
                 success: false,
                 id: None,
-                error: Some(format!("Failed to serialize item: {}", e)),
+                error: Some(format!("Failed to serialize formats: {}", e)),
             },
         };
 
-        let id_key = id.to_string();
-
         // Start a transaction
-        let tx_result: Result<(), sled::transaction::TransactionError> = self.db.transaction(|db| {
-            // Save the main item
-            db.insert(id_key.as_bytes(), serialized.clone())?;
-
-            // Create text index if searchable text exists
-            if let Some(ref text) = db_item.text {
-                if !text.is_empty() {
-                    let lower_text = text.to_lowercase();
-                    let index_key = format!("{}:{}", lower_text, id);
-                    db.insert(index_key.as_bytes(), b"")?;
-                }
-            }
-
-            // Create timestamp index for fast recent queries
-            let timestamp_key = format!("{:020}:{}", db_item.timestamp, id);
-            db.insert(timestamp_key.as_bytes(), b"")?;
-
-            Ok(())
-        });
-
-        match tx_result {
-            Ok(_) => {
-                // Log the saved item ID
-                println!("Saved item with ID: {}", id);
-
-                // Log the total item count
-                match self.get_count() {
-                    Ok(count) => println!("Total item count after save: {}", count),
-                    Err(e) => println!("Failed to get item count after save: {}", e),
-                }
-
-                SaveResult {
-                    success: true,
-                    id: Some(id),
-                    error: None,
-                }
+        let tx = match self.conn.transaction() {
+            Ok(tx) => tx,
+            Err(e) => return SaveResult {
+                success: false,
+                id: None,
+                error: Some(format!("Failed to start transaction: {}", e)),
             },
-            Err(e) => SaveResult {
+        };
+
+        let result = tx.execute(
+            "INSERT INTO items (text, timestamp, byte_size, formats) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                db_item.text,
+                db_item.timestamp,
+                db_item.byte_size,
+                serialized_formats
+            ],
+        );
+
+        let id = match result {
+            Ok(_) => tx.last_insert_rowid() as u64,
+            Err(e) => {
+                return SaveResult {
+                    success: false,
+                    id: None,
+                    error: Some(format!("Insert failed: {}", e)),
+                };
+            }
+        };
+
+        // Commit the transaction
+        if let Err(e) = tx.commit() {
+            return SaveResult {
                 success: false,
                 id: Some(id),
-                error: Some(format!("Transaction failed: {:?}", e)),
-            },
+                error: Some(format!("Commit failed: {}", e)),
+            };
+        }
+
+        db_item.id = id;
+
+        // Log the saved item ID
+        println!("Saved item with ID: {}", id);
+
+        // Log the total item count
+        match self.get_count() {
+            Ok(count) => println!("Total item count after save: {}", count),
+            Err(e) => println!("Failed to get item count after save: {}", e),
+        }
+
+        SaveResult {
+            success: true,
+            id: Some(id),
+            error: None,
         }
     }
-
 
     /// Get recent items with pagination
     pub fn recent_items(&self, count: usize, offset: usize) -> Result<Vec<ClipboardItem>> {
         println!("Getting recent items {count}, off {offset}");
-        let mut items = Vec::with_capacity(count);
-        let mut collected = 0;
 
-        // Iterate timestamp index in reverse (newest first)
-        let iter = self.timestamp_index_tree
-            .iter()
-            .rev()
-            .skip(offset);
+        let mut stmt = self.conn.prepare(
+            "SELECT id, text, timestamp, byte_size, formats
+             FROM items
+             ORDER BY timestamp DESC
+             LIMIT ?1 OFFSET ?2"
+        )?;
 
-        for item_result in iter {
-            if collected >= count {
-                break;
+        let item_iter = stmt.query_map(
+            params![count as i64, offset as i64],
+            |row| {
+                let id: u64 = row.get(0)?;
+                let text: Option<String> = row.get(1)?;
+                let timestamp: u64 = row.get(2)?;
+                let byte_size: usize = row.get(3)?;
+                let formats_json: String = row.get(4)?;
+
+                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(4, "formats".to_string(), rusqlite::types::Type::Text))?;
+
+                Ok(DatabaseItem {
+                    id,
+                    text,
+                    timestamp,
+                    byte_size,
+                    formats,
+                })
             }
+        )?;
 
-            let (key, _) = item_result?;
-            let key_str = String::from_utf8(key.to_vec())?;
-
-            // Extract ID from timestamp key (format: "{timestamp}:{id}")
-            if let Some(id_str) = key_str.split(':').nth(1) {
-                if let Ok(_id) = id_str.parse::<u64>() {
-                    if let Some(item_bytes) = self.items_tree.get(id_str.as_bytes())? {
-                        if let Ok(db_item) = serde_json::from_slice::<DatabaseItem>(&item_bytes) {
-                            items.push(ClipboardItem::from(db_item));
-                            collected += 1;
-                        }
-                    }
-                }
-            }
+        let mut items = Vec::new();
+        for item in item_iter {
+            let db_item = item?;
+            items.push(ClipboardItem::from(db_item));
         }
 
         Ok(items)
@@ -179,108 +190,90 @@ impl ClipboardDatabase {
 
     /// Search items by text content
     pub fn search(&self, query: &str, count: usize) -> Result<Vec<ClipboardItem>> {
-        let mut items = Vec::with_capacity(count);
-        let query_lower = query.to_lowercase();
-        let mut collected = 0;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, text, timestamp, byte_size, formats
+             FROM items
+             WHERE LOWER(text) LIKE LOWER(?1)
+             ORDER BY timestamp DESC
+             LIMIT ?2"
+        )?;
 
-        // Search through text index
-        let prefix = format!("{}:", query_lower);
+        let search_pattern = format!("%{}%", query);
 
-        for item_result in self.text_index_tree.scan_prefix(prefix.as_bytes()) {
-            if collected >= count {
-                break;
+        let item_iter = stmt.query_map(
+            params![search_pattern, count as i64],
+            |row| {
+                let id: u64 = row.get(0)?;
+                let text: Option<String> = row.get(1)?;
+                let timestamp: u64 = row.get(2)?;
+                let byte_size: usize = row.get(3)?;
+                let formats_json: String = row.get(4)?;
+
+                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(4, "formats".to_string(), rusqlite::types::Type::Text))?;
+
+                Ok(DatabaseItem {
+                    id,
+                    text,
+                    timestamp,
+                    byte_size,
+                    formats,
+                })
             }
+        )?;
 
-            let (key, _) = item_result?;
-            let key_str = String::from_utf8(key.to_vec())?;
-
-            // Extract ID from index key (format: "{text}:{id}")
-            if let Some(id_str) = key_str.split(':').nth(1) {
-                if let Ok(_id) = id_str.parse::<u64>() {
-                    if let Some(item_bytes) = self.items_tree.get(id_str.as_bytes())? {
-                        if let Ok(db_item) = serde_json::from_slice::<DatabaseItem>(&item_bytes) {
-                            items.push(ClipboardItem::from(db_item));
-                            collected += 1;
-                        }
-                    }
-                }
-            }
+        let mut items = Vec::new();
+        for item in item_iter {
+            let db_item = item?;
+            items.push(ClipboardItem::from(db_item));
         }
 
         Ok(items)
     }
 
     /// Delete an item by ID
-    pub fn delete_item(&self, id: u64) -> SaveResult {
-        let id_str = id.to_string();
-
-        // First, get the item to extract text for index cleanup
-        let item = match self.items_tree.get(id_str.as_bytes()) {
-            Ok(Some(item_bytes)) => {
-                match serde_json::from_slice::<DatabaseItem>(&item_bytes) {
-                    Ok(item) => item,
-                    Err(e) => return SaveResult {
+    pub fn delete_item(&mut self, id: u64) -> SaveResult {
+        match self.conn.execute(
+            "DELETE FROM items WHERE id = ?1",
+            params![id],
+        ) {
+            Ok(rows_affected) => {
+                if rows_affected > 0 {
+                    SaveResult {
+                        success: true,
+                        id: Some(id),
+                        error: None,
+                    }
+                } else {
+                    SaveResult {
                         success: false,
                         id: Some(id),
-                        error: Some(format!("Failed to deserialize item: {}", e)),
-                    },
+                        error: Some("Item not found".to_string()),
+                    }
                 }
-            }
-            Ok(None) => return SaveResult {
-                success: false,
-                id: Some(id),
-                error: Some("Item not found".to_string()),
-            },
-            Err(e) => return SaveResult {
-                success: false,
-                id: Some(id),
-                error: Some(format!("Failed to get item: {}", e)),
-            },
-        };
-
-        // Start a transaction to delete the item and its indexes
-        let tx_result: Result<(), sled::transaction::TransactionError> = self.db.transaction(|db| {
-            // Delete the main item
-            db.remove(id_str.as_bytes())?;
-
-            // Delete text index if searchable text exists
-            if let Some(ref text) = item.text {
-                if !text.is_empty() {
-                    let lower_text = text.to_lowercase();
-                    let index_key = format!("{}:{}", lower_text, id);
-                    db.remove(index_key.as_bytes())?;
-                }
-            }
-
-            // Delete timestamp index
-            let timestamp_key = format!("{:020}:{}", item.timestamp, id);
-            db.remove(timestamp_key.as_bytes())?;
-
-            Ok(())
-        });
-
-        match tx_result {
-            Ok(_) => SaveResult {
-                success: true,
-                id: Some(id),
-                error: None,
             },
             Err(e) => SaveResult {
                 success: false,
                 id: Some(id),
-                error: Some(format!("Delete transaction failed: {:?}", e)),
+                error: Some(format!("Delete failed: {}", e)),
             },
         }
     }
 
     /// Get total count of items
     pub fn get_count(&self) -> Result<usize> {
-        Ok(self.items_tree.len())
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM items",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
     }
 
     /// Flush all pending writes to disk
-    pub fn flush(&self) -> Result<()> {
-        self.db.flush()?;
+    pub fn flush(&mut self) -> Result<()> {
+        // SQLite handles automatic durability, but we can run WAL checkpoint
+        self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)", [])?;
         Ok(())
     }
 }
@@ -292,8 +285,11 @@ pub fn db_save_item(
     item: ClipboardItem,
 ) -> Result<SaveResult, String> {
     println!("Saving item");
-    let db = ClipboardDatabase::get_instance(&app_handle)
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let mut db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
 
     Ok(db.save_item(item))
 }
@@ -304,8 +300,11 @@ pub fn db_recent_items(
     count: usize,
     offset: usize,
 ) -> Result<Vec<ClipboardItem>, String> {
-    let db = ClipboardDatabase::get_instance(&app_handle)
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
 
     db.recent_items(count, offset)
         .map_err(|e| format!("Failed to get recent items: {}", e))
@@ -317,8 +316,11 @@ pub fn db_search(
     query: String,
     count: usize,
 ) -> Result<Vec<ClipboardItem>, String> {
-    let db = ClipboardDatabase::get_instance(&app_handle)
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
 
     db.search(&query, count)
         .map_err(|e| format!("Failed to search items: {}", e))
@@ -329,17 +331,37 @@ pub fn db_delete_item(
     app_handle: AppHandle,
     id: u64,
 ) -> Result<SaveResult, String> {
-    let db = ClipboardDatabase::get_instance(&app_handle)
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let mut db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
 
     Ok(db.delete_item(id))
 }
 
 #[tauri::command]
 pub fn db_get_count(app_handle: AppHandle) -> Result<usize, String> {
-    let db = ClipboardDatabase::get_instance(&app_handle)
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
         .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
 
     db.get_count()
         .map_err(|e| format!("Failed to get item count: {}", e))
+}
+
+#[tauri::command]
+pub fn db_flush(app_handle: AppHandle) -> Result<String, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let mut db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    db.flush()
+        .map_err(|e| format!("Failed to flush database: {}", e))?;
+
+    Ok("Database flushed successfully".to_string())
 }
