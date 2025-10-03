@@ -26,7 +26,7 @@ impl Manager {
             .unwrap_or_default()
             .as_secs();
         let mut formats = ClipboardFormats::default();
-        let mut total_size = 0;
+        let mut total_size: u64 = 0;
         let mut searchable_text = None;
 
         // Get available formats
@@ -41,16 +41,16 @@ impl Manager {
         // Extract text content
         if self.ctx.has(ContentFormat::Text) {
             if let Ok(text) = self.ctx.get_text() {
-                total_size += text.len();
                 formats.txt = Some(text.clone());
-                searchable_text = Some(text);
+                searchable_text = Some(text.clone());
+                total_size += text.len() as u64; // Size in bytes (assuming UTF-8)
             }
         }
 
         // Extract HTML content
         if self.ctx.has(ContentFormat::Html) {
             if let Ok(html) = self.ctx.get_html() {
-                total_size += html.len();
+                total_size += html.len() as u64;
                 formats.html = Some(html);
             }
         }
@@ -58,7 +58,7 @@ impl Manager {
         // Extract RTF content
         if self.ctx.has(ContentFormat::Rtf) {
             if let Ok(rtf) = self.ctx.get_rich_text() {
-                total_size += rtf.len();
+                total_size += rtf.len() as u64;
                 formats.rtf = Some(rtf);
             }
         }
@@ -69,8 +69,9 @@ impl Manager {
                 if let Ok(png) = _image.to_png() {
                     let bytes = png.get_bytes();
                     let base64_string = general_purpose::STANDARD.encode(bytes);
-                    formats.image_data = Some(format!("data:{};base64,{}", "image/png", base64_string));
-                    total_size += bytes.len(); // Estimate size
+                    let full_data_uri = format!("data:{};base64,{}", "image/png", base64_string);
+                    formats.image_data = Some(full_data_uri.clone());
+                    total_size += full_data_uri.len() as u64; // Use actual stored size (including base64 overhead)
                 }
             }
         }
@@ -98,7 +99,8 @@ impl Manager {
                                 })
                                 .collect();
                             if !files.is_empty() {
-                                total_size += files.iter().map(|f| f.len()).sum::<usize>();
+                                // Count the file path strings themselves (not file content size)
+                                total_size += files.iter().map(|f| f.as_bytes().len() as u64).sum::<u64>();
                                 formats.files = Some(files);
                             }
                         }
@@ -107,12 +109,13 @@ impl Manager {
                 _ => {
                     // Handle other custom formats
                     if let Ok(buffer) = self.ctx.get_buffer(&format) {
-                        total_size += buffer.len();
                         // Try to convert to string, otherwise store as base64
                         if let Ok(text) = String::from_utf8(buffer.clone()) {
+                            total_size += text.len() as u64;
                             custom_formats.insert(format.clone(), text);
                         } else {
                             let base64_data = general_purpose::STANDARD.encode(&buffer);
+                            total_size += base64_data.len() as u64; // Use actual stored size
                             custom_formats.insert(format, base64_data);
                         }
                     }

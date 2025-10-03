@@ -1,4 +1,5 @@
-use tauri::Listener;
+use tauri::{Listener, Manager};
+use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 mod structs;
 mod clipboard;
@@ -28,6 +29,11 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
+            let window = app_handle.get_webview_window("main").unwrap();
+
+            #[cfg(target_os = "macos")]
+            apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)
+                .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
 
             // Automatically start clipboard listener on app load
             if let Err(e) = clipboard::start_listen(app_handle.clone()) {

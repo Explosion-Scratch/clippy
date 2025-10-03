@@ -6,7 +6,7 @@ pub struct ClipboardItem {
     pub id: u64,
     pub text: Option<String>, // Searchable text field (can be null)
     pub timestamp: u64,
-    pub byte_size: usize,
+    pub byte_size: u64,
     pub formats: ClipboardFormats,
 }
 
@@ -32,7 +32,7 @@ pub struct DatabaseItem {
     pub id: u64,
     pub text: Option<String>,
     pub timestamp: u64,
-    pub byte_size: usize,
+    pub byte_size: u64,
     pub formats: ClipboardFormats,
 }
 

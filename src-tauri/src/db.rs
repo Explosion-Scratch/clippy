@@ -76,6 +76,13 @@ impl ClipboardDatabase {
 
     /// Save a clipboard item to the database
     pub fn save_item(&mut self, item: ClipboardItem) -> SaveResult {
+        // Log the item being saved
+        println!("=== SAVING CLIPBOARD ITEM TO DATABASE ===");
+        println!("Item ID: {}", item.id);
+        println!("Timestamp: {}", item.timestamp);
+        println!("Byte Size: {}", item.byte_size);
+        println!("Text: {:?}", item.text);
+        println!("==========================================");
         let mut db_item = DatabaseItem::from(item);
 
         // Serialize the formats
@@ -148,7 +155,8 @@ impl ClipboardDatabase {
 
     /// Get recent items with pagination
     pub fn recent_items(&self, count: usize, offset: usize) -> Result<Vec<ClipboardItem>> {
-        println!("Getting recent items {count}, off {offset}");
+        println!("=== GETTING RECENT ITEMS FROM DATABASE ===");
+        println!("Count: {}, Offset: {}", count, offset);
 
         let mut stmt = self.conn.prepare(
             "SELECT id, text, timestamp, byte_size, formats
@@ -163,7 +171,7 @@ impl ClipboardDatabase {
                 let id: u64 = row.get(0)?;
                 let text: Option<String> = row.get(1)?;
                 let timestamp: u64 = row.get(2)?;
-                let byte_size: usize = row.get(3)?;
+                let byte_size: u64 = row.get(3)?;
                 let formats_json: String = row.get(4)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
@@ -206,7 +214,7 @@ impl ClipboardDatabase {
                 let id: u64 = row.get(0)?;
                 let text: Option<String> = row.get(1)?;
                 let timestamp: u64 = row.get(2)?;
-                let byte_size: usize = row.get(3)?;
+                let byte_size: u64 = row.get(3)?;
                 let formats_json: String = row.get(4)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)

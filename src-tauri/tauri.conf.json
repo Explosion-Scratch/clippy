@@ -10,18 +10,24 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "clippy",
         "width": 300,
         "height": 600,
-        "decorations": false,
         "transparent": true,
         "resizable": false,
         "minimizable": true,
         "maximizable": false,
         "alwaysOnTop": true,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": -100,
+          "y": -100
+        }
       }
     ],
     "security": {
