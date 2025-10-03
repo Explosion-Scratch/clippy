@@ -1,6 +1,8 @@
-mod clipboard;
-
 use tauri::Listener;
+
+mod structs;
+mod clipboard;
+mod db;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -16,7 +18,12 @@ pub fn run() {
             greet,
             clipboard::start_clipboard_listener,
             clipboard::stop_clipboard_listener,
-            clipboard::get_clipboard_status
+            clipboard::get_clipboard_status,
+            db::db_save_item,
+            db::db_recent_items,
+            db::db_search,
+            db::db_delete_item,
+            db::db_get_count
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -51,7 +58,7 @@ pub fn run() {
                 }
             });
 
-            // Listen for change-clipboard events to log clipboard changes
+            // Listen for change-clipboard events to log clipboard changes and save to database
             app.listen("change-clipboard", move |event| {
                 if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
                     if let Some(item) = payload.get("item") {
@@ -62,28 +69,31 @@ pub fn run() {
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as usize;
 
-                        println!("Clipboard item changed at timestamp {} ({} bytes)", timestamp, byte_size);
+                        // Extract searchable text (prioritize plain text)
+                        let searchable_text = item.get("formats")
+                            .and_then(|f| f.get("txt"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
 
-                        // Log available formats
-                        if let Some(formats) = item.get("formats") {
-                            if let Some(txt) = formats.get("txt").and_then(|v| v.as_str()) {
-                                println!("  Text: {} chars", txt.len());
-                            }
-                            if let Some(html) = formats.get("html").and_then(|v| v.as_str()) {
-                                println!("  HTML: {} chars", html.len());
-                            }
-                            if let Some(rtf) = formats.get("rtf").and_then(|v| v.as_str()) {
-                                println!("  RTF: {} chars", rtf.len());
-                            }
-                            if let Some(image_data) = formats.get("imageData").and_then(|v| v.as_str()) {
-                                println!("  Image: {} chars (base64)", image_data.len());
-                            }
-                            if let Some(files) = formats.get("files").and_then(|v| v.as_array()) {
-                                println!("  Files: {} items", files.len());
-                            }
-                            if let Some(custom_formats) = formats.get("customFormats").and_then(|v| v.as_object()) {
-                                println!("  Custom formats: {}", custom_formats.len());
-                            }
+                        // Create ClipboardItem for database storage
+                        if let Ok(formats) = serde_json::from_value::<structs::ClipboardFormats>(
+                            item.get("formats").unwrap_or(&serde_json::Value::Object(Default::default())).clone()
+                        ) {
+                            let clipboard_item = structs::ClipboardItem {
+                                id: 0, // Will be assigned by database
+                                text: searchable_text,
+                                timestamp,
+                                byte_size,
+                                formats,
+                            };
+
+                            // Save to database asynchronously
+                            let app_handle_clone = app_handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(e) = db::db_save_item(app_handle_clone, clipboard_item) {
+                                    eprintln!("Failed to save clipboard item to database: {}", e);
+                                }
+                            });
                         }
                     } else {
                         println!("Clipboard changed (no item data found)");

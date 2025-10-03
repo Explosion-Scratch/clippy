@@ -1,38 +1,13 @@
 use clipboard_rs::{
     common::RustImage, Clipboard, ClipboardContext, ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext, ContentFormat
 };
-use serde::Serialize;
+use crate::structs::{ClipboardItem, ClipboardFormats, ClipboardChangeEvent};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use base64::{Engine as _, engine::general_purpose};
 
 // Global state to track if clipboard listening is active
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
-
-#[derive(Clone, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct ClipboardItem {
-    pub timestamp: u64,
-    pub byte_size: usize,
-    pub formats: ClipboardFormats,
-}
-
-#[derive(Clone, Serialize, Debug, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ClipboardFormats {
-    pub txt: Option<String>,
-    pub html: Option<String>,
-    pub rtf: Option<String>,
-    pub image_data: Option<String>, // Base64 encoded PNG
-    pub files: Option<Vec<String>>, // List of file paths
-    pub custom_formats: Option<std::collections::HashMap<String, String>>, // Other formats as strings
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClipboardChangeEvent {
-    pub item: ClipboardItem,
-}
 
 struct Manager {
     ctx: ClipboardContext,
@@ -50,9 +25,9 @@ impl Manager {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-
         let mut formats = ClipboardFormats::default();
         let mut total_size = 0;
+        let mut searchable_text = None;
 
         // Get available formats
         let available_formats = match self.ctx.available_formats() {
@@ -67,7 +42,8 @@ impl Manager {
         if self.ctx.has(ContentFormat::Text) {
             if let Ok(text) = self.ctx.get_text() {
                 total_size += text.len();
-                formats.txt = Some(text);
+                formats.txt = Some(text.clone());
+                searchable_text = Some(text);
             }
         }
 
@@ -92,9 +68,7 @@ impl Manager {
             if let Ok(_image) = self.ctx.get_image() {
                 if let Ok(png) = _image.to_png() {
                     let bytes = png.get_bytes();
-                let base64_string = general_purpose::STANDARD.encode(bytes);
-                    // For now, just indicate that image data is present without converting to base64
-                    // TODO: Implement proper image to bytes conversion
+                    let base64_string = general_purpose::STANDARD.encode(bytes);
                     formats.image_data = Some(format!("data:{};base64,{}", "image/png", base64_string));
                     total_size += bytes.len(); // Estimate size
                 }
@@ -107,6 +81,7 @@ impl Manager {
             match format.as_str() {
                 // Skip formats we've already handled
                 "public.text" | "public.utf8-plain-text" | "public.html" | "public.rtf" | "public.png" | "public.tiff" => continue,
+
                 // Handle file lists
                 "public.file-url" => {
                     if let Ok(buffer) = self.ctx.get_buffer(&format) {
@@ -150,6 +125,8 @@ impl Manager {
         }
 
         ClipboardItem {
+            id: 0, // Will be assigned by database
+            text: searchable_text,
             timestamp,
             byte_size: total_size,
             formats,
@@ -160,11 +137,7 @@ impl Manager {
 impl ClipboardHandler for Manager {
     fn on_clipboard_change(&mut self) {
         let item = self.extract_clipboard_item();
-
         let event = ClipboardChangeEvent { item };
-
-        // Log debug representation of the clipboard item
-        println!("Clipboard changed: {:#?}", event.item);
 
         if let Err(e) = self.app_handle.emit("change-clipboard", &event) {
             eprintln!("Failed to emit clipboard change event: {}", e);
