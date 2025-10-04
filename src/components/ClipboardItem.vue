@@ -53,7 +53,7 @@ function getContentType(item) {
     if (item.formats?.files && item.formats.files.length > 0) {
         return {
             type: "files",
-            label: `${item.formats.files.length} files`,
+            label: `${item.formats.files.length} file${item.formats.files.length > 1 ? "s" : ""}`,
         };
     }
     if (item.formats?.imageData) {
@@ -86,9 +86,13 @@ function getPreviewText(item) {
     if (item.formats?.files && item.formats.files.length > 0) {
         const files = item.formats.files;
         if (files.length === 1) {
-            return files[0].split("/").pop() || "File";
+            // Display as file://[FULL_PATH]
+            const path = files[0];
+            return `file://${path}`;
         }
-        return `${files[0].split("/").pop()} +${files.length - 1} more`;
+        // For multiple files, show the first one as file://[PATH] + count
+        const firstPath = files[0];
+        return `file://${firstPath} +${files.length - 1} more`;
     }
 
     if (!item.text) return "No preview";
@@ -147,8 +151,6 @@ const getIndexText = (idx) => {
         <div class="info">
             {{ getIndexText(item.index) || getInfoText(item) }}
         </div>
-
-  
     </div>
 </template>
 
@@ -205,6 +207,4 @@ const getIndexText = (idx) => {
 .clipboard-item.is-selected .delete-btn {
     opacity: 1;
 }
-
-
 </style>

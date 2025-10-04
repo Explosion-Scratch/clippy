@@ -6,6 +6,69 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use base64::{Engine as _, engine::general_purpose};
 
+/// Extract file paths from plist XML content
+fn extract_paths_from_plist(xml_content: &str) -> Option<Vec<String>> {
+    let mut paths = Vec::new();
+
+    // Simple regex to extract paths from plist format
+    // Look for <string>/path/to/file</string> patterns
+    for line in xml_content.lines() {
+        if line.contains("<string>") && line.contains("</string>") {
+            if let Some(start) = line.find("<string>") {
+                if let Some(end) = line.find("</string>") {
+                    let path = &line[start + 8..end];
+                    if !path.is_empty() && (path.starts_with('/') || path.contains(':')) {
+                        paths.push(path.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if paths.is_empty() {
+        None
+    } else {
+        Some(paths)
+    }
+}
+
+/// Extract file paths from generic content
+fn extract_paths_from_content(content: &str) -> Option<Vec<String>> {
+    let mut paths = Vec::new();
+
+    // Look for file:// URLs
+    for line in content.lines() {
+        if line.contains("file://") {
+            for part in line.split_whitespace() {
+                if part.starts_with("file://") {
+                    let path = part.trim_start_matches("file://")
+                        .trim_start_matches("file:/")
+                        .trim_end_matches(|c| c == ',' || c == ';');
+                    if !path.is_empty() && !path.contains('<') && !path.contains('>') {
+                        paths.push(path.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if paths.is_empty() {
+        None
+    } else {
+        Some(paths)
+    }
+}
+
+/// Check if a file path is temporary (should be ignored)
+fn is_temporary_file(path: &str) -> bool {
+    // Check for temporary file patterns like /.file/id=
+    path.contains("/.file/id=") ||
+    path.starts_with("/.file/") ||
+    // Add other temporary file patterns as needed
+    path.contains("/tmp/") ||
+    path.contains("/temp/")
+}
+
 // Global state to track if clipboard listening is active
 static IS_LISTENING: AtomicBool = AtomicBool::new(false);
 
@@ -38,93 +101,150 @@ impl Manager {
             }
         };
 
-        // Extract text content
-        if self.ctx.has(ContentFormat::Text) {
-            if let Ok(text) = self.ctx.get_text() {
-                formats.txt = Some(text.clone());
-                searchable_text = Some(text.clone());
-                total_size += text.len() as u64; // Size in bytes (assuming UTF-8)
-            }
-        }
+        // First, check for files and extract them
+        let mut file_paths = std::collections::HashSet::new();
 
-        // Extract HTML content
-        if self.ctx.has(ContentFormat::Html) {
-            if let Ok(html) = self.ctx.get_html() {
-                total_size += html.len() as u64;
-                formats.html = Some(html);
-            }
-        }
-
-        // Extract RTF content
-        if self.ctx.has(ContentFormat::Rtf) {
-            if let Ok(rtf) = self.ctx.get_rich_text() {
-                total_size += rtf.len() as u64;
-                formats.rtf = Some(rtf);
-            }
-        }
-
-        // Extract image data
-        if self.ctx.has(ContentFormat::Image) {
-            if let Ok(_image) = self.ctx.get_image() {
-                if let Ok(png) = _image.to_png() {
-                    let bytes = png.get_bytes();
-                    let base64_string = general_purpose::STANDARD.encode(bytes);
-                    let full_data_uri = format!("data:{};base64,{}", "image/png", base64_string);
-                    formats.image_data = Some(full_data_uri.clone());
-                    total_size += full_data_uri.len() as u64; // Use actual stored size (including base64 overhead)
-                }
-            }
-        }
-
-        // Handle custom formats
-        let mut custom_formats = std::collections::HashMap::new();
-        for format in available_formats {
+        for format in available_formats.iter() {
             match format.as_str() {
-                // Skip formats we've already handled
-                "public.text" | "public.utf8-plain-text" | "public.html" | "public.rtf" | "public.png" | "public.tiff" => continue,
-
                 // Handle file lists
                 "public.file-url" => {
-                    if let Ok(buffer) = self.ctx.get_buffer(&format) {
+                    if let Ok(buffer) = self.ctx.get_buffer(format) {
                         if let Ok(file_urls) = String::from_utf8(buffer) {
                             // Parse file URLs and convert to paths
-                            let files: Vec<String> = file_urls
-                                .split('\n')
-                                .filter(|s| !s.is_empty())
-                                .filter_map(|s| {
-                                    // Remove file:// prefix
-                                    s.trim_start_matches("file://")
-                                        .trim_start_matches("file:/")
-                                        .to_string().into()
-                                })
-                                .collect();
-                            if !files.is_empty() {
-                                // Count the file path strings themselves (not file content size)
-                                total_size += files.iter().map(|f| f.len() as u64).sum::<u64>();
-                                formats.files = Some(files);
+                            for file_url in file_urls.split('\n').filter(|s| !s.is_empty()) {
+                                let path = file_url
+                                    .trim_start_matches("file://")
+                                    .trim_start_matches("file:/")
+                                    .trim();
+                                if !path.is_empty() && !is_temporary_file(path) {
+                                    file_paths.insert(path.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                // Handle file-related formats that contain actual file paths
+                "NSFilenamesPboardType" | "dyn.ah62d4rv4gu8y6y4grf0gn5xbrzw1gydcr7u1e3cytf2gn" => {
+                    if let Ok(buffer) = self.ctx.get_buffer(format) {
+                        if let Ok(xml_content) = String::from_utf8(buffer) {
+                            // Parse plist XML to extract file paths
+                            if let Some(paths) = extract_paths_from_plist(&xml_content) {
+                                for path in paths {
+                                    if !is_temporary_file(&path) {
+                                        file_paths.insert(path);
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 _ => {
-                    // Handle other custom formats
-                    if let Ok(buffer) = self.ctx.get_buffer(&format) {
-                        // Try to convert to string, otherwise store as base64
-                        if let Ok(text) = String::from_utf8(buffer.clone()) {
-                            total_size += text.len() as u64;
-                            custom_formats.insert(format.clone(), text);
-                        } else {
-                            let base64_data = general_purpose::STANDARD.encode(&buffer);
-                            total_size += base64_data.len() as u64; // Use actual stored size
-                            custom_formats.insert(format, base64_data);
+                    // For other file-related formats, extract paths if possible
+                    if format.contains("file") || format.contains("url") || format.contains("dyn.ah") {
+                        if let Ok(buffer) = self.ctx.get_buffer(format) {
+                            if let Ok(content) = String::from_utf8(buffer) {
+                                // Try to extract file paths from the content
+                                if let Some(paths) = extract_paths_from_content(&content) {
+                                    for path in paths {
+                                        if !is_temporary_file(&path) {
+                                            file_paths.insert(path);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        if !custom_formats.is_empty() {
-            formats.custom_formats = Some(custom_formats);
+        // If we found files, prioritize them and skip all other formats
+        if !file_paths.is_empty() {
+            let mut files: Vec<String> = file_paths.into_iter().collect();
+            files.sort(); // Sort for consistency
+            // Count the file path strings themselves (not file content size)
+            total_size += files.iter().map(|f| f.len() as u64).sum::<u64>();
+
+            // Set searchable text to the first file path for searchability
+            if !files.is_empty() {
+                searchable_text = Some(format!("file://{}", files[0]));
+            }
+
+            formats.files = Some(files);
+        } else {
+            // No files found, process other formats as usual
+            // Extract text content
+            if self.ctx.has(ContentFormat::Text) {
+                if let Ok(text) = self.ctx.get_text() {
+                    formats.txt = Some(text.clone());
+                    searchable_text = Some(text.clone());
+                    total_size += text.len() as u64; // Size in bytes (assuming UTF-8)
+                }
+            }
+
+            // Extract HTML content
+            if self.ctx.has(ContentFormat::Html) {
+                if let Ok(html) = self.ctx.get_html() {
+                    total_size += html.len() as u64;
+                    formats.html = Some(html);
+                }
+            }
+
+            // Extract RTF content
+            if self.ctx.has(ContentFormat::Rtf) {
+                if let Ok(rtf) = self.ctx.get_rich_text() {
+                    total_size += rtf.len() as u64;
+                    formats.rtf = Some(rtf);
+                }
+            }
+
+            // Extract image data (only if no files)
+            if self.ctx.has(ContentFormat::Image) {
+                if let Ok(_image) = self.ctx.get_image() {
+                    if let Ok(png) = _image.to_png() {
+                        let bytes = png.get_bytes();
+                        let base64_string = general_purpose::STANDARD.encode(bytes);
+                        let full_data_uri = format!("data:{};base64,{}", "image/png", base64_string);
+                        formats.image_data = Some(full_data_uri.clone());
+                        total_size += full_data_uri.len() as u64; // Use actual stored size (including base64 overhead)
+                    }
+                }
+            }
+
+            // Handle non-file-related custom formats (only if no files)
+            let mut custom_formats = std::collections::HashMap::new();
+
+            for format in available_formats {
+                match format.as_str() {
+                    // Skip formats we've already handled
+                    "public.text" | "public.utf8-plain-text" | "public.html" | "public.rtf" | "public.png" | "public.tiff" => continue,
+                    // Skip file-related formats since we already processed them above
+                    "public.file-url" | "NSFilenamesPboardType" | "dyn.ah62d4rv4gu8y6y4grf0gn5xbrzw1gydcr7u1e3cytf2gn" => continue,
+                    _ => {
+                        // Skip file-related formats entirely when no files were found
+                        if format.contains("file") || format.contains("url") || format.contains("dyn.ah") {
+                            continue;
+                        }
+
+                        // Store non-file-related custom formats
+                        if let Ok(buffer) = self.ctx.get_buffer(&format) {
+                            // Try to convert to string, otherwise store as base64
+                            if let Ok(text) = String::from_utf8(buffer.clone()) {
+                                total_size += text.len() as u64;
+                                custom_formats.insert(format.clone(), text);
+                            } else {
+                                let base64_data = general_purpose::STANDARD.encode(&buffer);
+                                total_size += base64_data.len() as u64; // Use actual stored size
+                                custom_formats.insert(format, base64_data);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !custom_formats.is_empty() {
+                formats.custom_formats = Some(custom_formats);
+            }
         }
 
         ClipboardItem {

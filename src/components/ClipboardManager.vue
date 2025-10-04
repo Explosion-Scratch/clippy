@@ -151,9 +151,9 @@ async function handleArrowDown() {
         const previousOffset = currentPageOffset.value;
         const previousItems = [...clipboardItems.value];
         const previousSelectedIndex = selectedIndex.value;
-        
+
         await loadRecentItems(currentPageOffset.value + 1);
-        
+
         // Check if new items were loaded, if not, revert changes
         if (clipboardItems.value.length === 0) {
             currentPageOffset.value = previousOffset;
@@ -161,7 +161,7 @@ async function handleArrowDown() {
             selectedIndex.value = previousSelectedIndex;
             return;
         }
-        
+
         selectedIndex.value = 9; // Keep selection at the same relative position (last item)
     } else {
         // Move to next item on current window
@@ -178,10 +178,10 @@ async function handleArrowUp() {
         const previousOffset = currentPageOffset.value;
         const previousItems = [...clipboardItems.value];
         const previousSelectedIndex = selectedIndex.value;
-        
+
         const newOffset = Math.max(0, currentPageOffset.value - 1);
         await loadRecentItems(newOffset);
-        
+
         // Check if new items were loaded, if not, revert changes
         if (clipboardItems.value.length === 0) {
             currentPageOffset.value = previousOffset;
@@ -189,7 +189,7 @@ async function handleArrowUp() {
             selectedIndex.value = previousSelectedIndex;
             return;
         }
-        
+
         selectedIndex.value = 0; // Keep selection at the same relative position (first item)
     } else {
         // Move to previous item on current window
@@ -210,7 +210,7 @@ async function pasteItemToSystem(item) {
         console.log("Injecting item from ID:", item.id);
         const result = await invoke("inject_item", { id: item.id });
         console.log("Item injection result:", result);
-        
+
         // Reload the items to show updated copies count
         await loadRecentItems(currentPageOffset.value);
     } catch (error) {
@@ -269,7 +269,7 @@ function getItemInfo(item) {
     if (item.formats?.files && item.formats.files.length > 0) {
         return {
             type: "files",
-            size: `${item.formats.files.length} files`,
+            size: `${item.formats.files.length} file${item.formats.files.length > 1 ? "s" : ""}`,
             label: "Files",
         };
     }
