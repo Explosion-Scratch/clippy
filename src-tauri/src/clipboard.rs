@@ -243,7 +243,8 @@ pub fn inject_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
     // If clipboard was set successfully, simulate paste
     match set_result {
         Ok(_) => {
-            println!("Clipboard set successfully, simulating paste");
+            println!("Clipboard set successfully, waiting 0.2s before simulating paste");
+            std::thread::sleep(std::time::Duration::from_millis(200));
             if let Err(e) = crate::paste::simulate_system_paste_internal(&app_handle) {
                 eprintln!("Failed to simulate paste: {}", e);
                 return Err(format!("Failed to simulate paste: {}", e));

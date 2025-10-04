@@ -1,8 +1,8 @@
 <script setup>
-import { ref, computed, onMounted, watch } from "vue";
+import { ref, computed, onMounted, watch, nextTick } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { register } from "@tauri-apps/plugin-global-shortcut";
 import ClipboardItem from "./ClipboardItem.vue";
 
@@ -12,6 +12,8 @@ const isLoading = ref(false);
 const selectedIndex = ref(-1); // -1 means no item selected
 const currentPageOffset = ref(0);
 const itemsPerPage = 10;
+const clipboardManager = ref(null);
+let resizeObserver = null;
 
 // Search for clipboard items
 async function searchItems(query) {
@@ -25,6 +27,9 @@ async function searchItems(query) {
         clipboardItems.value = items;
         currentPageOffset.value = 0;
         selectedIndex.value = -1;
+        
+        // Resize window after search results load
+        await resizeWindowToFitContent();
     } catch (error) {
         console.error("Failed to search items:", error);
     } finally {
@@ -53,6 +58,9 @@ async function loadRecentItems(offset = 0) {
         clipboardItems.value = items;
         currentPageOffset.value = offset;
         selectedIndex.value = -1;
+        
+        // Resize window after content loads
+        await resizeWindowToFitContent();
     } catch (error) {
         console.error("Failed to load recent items:", error);
     } finally {
@@ -78,6 +86,8 @@ async function deleteItem(id) {
         clipboardItems.value = clipboardItems.value.filter(
             (item) => item.id !== id,
         );
+        // Resize window after deletion
+        await resizeWindowToFitContent();
     } catch (error) {
         console.error("Failed to delete item:", error);
     }
@@ -171,6 +181,36 @@ function resetSelection() {
     currentPageOffset.value = 0;
 }
 
+// Resize window to fit content
+async function resizeWindowToFitContent() {
+    if (!clipboardManager.value) return;
+    
+    try {
+        // Wait for next tick to ensure DOM is updated
+        await nextTick();
+        
+        // Get the actual height of the content
+        const rect = clipboardManager.value.getBoundingClientRect();
+        const contentHeight = rect.height;
+        
+        // Set reasonable bounds
+        const minHeight = 200;
+        const maxHeight = 600;
+        const finalHeight = Math.max(minHeight, Math.min(maxHeight, contentHeight));
+        
+        // Set a fixed width (can be adjusted based on content)
+        const width = 400;
+        
+        // Resize the window
+        const window = getCurrentWindow();
+        await window.setSize(new LogicalSize(width, finalHeight));
+        
+        console.log(`Window resized to ${width}x${finalHeight}px (content was ${contentHeight}px)`);
+    } catch (error) {
+        console.error("Failed to resize window:", error);
+    }
+}
+
 // Load items on component mount
 onMounted(async () => {
     document.addEventListener("keyup", (e) => {
@@ -195,10 +235,21 @@ onMounted(async () => {
             resetSelection();
             // Auto focus the search input
             document.querySelector('.search-input')?.focus();
+            // Resize window when gaining focus
+            resizeWindowToFitContent();
         }
     });
 
     await loadRecentItems();
+    
+    // Set up ResizeObserver to monitor content size changes
+    if (clipboardManager.value) {
+        resizeObserver = new ResizeObserver(() => {
+            resizeWindowToFitContent();
+        });
+        resizeObserver.observe(clipboardManager.value);
+    }
+    
     // Listen for clipboard changes to refresh the list
     await listen("change-clipboard", async () => {
         resetSelection();
@@ -208,12 +259,15 @@ onMounted(async () => {
     // Clean up focus listener on unmount
     return () => {
         unlistenFocus();
+        if (resizeObserver && clipboardManager.value) {
+            resizeObserver.disconnect();
+        }
     };
 });
 </script>
 
 <template>
-    <div class="clipboard-manager">
+    <div class="clipboard-manager" ref="clipboardManager">
         <!-- Search bar -->
         <div class="search-container">
             <input
@@ -248,6 +302,7 @@ onMounted(async () => {
                     :key="item.id"
                     :item="{ ...item, index }"
                     :selected="index === selectedIndex"
+                    @mouseenter="selectedIndex = index"
                     @delete="deleteItem(item.id)"
                 />
             </div>
@@ -298,7 +353,6 @@ onMounted(async () => {
                 opacity: 0.6;
             }
 
-            &:hover,
             &.is-selected {
                 background: var(--accent);
                 color: var(--accent-text);

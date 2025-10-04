@@ -12,13 +12,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(["delete"]);
-const isHovered = ref(false);
-
-// Computed property to determine if item should show selected styling
-const isSelected = computed(() => {
-    return props.selected || isHovered.value;
-});
+const emit = defineEmits(["delete", "mouseenter"]);
 
 // Format timestamp for display
 function formatTimestamp(timestamp) {

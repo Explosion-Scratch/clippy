@@ -1,22 +1,22 @@
 <script setup>
-import { onMounted } from 'vue';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { onMounted } from "vue";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 
 onMounted(() => {
-  // Close window on Escape key for main window
-  document.addEventListener('keyup', async (e) => {
-    if (e.key === 'Escape') {
-      const window = getCurrentWindow();
-      await window.hide();
-    }
-  });
+    // Close window on Escape key for main window
+    document.addEventListener("keyup", async (e) => {
+        if (e.key === "Escape") {
+            await invoke("hide_app");
+        }
+    });
 });
 </script>
 
 <template>
-  <div id="app">
-    <router-view />
-  </div>
+    <div id="app">
+        <router-view />
+    </div>
 </template>
 
 <style lang="less">
