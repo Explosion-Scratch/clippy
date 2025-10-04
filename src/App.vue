@@ -9,6 +9,9 @@ import ClipboardItem from "./components/ClipboardItem.vue";
 const clipboardItems = ref([]);
 const searchQuery = ref("");
 const isLoading = ref(false);
+const selectedIndex = ref(-1); // -1 means no item selected
+const currentPageOffset = ref(0);
+const itemsPerPage = 1;
 
 // Search for clipboard items
 async function searchItems(query) {
@@ -18,8 +21,10 @@ async function searchItems(query) {
             await loadRecentItems();
             return;
         }
-        const items = await invoke("db_search", { query, count: 20 });
+        const items = await invoke("db_search", { query, count: itemsPerPage });
         clipboardItems.value = items;
+        currentPageOffset.value = 0;
+        selectedIndex.value = -1;
     } catch (error) {
         console.error("Failed to search items:", error);
     } finally {
@@ -28,10 +33,10 @@ async function searchItems(query) {
 }
 
 // Load recent clipboard items
-async function loadRecentItems() {
+async function loadRecentItems(offset = 0) {
     try {
         isLoading.value = true;
-        const items = await invoke("db_recent_items", { count: 20, offset: 0 });
+        const items = await invoke("db_recent_items", { count: itemsPerPage, offset });
         console.log("=== RECEIVED ITEMS FROM BACKEND ===");
         console.log("Raw items:", items);
         items.forEach((item, index) => {
@@ -46,6 +51,8 @@ async function loadRecentItems() {
         });
         console.log("====================================");
         clipboardItems.value = items;
+        currentPageOffset.value = offset;
+        selectedIndex.value = -1;
     } catch (error) {
         console.error("Failed to load recent items:", error);
     } finally {
@@ -57,6 +64,8 @@ async function loadRecentItems() {
 watch(
     searchQuery,
     (newQuery) => {
+        selectedIndex.value = -1;
+        currentPageOffset.value = 0;
         searchItems(newQuery);
     },
     { debounce: 300 },
@@ -94,7 +103,54 @@ document.addEventListener("keydown", (e) => {
             pasteItemToSystem(clipboardItems.value[itemIndex]);
         }
     }
+
+    // Handle arrow key navigation
+    if (e.key === "ArrowDown") {
+        e.preventDefault();
+        handleArrowDown();
+    } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        handleArrowUp();
+    } else if (e.key === "Enter") {
+        e.preventDefault();
+        handleEnter();
+    }
 });
+
+// Handle arrow down navigation
+async function handleArrowDown() {
+    if (clipboardItems.value.length === 0) return;
+
+    // If we're at the last item on the current page, load next page
+    if (selectedIndex.value === clipboardItems.value.length - 1) {
+        await loadRecentItems(currentPageOffset.value + itemsPerPage);
+        selectedIndex.value = 0;
+    } else {
+        // Move to next item on current page
+        selectedIndex.value = Math.min(selectedIndex.value + 1, clipboardItems.value.length - 1);
+    }
+}
+
+// Handle arrow up navigation
+async function handleArrowUp() {
+    if (clipboardItems.value.length === 0) return;
+
+    // If we're at the first item and not on the first page, load previous page
+    if (selectedIndex.value === 0 && currentPageOffset.value > 0) {
+        await loadRecentItems(Math.max(0, currentPageOffset.value - itemsPerPage));
+        selectedIndex.value = itemsPerPage - 1;
+    } else {
+        // Move to previous item on current page
+        selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
+    }
+}
+
+// Handle enter key to select and inject item
+function handleEnter() {
+    if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
+        pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
+    }
+}
 
 // System paste function
 async function pasteItemToSystem(item) {
@@ -122,6 +178,7 @@ onMounted(async () => {
     await loadRecentItems();
     // Listen for clipboard changes to refresh the list
     await listen("change-clipboard", async () => {
+        selectedIndex.value = -1;
         await loadRecentItems();
     });
 });
@@ -162,6 +219,7 @@ onMounted(async () => {
                     v-for="(item, index) in clipboardItems"
                     :key="item.id"
                     :item="{ ...item, index }"
+                    :selected="index === selectedIndex"
                     @delete="deleteItem(item.id)"
                 />
             </div>
@@ -229,7 +287,8 @@ body,
                 opacity: 0.6;
             }
 
-            &:hover {
+            &:hover,
+            &.is-selected {
                 background: var(--accent);
                 color: var(--accent-text);
             }

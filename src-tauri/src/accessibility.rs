@@ -41,12 +41,15 @@ pub async fn check_permissions() -> bool {
     check_accessibility_permissions().await
 }
 
-/// Show permissions alert to the user
+/// Show permissions alert to the user using native dialog
 #[cfg(target_os = "macos")]
 pub async fn show_permissions_alert(app_handle: AppHandle) -> Result<(), String> {
-    if let Some(window) = app_handle.get_webview_window("main") {
-        window.emit("show-permissions-alert", ()).map_err(|e| e.to_string())?;
-    }
+    app_handle
+        .dialog()
+        .message("Accessibility permissions are required for this app to function properly.\n\nPlease grant accessibility permissions in System Settings > Privacy & Security > Accessibility.")
+        .kind(MessageDialogKind::Info)
+        .title("Accessibility Permissions Required")
+        .blocking_show();
     Ok(())
 }
 

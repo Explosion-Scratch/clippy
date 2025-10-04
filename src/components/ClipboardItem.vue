@@ -6,10 +6,19 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    selected: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const emit = defineEmits(["delete"]);
 const isHovered = ref(false);
+
+// Computed property to determine if item should show selected styling
+const isSelected = computed(() => {
+    return props.selected || isHovered.value;
+});
 
 // Format timestamp for display
 function formatTimestamp(timestamp) {
@@ -105,7 +114,7 @@ const getIndexText = (idx) => {
 <template>
     <div
         class="clipboard-item"
-        :class="{ 'is-hovered': isHovered }"
+        :class="{ 'is-selected': isSelected }"
         @mouseenter="isHovered = true"
         @mouseleave="isHovered = false"
         @click="copyToClipboard"
@@ -180,7 +189,7 @@ const getIndexText = (idx) => {
     opacity: 0;
 }
 
-.clipboard-item.is-hovered .delete-btn {
+.clipboard-item.is-selected .delete-btn {
     opacity: 1;
 }
 </style>
