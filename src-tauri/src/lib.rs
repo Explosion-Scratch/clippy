@@ -75,6 +75,7 @@ pub fn run() {
             db::db_delete_item,
             db::db_get_item_by_id,
             db::db_get_count,
+            db::db_get_size,
             db::db_flush,
             db::db_export_all,
             db::db_import_all,

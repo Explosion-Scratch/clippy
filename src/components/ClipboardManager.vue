@@ -148,7 +148,20 @@ async function handleArrowDown() {
 
     // If we're at the last item, shift the window down by loading the next item
     if (selectedIndex.value === clipboardItems.value.length - 1) {
+        const previousOffset = currentPageOffset.value;
+        const previousItems = [...clipboardItems.value];
+        const previousSelectedIndex = selectedIndex.value;
+        
         await loadRecentItems(currentPageOffset.value + 1);
+        
+        // Check if new items were loaded, if not, revert changes
+        if (clipboardItems.value.length === 0) {
+            currentPageOffset.value = previousOffset;
+            clipboardItems.value = previousItems;
+            selectedIndex.value = previousSelectedIndex;
+            return;
+        }
+        
         selectedIndex.value = 9; // Keep selection at the same relative position (last item)
     } else {
         // Move to next item on current window
@@ -162,8 +175,21 @@ async function handleArrowUp() {
 
     // If we're at the first item and not at the very beginning, shift the window up
     if (selectedIndex.value === 0 && currentPageOffset.value > 0) {
+        const previousOffset = currentPageOffset.value;
+        const previousItems = [...clipboardItems.value];
+        const previousSelectedIndex = selectedIndex.value;
+        
         const newOffset = Math.max(0, currentPageOffset.value - 1);
         await loadRecentItems(newOffset);
+        
+        // Check if new items were loaded, if not, revert changes
+        if (clipboardItems.value.length === 0) {
+            currentPageOffset.value = previousOffset;
+            clipboardItems.value = previousItems;
+            selectedIndex.value = previousSelectedIndex;
+            return;
+        }
+        
         selectedIndex.value = 0; // Keep selection at the same relative position (first item)
     } else {
         // Move to previous item on current window

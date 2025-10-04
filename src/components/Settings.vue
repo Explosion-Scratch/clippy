@@ -7,6 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 const appVersion = ref('0.1.0');
 const itemCount = ref(0);
+const databaseSize = ref(0);
 const isDeleting = ref(false);
 const isExporting = ref(false);
 const isImporting = ref(false);
@@ -14,8 +15,9 @@ const isImporting = ref(false);
 async function loadStats() {
   try {
     itemCount.value = await invoke('db_get_count');
+    databaseSize.value = await invoke('db_get_size');
   } catch (error) {
-    console.error('Failed to get item count:', error);
+    console.error('Failed to get database stats:', error);
   }
 }
 
@@ -96,6 +98,16 @@ async function closeSettings() {
   await window.close();
 }
 
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 onMounted(() => {
   loadStats();
   
@@ -126,6 +138,7 @@ onMounted(() => {
         <h2>Database Management</h2>
         <div class="stats">
           <p>Total clipboard items: <strong>{{ itemCount }}</strong></p>
+          <p>Database size: <strong>{{ formatBytes(databaseSize) }}</strong></p>
         </div>
         
         <div class="actions">

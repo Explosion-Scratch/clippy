@@ -8,7 +8,6 @@ pub fn simulate_system_paste(app: AppHandle) -> Result<(), String> {
 /// Internal function to simulate system paste without Tauri command wrapper
 pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
     println!("Simulating system paste...");
-
     #[cfg(target_os = "macos")]
     {
         // Use CGEvent for the most reliable and fastest keyboard simulation
@@ -18,41 +17,57 @@ pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
         use objc2_core_graphics::CGEventSourceStateID;
         use objc2_core_graphics::CGEventFlags;
         use objc2_core_graphics::CGEventTapLocation;
-
         unsafe {
-            // Create an event source for keyboard events
-            let event_source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+            // Create an event source for keyboard events using HID system state
+            let event_source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
                 .ok_or("Failed to create CGEventSource")?;
 
-            // Create Command+V key down event
-            let key_down_event = CGEvent::new_keyboard_event(
+            // Create Command key down event (0x37 is left Command key)
+            let cmd_down_event = CGEvent::new_keyboard_event(
                 Some(&event_source),
-                9, // kVK_ANSI_V (key code for 'V')
+                0x37, // kVK_Command
                 true, // key down
-            ).ok_or("Failed to create key down event")?;
+            ).ok_or("Failed to create Command down event")?;
 
-            // Set Command modifier flag
-            let cmd_flags = CGEventFlags::MaskCommand;
-            CGEvent::set_flags(Some(&key_down_event), cmd_flags);
-
-            // Create Command+V key up event
-            let key_up_event = CGEvent::new_keyboard_event(
+            // Create V key down event (0x09 is V key)
+            let v_down_event = CGEvent::new_keyboard_event(
                 Some(&event_source),
-                9, // kVK_ANSI_V (key code for 'V')
-                false, // key up
-            ).ok_or("Failed to create key up event")?;
+                0x09, // kVK_ANSI_V
+                true, // key down
+            ).ok_or("Failed to create V down event")?;
 
-            // Set Command modifier flag for key up as well
-            CGEvent::set_flags(Some(&key_up_event), cmd_flags);
-            println!("Sending paste key events");
-            // Post the events to the system event queue
-            // This ensures immediate processing by the system
-            CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&key_down_event));
-            CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&key_up_event));
+            // Create V key up event
+            let v_up_event = CGEvent::new_keyboard_event(
+                Some(&event_source),
+                0x09, // kVK_ANSI_V
+                false, // key up
+            ).ok_or("Failed to create V up event")?;
+
+            // Create Command key up event
+            let cmd_up_event = CGEvent::new_keyboard_event(
+                Some(&event_source),
+                0x37, // kVK_Command
+                false, // key up
+            ).ok_or("Failed to create Command up event")?;
+
+            // Set Command modifier flag on all events
+            let cmd_flags = CGEventFlags::MaskCommand;
+            CGEvent::set_flags(Some(&cmd_down_event), cmd_flags);
+            CGEvent::set_flags(Some(&v_down_event), cmd_flags);
+            CGEvent::set_flags(Some(&v_up_event), cmd_flags);
+            CGEvent::set_flags(Some(&cmd_up_event), cmd_flags);
+
+            println!("Sending paste key events with proper sequence");
+
+            // Post events to HID event tap with proper timing
+            CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_down_event));
+            std::thread::sleep(std::time::Duration::from_micros(15000));
+            CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_down_event));
+            std::thread::sleep(std::time::Duration::from_micros(15000));
+            CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_up_event));
+            std::thread::sleep(std::time::Duration::from_micros(15000));
+            CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_up_event));
         }
     }
-
     Ok(())
 }
-
-

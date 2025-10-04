@@ -111,7 +111,7 @@ impl ClipboardDatabase {
             )?;
             // Generate hashes for existing records
             self.conn.execute(
-                "UPDATE items SET content_hash = CASE 
+                "UPDATE items SET content_hash = CASE
                     WHEN text IS NOT NULL THEN substr(hex(md5(text || formats)), 1, 16)
                     ELSE substr(hex(md5(formats)), 1, 16)
                 END WHERE content_hash IS NULL",
@@ -147,6 +147,7 @@ impl ClipboardDatabase {
         println!("Copies: {}", item.copies);
         println!("Byte Size: {}", item.byte_size);
         println!("Text: {:?}", item.text);
+        println!("Formats: {:?}", item.formats);
         println!("==========================================");
 
         let mut db_item = DatabaseItem::from(item);
@@ -275,22 +276,20 @@ impl ClipboardDatabase {
         use std::collections::hash_map::DefaultHasher;
 
         let mut hasher = DefaultHasher::new();
-        
+
         // Hash the text content
         if let Some(t) = text {
             t.hash(&mut hasher);
         }
-        
+
         // Hash the serialized formats
         formats.hash(&mut hasher);
-        
+
         Ok(format!("{:x}", hasher.finish()))
     }
 
     /// Get recent items with pagination
     pub fn recent_items(&self, count: usize, offset: usize) -> Result<Vec<ClipboardItem>> {
-        println!("=== GETTING RECENT ITEMS FROM DATABASE ===");
-        println!("Count: {}, Offset: {}", count, offset);
 
         let mut stmt = self.conn.prepare(
             "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
@@ -418,6 +417,21 @@ impl ClipboardDatabase {
             |row| row.get(0),
         )?;
         Ok(count as usize)
+    }
+
+    /// Get database file size in bytes
+    pub fn get_database_size(&self, app_handle: &AppHandle) -> Result<u64> {
+        use std::path::Path;
+        
+        let app_data_dir = app_handle.path().app_data_dir()?;
+        let db_path = app_data_dir.join("clipboard.db");
+        
+        if db_path.exists() {
+            let metadata = std::fs::metadata(&db_path)?;
+            Ok(metadata.len())
+        } else {
+            Ok(0)
+        }
     }
 
     /// Get an item by ID
@@ -574,6 +588,18 @@ pub fn db_get_count(app_handle: AppHandle) -> Result<usize, String> {
 }
 
 #[tauri::command]
+pub fn db_get_size(app_handle: AppHandle) -> Result<u64, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    db.get_database_size(&app_handle)
+        .map_err(|e| format!("Failed to get database size: {}", e))
+}
+
+#[tauri::command]
 pub fn db_get_item_by_id(
     app_handle: AppHandle,
     id: u64,
@@ -674,7 +700,7 @@ pub fn db_import_all(app_handle: AppHandle, json_data: String) -> Result<String,
 
     for item in items {
         let db_item = DatabaseItem::from(item);
-        
+
         // Serialize the formats
         let serialized_formats = serde_json::to_string(&db_item.formats)
             .map_err(|e| format!("Failed to serialize formats: {}", e))?;
@@ -683,17 +709,17 @@ pub fn db_import_all(app_handle: AppHandle, json_data: String) -> Result<String,
         let content_hash = {
             use std::hash::{Hash, Hasher};
             use std::collections::hash_map::DefaultHasher;
-            
+
             let mut hasher = DefaultHasher::new();
-            
+
             // Hash the text content
             if let Some(ref t) = db_item.text {
                 t.hash(&mut hasher);
             }
-            
+
             // Hash the serialized formats
             serialized_formats.hash(&mut hasher);
-            
+
             format!("{:x}", hasher.finish())
         };
 
