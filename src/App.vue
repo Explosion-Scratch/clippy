@@ -2,6 +2,8 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { register } from "@tauri-apps/plugin-global-shortcut";
 import ClipboardItem from "./components/ClipboardItem.vue";
 
 const clipboardItems = ref([]);
@@ -74,13 +76,48 @@ async function deleteItem(id) {
 
 // Close window on Escape key
 document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-        window.__TAURI__.window.getCurrent().close();
+    // Handle Command + number keys for system paste
+    if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+        const key = e.key;
+        let itemIndex = null;
+
+        // Map 1-9 keys to indices 0-8, and 0 key to index 9
+        if (key >= "1" && key <= "9") {
+            itemIndex = parseInt(key) - 1;
+        } else if (key === "0") {
+            itemIndex = 9;
+        }
+
+        // If we have a valid item index and the item exists
+        if (itemIndex !== null && clipboardItems.value[itemIndex]) {
+            e.preventDefault();
+            pasteItemToSystem(clipboardItems.value[itemIndex]);
+        }
     }
 });
 
+// System paste function
+async function pasteItemToSystem(item) {
+    try {
+        // Call the Rust backend to simulate system paste
+        await invoke("simulate_system_paste");
+    } catch (error) {
+        console.error("Failed to paste item to system clipboard:", error);
+    }
+}
+
 // Load items on component mount
 onMounted(async () => {
+    document.addEventListener("keyup", (e) => {
+        console.log(e.key);
+        if (e.key === "Escape") {
+            let win = getCurrentWindow();
+            win.hide();
+
+            console.log({ win });
+        }
+    });
+
     await loadRecentItems();
     // Listen for clipboard changes to refresh the list
     await listen("change-clipboard", async () => {

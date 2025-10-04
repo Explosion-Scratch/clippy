@@ -4,6 +4,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 mod structs;
 mod clipboard;
 mod db;
+mod paste;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -25,15 +26,48 @@ pub fn run() {
             db::db_search,
             db::db_delete_item,
             db::db_get_count,
-            db::db_flush
+            db::db_flush,
+            paste::simulate_system_paste
         ])
         .setup(|app| {
+            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+
+            let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
+
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let app_handle = app.handle().clone();
             let window = app_handle.get_webview_window("main").unwrap();
 
+            /* Shorcut */
+            app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
+                let app_handle = app_handle.clone();
+                move |app_handle, shortcut, event| {
+                    if shortcut == &main_shortcut {
+                        match event.state() {
+                            ShortcutState::Pressed => {
+                                println!("{:?}", shortcut);
+                                println!("Show window here");
+                                // Use the app_handle passed to the closure, or the one you cloned
+                                let window = app_handle.get_webview_window("main").unwrap();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }).build())?;
+            app.global_shortcut().register(main_shortcut)?;
+
             #[cfg(target_os = "macos")]
-            apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)
-                .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+            {
+                apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)
+                    .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+
+                // Hide app from dock
+                app.handle().hide().ok();
+            }
 
             // Automatically start clipboard listener on app load
             if let Err(e) = clipboard::start_listen(app_handle.clone()) {
