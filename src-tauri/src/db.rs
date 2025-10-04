@@ -278,6 +278,39 @@ impl ClipboardDatabase {
         Ok(count as usize)
     }
 
+    /// Get an item by ID
+    pub fn get_item_by_id(&self, id: u64) -> Result<ClipboardItem> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, text, timestamp, byte_size, formats
+             FROM items
+             WHERE id = ?1"
+        )?;
+
+        let item = stmt.query_row(
+            params![id],
+            |row| {
+                let id: u64 = row.get(0)?;
+                let text: Option<String> = row.get(1)?;
+                let timestamp: u64 = row.get(2)?;
+                let byte_size: u64 = row.get(3)?;
+                let formats_json: String = row.get(4)?;
+
+                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(4, "formats".to_string(), rusqlite::types::Type::Text))?;
+
+                Ok(DatabaseItem {
+                    id,
+                    text,
+                    timestamp,
+                    byte_size,
+                    formats,
+                })
+            }
+        )?;
+
+        Ok(ClipboardItem::from(item))
+    }
+
     /// Flush all pending writes to disk
     pub fn flush(&mut self) -> Result<()> {
         // SQLite handles automatic durability, but we can run WAL checkpoint
@@ -358,6 +391,21 @@ pub fn db_get_count(app_handle: AppHandle) -> Result<usize, String> {
 
     db.get_count()
         .map_err(|e| format!("Failed to get item count: {}", e))
+}
+
+#[tauri::command]
+pub fn db_get_item_by_id(
+    app_handle: AppHandle,
+    id: u64,
+) -> Result<ClipboardItem, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    db.get_item_by_id(id)
+        .map_err(|e| format!("Failed to get item by ID: {}", e))
 }
 
 #[tauri::command]

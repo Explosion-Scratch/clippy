@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 const props = defineProps({
     item: {
         type: Object,
@@ -50,14 +51,18 @@ function getContentType(item) {
     return { type: "text", label: "Text" };
 }
 
-// Copy text to clipboard
+// Copy item to clipboard and paste
 async function copyToClipboard() {
     try {
-        if (props.item.text) {
-            await navigator.clipboard.writeText(props.item.text);
-        }
+        console.log("Setting clipboard from item ID:", props.item.id);
+        const result = await invoke("set_clipboard_item", { id: props.item.id });
+        console.log("Clipboard set result:", result);
+        
+        // Simulate paste after setting clipboard
+        await invoke("simulate_system_paste");
+        console.log("Paste simulated");
     } catch (error) {
-        console.error("Failed to copy to clipboard:", error);
+        console.error("Failed to set clipboard and paste:", error);
     }
 }
 

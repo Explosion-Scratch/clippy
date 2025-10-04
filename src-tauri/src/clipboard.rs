@@ -1,5 +1,5 @@
 use clipboard_rs::{
-    common::RustImage, Clipboard, ClipboardContext, ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext, ContentFormat
+    common::{RustImage, ClipboardContent}, Clipboard, ClipboardContext, ClipboardHandler, ClipboardWatcher, ClipboardWatcherContext, ContentFormat
 };
 use crate::structs::{ClipboardItem, ClipboardFormats, ClipboardChangeEvent};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -210,4 +210,199 @@ pub fn stop_clipboard_listener() -> Result<String, String> {
 #[tauri::command]
 pub fn get_clipboard_status() -> bool {
     is_listening()
+}
+
+/// Inject clipboard item by ID - sets clipboard and pastes, with listening control
+#[tauri::command]
+pub fn inject_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
+    println!("=== INJECTING CLIPBOARD ITEM BY ID ===");
+    println!("Item ID: {}", id);
+    
+    // Check if we're currently listening and pause if needed
+    let was_listening = is_listening();
+    if was_listening {
+        println!("Pausing clipboard listener for injection");
+        if let Err(e) = stop_listen() {
+            eprintln!("Failed to pause clipboard listener: {}", e);
+        }
+    }
+    
+    // Set the clipboard content
+    let set_result = set_clipboard_item_internal(app_handle.clone(), id);
+    
+    // If clipboard was set successfully, simulate paste
+    match set_result {
+        Ok(_) => {
+            println!("Clipboard set successfully, simulating paste");
+            if let Err(e) = crate::paste::simulate_system_paste_internal(app_handle) {
+                eprintln!("Failed to simulate paste: {}", e);
+                return Err(format!("Failed to simulate paste: {}", e));
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to set clipboard: {}", e);
+            return Err(e);
+        }
+    }
+    
+    // Resume listening if it was active before
+    if was_listening {
+        println!("Resuming clipboard listener after injection");
+        if let Err(e) = start_listen(app_handle) {
+            eprintln!("Failed to resume clipboard listener: {}", e);
+        }
+    }
+    
+    println!("Item injection completed successfully");
+    Ok("Item injected successfully".to_string())
+}
+
+/// Reconstruct and set clipboard content from a stored ClipboardItem by ID
+#[tauri::command]
+pub fn set_clipboard_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
+    set_clipboard_item_internal(app_handle, id)
+}
+
+/// Internal function to set clipboard content without listening control
+fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String, String> {
+    println!("=== SETTING CLIPBOARD FROM DATABASE ITEM BY ID ===");
+    println!("Item ID: {}", id);
+    
+    // Fetch the item from database
+    let item = match crate::db::db_get_item_by_id(app_handle, id) {
+        Ok(item) => {
+            println!("Successfully fetched item from database");
+            println!("Item timestamp: {}", item.timestamp);
+            item
+        },
+        Err(e) => {
+            println!("Failed to fetch item from database: {}", e);
+            return Err(format!("Failed to fetch item from database: {}", e));
+        }
+    };
+    
+    let ctx = ClipboardContext::new()
+        .map_err(|e| format!("Failed to create clipboard context: {}", e))?;
+    
+    let mut contents = Vec::new();
+    
+    // Set text content if available
+    if let Some(text) = &item.formats.txt {
+        contents.push(ClipboardContent::Text(text.clone()));
+        println!("Added text content: {} chars", text.len());
+    }
+    
+    // Set HTML content if available
+    if let Some(html) = &item.formats.html {
+        contents.push(ClipboardContent::Html(html.clone()));
+        println!("Added HTML content: {} chars", html.len());
+    }
+    
+    // Set RTF content if available
+    if let Some(rtf) = &item.formats.rtf {
+        contents.push(ClipboardContent::Rtf(rtf.clone()));
+        println!("Added RTF content: {} chars", rtf.len());
+    }
+    
+    // Set image content if available
+    if let Some(image_data_uri) = &item.formats.image_data {
+        // Parse data URI: data:image/png;base64,xxxxx
+        if let Some(base64_data) = image_data_uri.strip_prefix("data:image/png;base64,") {
+            match base64::engine::general_purpose::STANDARD.decode(base64_data) {
+                Ok(image_bytes) => {
+                    // Create a temporary image file to load with clipboard-rs
+                    use std::io::Write;
+                    let temp_path = std::env::temp_dir().join("clippy_temp_image.png");
+                    {
+                        let mut temp_file = std::fs::File::create(&temp_path)
+                            .map_err(|e| format!("Failed to create temp image file: {}", e))?;
+                        temp_file.write_all(&image_bytes)
+                            .map_err(|e| format!("Failed to write temp image file: {}", e))?;
+                    }
+                    
+                    // Load image using clipboard-rs
+                    match clipboard_rs::common::RustImageData::from_path(temp_path.to_str().ok_or("Invalid temp file path")?) {
+                        Ok(image_data) => {
+                            contents.push(ClipboardContent::Image(image_data));
+                            println!("Added image content: {} bytes", image_bytes.len());
+                        }
+                        Err(e) => {
+                            println!("Failed to load image for clipboard: {}", e);
+                            // Clean up temp file
+                            let _ = std::fs::remove_file(&temp_path);
+                            return Err(format!("Failed to load image for clipboard: {}", e));
+                        }
+                    }
+                    
+                    // Clean up temp file
+                    let _ = std::fs::remove_file(&temp_path);
+                }
+                Err(e) => {
+                    println!("Failed to decode base64 image data: {}", e);
+                    return Err(format!("Failed to decode base64 image data: {}", e));
+                }
+            }
+        } else {
+            println!("Invalid image data URI format");
+            return Err("Invalid image data URI format".to_string());
+        }
+    }
+    
+    // Set files if available
+    if let Some(files) = &item.formats.files {
+        // Convert file paths to file URLs for clipboard
+        let file_urls: Vec<String> = files.iter()
+            .map(|path| {
+                if path.starts_with("file://") {
+                    path.clone()
+                } else {
+                    format!("file://{}", path)
+                }
+            })
+            .collect();
+        contents.push(ClipboardContent::Files(file_urls));
+        println!("Added files: {} items", files.len());
+    }
+    
+    // Set custom formats if available
+    if let Some(custom_formats) = &item.formats.custom_formats {
+        for (format_name, data) in custom_formats {
+            // Try to detect if data is base64 encoded by checking if it fails to decode as UTF-8
+            let decoded_data = match base64::engine::general_purpose::STANDARD.decode(data) {
+                Ok(bytes) => {
+                    // Successfully decoded as base64, use the bytes
+                    bytes
+                }
+                Err(_) => {
+                    // Not base64, treat as UTF-8 string
+                    data.as_bytes().to_vec()
+                }
+            };
+            let data_len = decoded_data.len();
+            contents.push(ClipboardContent::Other(format_name.clone(), decoded_data));
+            println!("Added custom format '{}': {} bytes", format_name, data_len);
+        }
+    }
+    
+    if contents.is_empty() {
+        return Err("No content to set to clipboard".to_string());
+    }
+    
+    // Clear clipboard first
+    ctx.clear()
+        .map_err(|e| format!("Failed to clear clipboard: {}", e))?;
+    
+    // Set all content at once
+    ctx.set(contents)
+        .map_err(|e| format!("Failed to set clipboard content: {}", e))?;
+    
+    println!("Clipboard set successfully with {} format(s)", 
+             if item.formats.txt.is_some() { 1 } else { 0 } +
+             if item.formats.html.is_some() { 1 } else { 0 } +
+             if item.formats.rtf.is_some() { 1 } else { 0 } +
+             if item.formats.image_data.is_some() { 1 } else { 0 } +
+             if item.formats.files.is_some() { 1 } else { 0 } +
+             item.formats.custom_formats.as_ref().map_or(0, |f| f.len()));
+    
+    Ok("Clipboard item set successfully".to_string())
 }

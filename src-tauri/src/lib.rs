@@ -21,10 +21,12 @@ pub fn run() {
             clipboard::start_clipboard_listener,
             clipboard::stop_clipboard_listener,
             clipboard::get_clipboard_status,
+            clipboard::set_clipboard_item,
             db::db_save_item,
             db::db_recent_items,
             db::db_search,
             db::db_delete_item,
+            db::db_get_item_by_id,
             db::db_get_count,
             db::db_flush,
             paste::simulate_system_paste
@@ -41,13 +43,14 @@ pub fn run() {
 
             /* Shorcut */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
-                let app_handle = app_handle.clone();
+                let _app_handle = app_handle.clone();
                 move |app_handle, shortcut, event| {
                     if shortcut == &main_shortcut {
                         match event.state() {
                             ShortcutState::Pressed => {
                                 println!("{:?}", shortcut);
                                 println!("Show window here");
+                                let _ = app_handle.show();
                                 // Use the app_handle passed to the closure, or the one you cloned
                                 let window = app_handle.get_webview_window("main").unwrap();
                                 let _ = window.show();
