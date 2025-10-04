@@ -17,31 +17,32 @@ fn greet(name: &str) -> String {
 // Function to open settings window
 fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::{Manager, WebviewWindowBuilder};
-    
+
     // Check if settings window already exists
-    if let Some(_) = app_handle.get_webview_window("settings") {
-        // Settings window already exists, just show it
-        if let Some(window) = app_handle.get_webview_window("settings") {
-            window.set_focus()?;
-            window.show()?;
+    if let Some(settings_window) = app_handle.get_webview_window("settings") {
+        // Settings window already exists, just show it and hide main
+        if let Some(main_window) = app_handle.get_webview_window("main") {
+            main_window.hide()?;
         }
+        settings_window.set_focus()?;
+        settings_window.show()?;
         return Ok(());
     }
-    
-    // Hide main window
+
+    // Hide main window first
     if let Some(main_window) = app_handle.get_webview_window("main") {
         main_window.hide()?;
     }
-    
+
     // Create new settings window
-    let _window = WebviewWindowBuilder::new(
+    let settings_window = WebviewWindowBuilder::new(
         &app_handle,
         "settings",
         tauri::WebviewUrl::App("/settings".into())
     )
     .title("Clippy Settings")
-    .inner_size(500.0, 600.0)
-    .resizable(true)
+    .inner_size(400.0, 450.0)
+    .resizable(false)
     .minimizable(true)
     .maximizable(false)
     .decorations(true)
@@ -50,7 +51,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     .skip_taskbar(false)
     .visible(true)
     .build()?;
-    
+
     Ok(())
 }
 

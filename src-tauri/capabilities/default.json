@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "settings"],
   "permissions": [
     "macos-permissions:default",
     "core:default",
@@ -11,6 +11,9 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "core:window:allow-hide",
-    "core:window:allow-show"
+    "core:window:allow-show",
+    "dialog:default",
+    "dialog:allow-message",
+    "core:window:allow-close"
   ]
 }

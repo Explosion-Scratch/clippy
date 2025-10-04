@@ -96,15 +96,6 @@ async function closeSettings() {
   await window.close();
 }
 
-// Handle Escape key to close settings window
-onMounted(() => {
-  document.addEventListener('keyup', async (e) => {
-    if (e.key === 'Escape') {
-      await closeSettings();
-    }
-  });
-});
-
 onMounted(() => {
   loadStats();
   
@@ -183,7 +174,7 @@ onMounted(() => {
   
   .settings-header {
     background: white;
-    padding: 20px;
+    padding: 12px;
     border-bottom: 1px solid #e0e0e0;
     display: flex;
     justify-content: space-between;
@@ -192,24 +183,24 @@ onMounted(() => {
     .app-info {
       display: flex;
       align-items: center;
-      gap: 15px;
+      gap: 10px;
       
       .app-icon {
-        width: 48px;
-        height: 48px;
+        width: 32px;
+        height: 32px;
       }
       
       .app-details {
         h1 {
           margin: 0;
-          font-size: 24px;
+          font-size: 18px;
           font-weight: 600;
           color: #333;
         }
         
         .version {
-          margin: 4px 0 0 0;
-          font-size: 14px;
+          margin: 2px 0 0 0;
+          font-size: 11px;
           color: #666;
         }
       }
@@ -218,11 +209,11 @@ onMounted(() => {
     .close-button {
       background: none;
       border: none;
-      font-size: 24px;
+      font-size: 18px;
       cursor: pointer;
       color: #666;
-      width: 32px;
-      height: 32px;
+      width: 24px;
+      height: 24px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -236,28 +227,28 @@ onMounted(() => {
   
   .settings-content {
     flex: 1;
-    padding: 20px;
+    padding: 12px;
     overflow-y: auto;
     
     .section {
       background: white;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 12px;
       
       h2 {
-        margin: 0 0 15px 0;
-        font-size: 18px;
+        margin: 0 0 10px 0;
+        font-size: 15px;
         font-weight: 600;
         color: #333;
       }
       
       .stats {
-        margin-bottom: 20px;
+        margin-bottom: 12px;
         
         p {
           margin: 0;
-          font-size: 14px;
+          font-size: 12px;
           color: #666;
           
           strong {
@@ -269,13 +260,13 @@ onMounted(() => {
       .actions {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         
         .action-button {
-          padding: 12px 20px;
+          padding: 8px 14px;
           border: none;
-          border-radius: 6px;
-          font-size: 14px;
+          border-radius: 4px;
+          font-size: 12px;
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s ease;
@@ -315,8 +306,10 @@ onMounted(() => {
       }
       
       p {
-        line-height: 1.5;
+        line-height: 1.4;
+        font-size: 12px;
         color: #666;
+        margin: 4px 0;
       }
     }
   }
