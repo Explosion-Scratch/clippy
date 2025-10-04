@@ -130,7 +130,9 @@ impl Manager {
         ClipboardItem {
             id: 0, // Will be assigned by database
             text: searchable_text,
-            timestamp,
+            timestamp, // Last copied timestamp
+            first_copied: timestamp, // Initially same as timestamp
+            copies: 1, // Initially 1 copy
             byte_size: total_size,
             formats,
         }

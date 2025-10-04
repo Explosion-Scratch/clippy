@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::AppHandle;
 use tauri_plugin_macos_permissions;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 /// Check if the app has accessibility permissions on macOS

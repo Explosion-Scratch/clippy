@@ -39,11 +39,17 @@ impl ClipboardDatabase {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 text TEXT,
                 timestamp INTEGER NOT NULL,
+                first_copied INTEGER NOT NULL,
+                copies INTEGER NOT NULL DEFAULT 1,
                 byte_size INTEGER NOT NULL,
-                formats TEXT NOT NULL
+                formats TEXT NOT NULL,
+                content_hash TEXT
             )",
             [],
         )?;
+
+        // Migration: Add new columns if they don't exist (for backward compatibility)
+        self.migrate_schema()?;
 
         // Create indexes for performance
         self.conn.execute(
@@ -55,6 +61,63 @@ impl ClipboardDatabase {
             "CREATE INDEX IF NOT EXISTS idx_items_text ON items(text)",
             [],
         )?;
+
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_items_content_hash ON items(content_hash)",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    /// Migrate existing database schema to include new columns
+    fn migrate_schema(&self) -> Result<()> {
+        // Check if first_copied column exists
+        let mut stmt = self.conn.prepare("PRAGMA table_info(items)")?;
+        let columns: Vec<String> = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        })?.collect::<Result<Vec<_>, _>>()?;
+
+        // Add first_copied column if it doesn't exist
+        if !columns.contains(&"first_copied".to_string()) {
+            println!("Adding first_copied column to existing database");
+            self.conn.execute(
+                "ALTER TABLE items ADD COLUMN first_copied INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+            // Set first_copied to timestamp for existing records
+            self.conn.execute(
+                "UPDATE items SET first_copied = timestamp WHERE first_copied = 0",
+                [],
+            )?;
+        }
+
+        // Add copies column if it doesn't exist
+        if !columns.contains(&"copies".to_string()) {
+            println!("Adding copies column to existing database");
+            self.conn.execute(
+                "ALTER TABLE items ADD COLUMN copies INTEGER NOT NULL DEFAULT 1",
+                [],
+            )?;
+        }
+
+        // Add content_hash column if it doesn't exist
+        if !columns.contains(&"content_hash".to_string()) {
+            println!("Adding content_hash column to existing database");
+            self.conn.execute(
+                "ALTER TABLE items ADD COLUMN content_hash TEXT",
+                [],
+            )?;
+            // Generate hashes for existing records
+            self.conn.execute(
+                "UPDATE items SET content_hash = CASE 
+                    WHEN text IS NOT NULL THEN substr(hex(md5(text || formats)), 1, 16)
+                    ELSE substr(hex(md5(formats)), 1, 16)
+                END WHERE content_hash IS NULL",
+                [],
+            )?;
+        }
 
         Ok(())
     }
@@ -80,9 +143,12 @@ impl ClipboardDatabase {
         println!("=== SAVING CLIPBOARD ITEM TO DATABASE ===");
         println!("Item ID: {}", item.id);
         println!("Timestamp: {}", item.timestamp);
+        println!("First Copied: {}", item.first_copied);
+        println!("Copies: {}", item.copies);
         println!("Byte Size: {}", item.byte_size);
         println!("Text: {:?}", item.text);
         println!("==========================================");
+
         let mut db_item = DatabaseItem::from(item);
 
         // Serialize the formats
@@ -92,6 +158,16 @@ impl ClipboardDatabase {
                 success: false,
                 id: None,
                 error: Some(format!("Failed to serialize formats: {}", e)),
+            },
+        };
+
+        // Generate content hash for duplicate detection
+        let content_hash = match self.generate_content_hash(&db_item.text, &serialized_formats) {
+            Ok(hash) => hash,
+            Err(e) => return SaveResult {
+                success: false,
+                id: None,
+                error: Some(format!("Failed to generate content hash: {}", e)),
             },
         };
 
@@ -105,24 +181,64 @@ impl ClipboardDatabase {
             },
         };
 
-        let result = tx.execute(
-            "INSERT INTO items (text, timestamp, byte_size, formats) VALUES (?1, ?2, ?3, ?4)",
-            params![
-                db_item.text,
-                db_item.timestamp,
-                db_item.byte_size,
-                serialized_formats
-            ],
-        );
-
-        let id = match result {
-            Ok(_) => tx.last_insert_rowid() as u64,
+        // Check for duplicate content
+        let existing_id = match tx.query_row(
+            "SELECT id FROM items WHERE content_hash = ?1",
+            params![content_hash],
+            |row| row.get::<_, u64>(0),
+        ) {
+            Ok(id) => Some(id),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
             Err(e) => {
                 return SaveResult {
                     success: false,
                     id: None,
-                    error: Some(format!("Insert failed: {}", e)),
+                    error: Some(format!("Failed to check for duplicates: {}", e)),
                 };
+            }
+        };
+
+        let id = if let Some(existing_id) = existing_id {
+            // Update existing item: increment copies and update timestamp
+            println!("Found duplicate content, updating existing item ID: {}", existing_id);
+            match tx.execute(
+                "UPDATE items SET timestamp = ?1, copies = copies + 1 WHERE id = ?2",
+                params![db_item.timestamp, existing_id],
+            ) {
+                Ok(_) => existing_id,
+                Err(e) => {
+                    return SaveResult {
+                        success: false,
+                        id: None,
+                        error: Some(format!("Failed to update existing item: {}", e)),
+                    };
+                }
+            }
+        } else {
+            // Insert new item
+            println!("No duplicate found, inserting new item");
+            let result = tx.execute(
+                "INSERT INTO items (text, timestamp, first_copied, copies, byte_size, formats, content_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    db_item.text,
+                    db_item.timestamp,
+                    db_item.first_copied,
+                    db_item.copies,
+                    db_item.byte_size,
+                    serialized_formats,
+                    content_hash
+                ],
+            );
+
+            match result {
+                Ok(_) => tx.last_insert_rowid() as u64,
+                Err(e) => {
+                    return SaveResult {
+                        success: false,
+                        id: None,
+                        error: Some(format!("Insert failed: {}", e)),
+                    };
+                }
             }
         };
 
@@ -138,7 +254,7 @@ impl ClipboardDatabase {
         db_item.id = id;
 
         // Log the saved item ID
-        println!("Saved item with ID: {}", id);
+        println!("Saved item with ID: {} ({} copies)", id, if existing_id.is_some() { "updated existing" } else { "new" });
 
         // Log the total item count
         match self.get_count() {
@@ -153,13 +269,31 @@ impl ClipboardDatabase {
         }
     }
 
+    /// Generate content hash for duplicate detection
+    fn generate_content_hash(&self, text: &Option<String>, formats: &str) -> Result<String> {
+        use std::hash::{Hash, Hasher};
+        use std::collections::hash_map::DefaultHasher;
+
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash the text content
+        if let Some(t) = text {
+            t.hash(&mut hasher);
+        }
+        
+        // Hash the serialized formats
+        formats.hash(&mut hasher);
+        
+        Ok(format!("{:x}", hasher.finish()))
+    }
+
     /// Get recent items with pagination
     pub fn recent_items(&self, count: usize, offset: usize) -> Result<Vec<ClipboardItem>> {
         println!("=== GETTING RECENT ITEMS FROM DATABASE ===");
         println!("Count: {}, Offset: {}", count, offset);
 
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, byte_size, formats
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
              FROM items
              ORDER BY timestamp DESC
              LIMIT ?1 OFFSET ?2"
@@ -171,19 +305,23 @@ impl ClipboardDatabase {
                 let id: u64 = row.get(0)?;
                 let text: Option<String> = row.get(1)?;
                 let timestamp: u64 = row.get(2)?;
-                let byte_size: u64 = row.get(3)?;
-                let formats_json: String = row.get(4)?;
+                let first_copied: u64 = row.get(3)?;
+                let copies: u64 = row.get(4)?;
+                let byte_size: u64 = row.get(5)?;
+                let formats_json: String = row.get(6)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
-                    .map_err(|_e| rusqlite::Error::InvalidColumnType(4, "formats".to_string(), rusqlite::types::Type::Text))?;
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
 
-                Ok(DatabaseItem {
-                    id,
-                    text,
-                    timestamp,
-                    byte_size,
-                    formats,
-                })
+      Ok(DatabaseItem {
+            id,
+            text,
+            timestamp,
+            first_copied,
+            copies,
+            byte_size,
+            formats,
+        })
             }
         )?;
 
@@ -199,7 +337,7 @@ impl ClipboardDatabase {
     /// Search items by text content
     pub fn search(&self, query: &str, count: usize) -> Result<Vec<ClipboardItem>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, byte_size, formats
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
              FROM items
              WHERE LOWER(text) LIKE LOWER(?1)
              ORDER BY timestamp DESC
@@ -214,19 +352,23 @@ impl ClipboardDatabase {
                 let id: u64 = row.get(0)?;
                 let text: Option<String> = row.get(1)?;
                 let timestamp: u64 = row.get(2)?;
-                let byte_size: u64 = row.get(3)?;
-                let formats_json: String = row.get(4)?;
+                let first_copied: u64 = row.get(3)?;
+                let copies: u64 = row.get(4)?;
+                let byte_size: u64 = row.get(5)?;
+                let formats_json: String = row.get(6)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
-                    .map_err(|_e| rusqlite::Error::InvalidColumnType(4, "formats".to_string(), rusqlite::types::Type::Text))?;
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
 
-                Ok(DatabaseItem {
-                    id,
-                    text,
-                    timestamp,
-                    byte_size,
-                    formats,
-                })
+      Ok(DatabaseItem {
+            id,
+            text,
+            timestamp,
+            first_copied,
+            copies,
+            byte_size,
+            formats,
+        })
             }
         )?;
 
@@ -281,7 +423,7 @@ impl ClipboardDatabase {
     /// Get an item by ID
     pub fn get_item_by_id(&self, id: u64) -> Result<ClipboardItem> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, byte_size, formats
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
              FROM items
              WHERE id = ?1"
         )?;
@@ -292,19 +434,23 @@ impl ClipboardDatabase {
                 let id: u64 = row.get(0)?;
                 let text: Option<String> = row.get(1)?;
                 let timestamp: u64 = row.get(2)?;
-                let byte_size: u64 = row.get(3)?;
-                let formats_json: String = row.get(4)?;
+                let first_copied: u64 = row.get(3)?;
+                let copies: u64 = row.get(4)?;
+                let byte_size: u64 = row.get(5)?;
+                let formats_json: String = row.get(6)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
-                    .map_err(|_e| rusqlite::Error::InvalidColumnType(4, "formats".to_string(), rusqlite::types::Type::Text))?;
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
 
-                Ok(DatabaseItem {
-                    id,
-                    text,
-                    timestamp,
-                    byte_size,
-                    formats,
-                })
+      Ok(DatabaseItem {
+            id,
+            text,
+            timestamp,
+            first_copied,
+            copies,
+            byte_size,
+            formats,
+        })
             }
         )?;
 
@@ -420,4 +566,166 @@ pub fn db_flush(app_handle: AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Failed to flush database: {}", e))?;
 
     Ok("Database flushed successfully".to_string())
+}
+
+/// Export all database items to JSON
+#[tauri::command]
+pub fn db_export_all(app_handle: AppHandle) -> Result<String, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    // Get all items from database
+    let mut stmt = db.conn.prepare(
+        "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
+         FROM items
+         ORDER BY timestamp DESC"
+    ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+    let item_iter = stmt.query_map([], |row| {
+        let id: u64 = row.get(0)?;
+        let text: Option<String> = row.get(1)?;
+        let timestamp: u64 = row.get(2)?;
+        let first_copied: u64 = row.get(3)?;
+        let copies: u64 = row.get(4)?;
+        let byte_size: u64 = row.get(5)?;
+        let formats_json: String = row.get(6)?;
+
+        let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+            .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
+
+        Ok(DatabaseItem {
+            id,
+            text,
+            timestamp,
+            first_copied,
+            copies,
+            byte_size,
+            formats,
+        })
+    }).map_err(|e| format!("Failed to query items: {}", e))?;
+
+    let mut items = Vec::new();
+    for item in item_iter {
+        let db_item = item.map_err(|e| format!("Failed to process item: {}", e))?;
+        items.push(ClipboardItem::from(db_item));
+    }
+
+    // Convert to JSON
+    serde_json::to_string_pretty(&items)
+        .map_err(|e| format!("Failed to serialize items: {}", e))
+}
+
+/// Import items from JSON data
+#[tauri::command]
+pub fn db_import_all(app_handle: AppHandle, json_data: String) -> Result<String, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let mut db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    // Parse JSON data
+    let items: Vec<ClipboardItem> = serde_json::from_str(&json_data)
+        .map_err(|e| format!("Failed to parse JSON data: {}", e))?;
+
+    let mut imported_count = 0;
+    let mut skipped_count = 0;
+
+    // Start transaction
+    let tx = db.conn.transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    for item in items {
+        let db_item = DatabaseItem::from(item);
+        
+        // Serialize the formats
+        let serialized_formats = serde_json::to_string(&db_item.formats)
+            .map_err(|e| format!("Failed to serialize formats: {}", e))?;
+
+        // Generate content hash using a separate function to avoid borrowing issues
+        let content_hash = {
+            use std::hash::{Hash, Hasher};
+            use std::collections::hash_map::DefaultHasher;
+            
+            let mut hasher = DefaultHasher::new();
+            
+            // Hash the text content
+            if let Some(ref t) = db_item.text {
+                t.hash(&mut hasher);
+            }
+            
+            // Hash the serialized formats
+            serialized_formats.hash(&mut hasher);
+            
+            format!("{:x}", hasher.finish())
+        };
+
+        // Check for duplicate content
+        let existing_id = tx.query_row(
+            "SELECT id FROM items WHERE content_hash = ?1",
+            params![content_hash],
+            |row| row.get::<_, u64>(0),
+        );
+
+        match existing_id {
+            Ok(_) => {
+                skipped_count += 1;
+                continue;
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                // Insert new item
+                let result = tx.execute(
+                    "INSERT INTO items (text, timestamp, first_copied, copies, byte_size, formats, content_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        db_item.text,
+                        db_item.timestamp,
+                        db_item.first_copied,
+                        db_item.copies,
+                        db_item.byte_size,
+                        serialized_formats,
+                        content_hash
+                    ],
+                );
+
+                match result {
+                    Ok(_) => imported_count += 1,
+                    Err(e) => {
+                        return Err(format!("Failed to insert item: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("Failed to check for duplicates: {}", e));
+            }
+        }
+    }
+
+    // Commit transaction
+    tx.commit()
+        .map_err(|e| format!("Failed to commit transaction: {}", e))?;
+
+    Ok(format!("Successfully imported {} items (skipped {} duplicates)", imported_count, skipped_count))
+}
+
+/// Delete all items from database
+#[tauri::command]
+pub fn db_delete_all(app_handle: AppHandle) -> Result<String, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    // Get count before deletion
+    let _count = db.get_count()
+        .map_err(|e| format!("Failed to get item count: {}", e))?;
+
+    // Delete all items
+    let rows_affected = db.conn.execute("DELETE FROM items", [])
+        .map_err(|e| format!("Failed to delete items: {}", e))?;
+
+    Ok(format!("Successfully deleted {} items from database", rows_affected))
 }

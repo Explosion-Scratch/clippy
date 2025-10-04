@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 pub struct ClipboardItem {
     pub id: u64,
     pub text: Option<String>, // Searchable text field (can be null)
-    pub timestamp: u64,
+    pub timestamp: u64, // Last copied timestamp
+    pub first_copied: u64, // First time this content was copied
+    pub copies: u64, // Number of times this content has been copied
     pub byte_size: u64,
     pub formats: ClipboardFormats,
 }
@@ -31,7 +33,9 @@ pub struct ClipboardChangeEvent {
 pub struct DatabaseItem {
     pub id: u64,
     pub text: Option<String>,
-    pub timestamp: u64,
+    pub timestamp: u64, // Last copied timestamp
+    pub first_copied: u64, // First time this content was copied
+    pub copies: u64, // Number of times this content has been copied
     pub byte_size: u64,
     pub formats: ClipboardFormats,
 }
@@ -42,6 +46,8 @@ impl From<ClipboardItem> for DatabaseItem {
             id: item.id,
             text: item.text,
             timestamp: item.timestamp,
+            first_copied: item.first_copied,
+            copies: item.copies,
             byte_size: item.byte_size,
             formats: item.formats,
         }
@@ -54,6 +60,8 @@ impl From<DatabaseItem> for ClipboardItem {
             id: item.id,
             text: item.text,
             timestamp: item.timestamp,
+            first_copied: item.first_copied,
+            copies: item.copies,
             byte_size: item.byte_size,
             formats: item.formats,
         }

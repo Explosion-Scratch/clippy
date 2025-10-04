@@ -14,12 +14,53 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+// Function to open settings window
+fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::{Manager, WebviewWindowBuilder};
+    
+    // Check if settings window already exists
+    if let Some(_) = app_handle.get_webview_window("settings") {
+        // Settings window already exists, just show it
+        if let Some(window) = app_handle.get_webview_window("settings") {
+            window.set_focus()?;
+            window.show()?;
+        }
+        return Ok(());
+    }
+    
+    // Hide main window
+    if let Some(main_window) = app_handle.get_webview_window("main") {
+        main_window.hide()?;
+    }
+    
+    // Create new settings window
+    let _window = WebviewWindowBuilder::new(
+        &app_handle,
+        "settings",
+        tauri::WebviewUrl::App("/settings".into())
+    )
+    .title("Clippy Settings")
+    .inner_size(500.0, 600.0)
+    .resizable(true)
+    .minimizable(true)
+    .maximizable(false)
+    .decorations(true)
+    .center()
+    .always_on_top(false)
+    .skip_taskbar(false)
+    .visible(true)
+    .build()?;
+    
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             clipboard::start_clipboard_listener,
@@ -34,6 +75,9 @@ pub fn run() {
             db::db_get_item_by_id,
             db::db_get_count,
             db::db_flush,
+            db::db_export_all,
+            db::db_import_all,
+            db::db_delete_all,
             paste::simulate_system_paste,
             visibility::is_visible,
             visibility::hide_app,
@@ -41,10 +85,11 @@ pub fn run() {
             accessibility::check_permissions,
             accessibility::request_permissions,
         ])
-        .setup(|app| {
+      .setup(|app| {
             use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
             let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
+            let settings_shortcut = Shortcut::new(Some(Modifiers::META), Code::Comma);
 
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
@@ -54,6 +99,7 @@ pub fn run() {
             /* Shorcut */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
                 let _app_handle = app_handle.clone();
+                let settings_shortcut_clone = settings_shortcut.clone();
                 move |app_handle, shortcut, event| {
                     if shortcut == &main_shortcut && event.state() == ShortcutState::Pressed {
                         println!("{:?}", shortcut);
@@ -61,10 +107,16 @@ pub fn run() {
                         if let Err(e) = visibility::show(app_handle.clone()) {
                             eprintln!("Failed to show window: {}", e);
                         }
+                    } else if shortcut == &settings_shortcut_clone && event.state() == ShortcutState::Pressed {
+                        println!("Settings shortcut triggered");
+                        if let Err(e) = open_settings_window(app_handle.clone()) {
+                            eprintln!("Failed to open settings: {}", e);
+                        }
                     }
                 }
             }).build())?;
             app.global_shortcut().register(main_shortcut)?;
+            app.global_shortcut().register(settings_shortcut)?;
 
             #[cfg(target_os = "macos")]
             {

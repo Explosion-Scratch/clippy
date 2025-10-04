@@ -13,6 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "clippy",
         "width": 300,
         "height": 600,
@@ -28,6 +29,22 @@
           "x": -100,
           "y": -100
         },
+        "visible": false
+      },
+    {
+        "label": "settings",
+        "title": "Clippy Settings",
+        "url": "/settings",
+        "width": 500,
+        "height": 600,
+        "transparent": false,
+        "resizable": true,
+        "minimizable": true,
+        "maximizable": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "decorations": true,
+        "center": true,
         "visible": false
       }
     ],

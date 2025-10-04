@@ -36,6 +36,12 @@ function formatTimestamp(timestamp) {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+// Format first copied timestamp for display
+function formatFirstCopied(firstCopied) {
+    const date = new Date(firstCopied * 1000);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 // Format byte size to be more compact
 function formatByteSize(bytes) {
     if (bytes < 1024) return `${bytes}B`;
@@ -91,6 +97,13 @@ function getPreviewText(item) {
     return item.text;
 }
 
+// Get info text for the item
+function getInfoText(item) {
+    const copiesText = item.copies > 1 ? ` (${item.copies}×)` : '';
+    const timestampText = formatTimestamp(item.timestamp);
+    return `${timestampText}${copiesText}`;
+}
+
 // Computed properties
 const hasImage = computed(() => {
     return props.item.formats?.imageData;
@@ -134,7 +147,14 @@ const getIndexText = (idx) => {
 
         <!-- Size info -->
         <div class="info">
-            {{ getIndexText(item.index) || formatTimestamp(item.timestamp) }}
+            {{ getIndexText(item.index) || getInfoText(item) }}
+        </div>
+        
+        <!-- Tooltip with additional info -->
+        <div v-if="item.copies > 1" class="tooltip">
+            First copied: {{ formatFirstCopied(item.firstCopied) }}
+            <br>
+            Copied {{ item.copies }} times
         </div>
     </div>
 </template>
@@ -190,6 +210,28 @@ const getIndexText = (idx) => {
 }
 
 .clipboard-item.is-selected .delete-btn {
+    opacity: 1;
+}
+
+.tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 1000;
+    margin-bottom: 4px;
+}
+
+.clipboard-item:hover .tooltip {
     opacity: 1;
 }
 </style>
