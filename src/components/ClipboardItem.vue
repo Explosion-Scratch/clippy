@@ -33,7 +33,12 @@ function formatTimestamp(timestamp) {
 // Format first copied timestamp for display
 function formatFirstCopied(firstCopied) {
     const date = new Date(firstCopied * 1000);
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    });
 }
 
 // Format byte size to be more compact
@@ -93,7 +98,7 @@ function getPreviewText(item) {
 
 // Get info text for the item
 function getInfoText(item) {
-    const copiesText = item.copies > 1 ? ` (${item.copies}×)` : '';
+    const copiesText = item.copies > 1 ? ` (${item.copies}×)` : "";
     const timestampText = formatTimestamp(item.timestamp);
     return `${timestampText}${copiesText}`;
 }
@@ -121,9 +126,8 @@ const getIndexText = (idx) => {
 <template>
     <div
         class="clipboard-item"
-        :class="{ 'is-selected': isSelected }"
-        @mouseenter="isHovered = true"
-        @mouseleave="isHovered = false"
+        :class="{ 'is-selected': props.selected }"
+        @mouseenter="$emit('mouseenter')"
         @click="copyToClipboard"
     >
         <!-- Image preview for images -->
@@ -143,11 +147,11 @@ const getIndexText = (idx) => {
         <div class="info">
             {{ getIndexText(item.index) || getInfoText(item) }}
         </div>
-        
+
         <!-- Tooltip with additional info -->
-        <div v-if="item.copies > 1" class="tooltip">
+        <div class="tooltip">
             First copied: {{ formatFirstCopied(item.firstCopied) }}
-            <br>
+            <br />
             Copied {{ item.copies }} times
         </div>
     </div>
@@ -225,7 +229,7 @@ const getIndexText = (idx) => {
     margin-bottom: 4px;
 }
 
-.clipboard-item:hover .tooltip {
+.clipboard-item.is-selected .tooltip {
     opacity: 1;
 }
 </style>
