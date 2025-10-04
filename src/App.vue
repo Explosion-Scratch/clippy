@@ -11,7 +11,7 @@ const searchQuery = ref("");
 const isLoading = ref(false);
 const selectedIndex = ref(-1); // -1 means no item selected
 const currentPageOffset = ref(0);
-const itemsPerPage = 1;
+const itemsPerPage = 10;
 
 // Search for clipboard items
 async function searchItems(query) {
@@ -121,13 +121,13 @@ document.addEventListener("keydown", (e) => {
 async function handleArrowDown() {
     if (clipboardItems.value.length === 0) return;
 
-    // If we're at the last item on the current page, load next page
+    // If we're at the last item, shift the window down by loading the next item
     if (selectedIndex.value === clipboardItems.value.length - 1) {
-        await loadRecentItems(currentPageOffset.value + itemsPerPage);
-        selectedIndex.value = 0;
+        await loadRecentItems(currentPageOffset.value + 1);
+        selectedIndex.value = 9; // Keep selection at the same relative position (last item)
     } else {
-        // Move to next item on current page
-        selectedIndex.value = Math.min(selectedIndex.value + 1, clipboardItems.value.length - 1);
+        // Move to next item on current window
+        selectedIndex.value = selectedIndex.value + 1;
     }
 }
 
@@ -135,12 +135,13 @@ async function handleArrowDown() {
 async function handleArrowUp() {
     if (clipboardItems.value.length === 0) return;
 
-    // If we're at the first item and not on the first page, load previous page
+    // If we're at the first item and not at the very beginning, shift the window up
     if (selectedIndex.value === 0 && currentPageOffset.value > 0) {
-        await loadRecentItems(Math.max(0, currentPageOffset.value - itemsPerPage));
-        selectedIndex.value = itemsPerPage - 1;
+        const newOffset = Math.max(0, currentPageOffset.value - 1);
+        await loadRecentItems(newOffset);
+        selectedIndex.value = 0; // Keep selection at the same relative position (first item)
     } else {
-        // Move to previous item on current page
+        // Move to previous item on current window
         selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
     }
 }
@@ -163,6 +164,13 @@ async function pasteItemToSystem(item) {
     }
 }
 
+// Reset selection index
+function resetSelection() {
+    selectedIndex.value = -1;
+    searchQuery.value = "";
+    currentPageOffset.value = 0;
+}
+
 // Load items on component mount
 onMounted(async () => {
     document.addEventListener("keyup", (e) => {
@@ -175,12 +183,32 @@ onMounted(async () => {
         }
     });
 
+    // Set up focus/blur listeners to reset selection
+    const unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        console.log('Focus changed, window is focused? ' + focused);
+        if (!focused) {
+            // Window lost focus (blur)
+            resetSelection();
+            loadRecentItems();
+        } else {
+            // Window gained focus
+            resetSelection();
+            // Auto focus the search input
+            document.querySelector('.search-input')?.focus();
+        }
+    });
+
     await loadRecentItems();
     // Listen for clipboard changes to refresh the list
     await listen("change-clipboard", async () => {
-        selectedIndex.value = -1;
+        resetSelection();
         await loadRecentItems();
     });
+
+    // Clean up focus listener on unmount
+    return () => {
+        unlistenFocus();
+    };
 });
 </script>
 
