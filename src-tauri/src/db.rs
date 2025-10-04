@@ -457,6 +457,40 @@ impl ClipboardDatabase {
         Ok(ClipboardItem::from(item))
     }
 
+    /// Increment the copies counter for an item by ID
+    pub fn increment_copies(&mut self, id: u64) -> SaveResult {
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        match self.conn.execute(
+            "UPDATE items SET copies = copies + 1, timestamp = ?1 WHERE id = ?2",
+            params![current_time, id],
+        ) {
+            Ok(rows_affected) => {
+                if rows_affected > 0 {
+                    SaveResult {
+                        success: true,
+                        id: Some(id),
+                        error: None,
+                    }
+                } else {
+                    SaveResult {
+                        success: false,
+                        id: Some(id),
+                        error: Some("Item not found".to_string()),
+                    }
+                }
+            },
+            Err(e) => SaveResult {
+                success: false,
+                id: Some(id),
+                error: Some(format!("Failed to increment copies: {}", e)),
+            },
+        }
+    }
+
     /// Flush all pending writes to disk
     pub fn flush(&mut self) -> Result<()> {
         // SQLite handles automatic durability, but we can run WAL checkpoint
@@ -711,6 +745,20 @@ pub fn db_import_all(app_handle: AppHandle, json_data: String) -> Result<String,
 }
 
 /// Delete all items from database
+#[tauri::command]
+pub fn db_increment_copies(
+    app_handle: AppHandle,
+    id: u64,
+) -> Result<SaveResult, String> {
+    let db_mutex = ClipboardDatabase::get_instance(&app_handle)
+        .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+    let mut db = db_mutex.lock()
+        .map_err(|e| format!("Failed to lock database: {}", e))?;
+
+    Ok(db.increment_copies(id))
+}
+
 #[tauri::command]
 pub fn db_delete_all(app_handle: AppHandle) -> Result<String, String> {
     let db_mutex = ClipboardDatabase::get_instance(&app_handle)

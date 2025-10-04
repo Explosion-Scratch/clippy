@@ -148,12 +148,7 @@ const getIndexText = (idx) => {
             {{ getIndexText(item.index) || getInfoText(item) }}
         </div>
 
-        <!-- Tooltip with additional info -->
-        <div class="tooltip">
-            First copied: {{ formatFirstCopied(item.firstCopied) }}
-            <br />
-            Copied {{ item.copies }} times
-        </div>
+  
     </div>
 </template>
 
@@ -211,25 +206,5 @@ const getIndexText = (idx) => {
     opacity: 1;
 }
 
-.tooltip {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.2s;
-    z-index: 1000;
-    margin-bottom: 4px;
-}
 
-.clipboard-item.is-selected .tooltip {
-    opacity: 1;
-}
 </style>

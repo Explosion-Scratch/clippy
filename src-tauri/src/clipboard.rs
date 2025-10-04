@@ -240,10 +240,18 @@ pub fn inject_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
     // Set the clipboard content
     let set_result = set_clipboard_item_internal(app_handle.clone(), id);
 
-    // If clipboard was set successfully, simulate paste
+    // If clipboard was set successfully, increment copies and simulate paste
     match set_result {
         Ok(_) => {
-            println!("Clipboard set successfully, waiting 0.2s before simulating paste");
+            println!("Clipboard set successfully, incrementing copies counter");
+            
+            // Increment the copies counter for this item
+            if let Err(e) = crate::db::db_increment_copies(app_handle.clone(), id) {
+                eprintln!("Failed to increment copies counter: {}", e);
+                // Don't fail the operation, just log the error
+            }
+            
+            println!("Waiting 0.2s before simulating paste");
             std::thread::sleep(std::time::Duration::from_millis(200));
             if let Err(e) = crate::paste::simulate_system_paste_internal(&app_handle) {
                 eprintln!("Failed to simulate paste: {}", e);

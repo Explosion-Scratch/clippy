@@ -79,6 +79,7 @@ pub fn run() {
             db::db_export_all,
             db::db_import_all,
             db::db_delete_all,
+            db::db_increment_copies,
             paste::simulate_system_paste,
             visibility::is_visible,
             visibility::hide_app,
