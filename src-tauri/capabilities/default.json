@@ -4,6 +4,7 @@
   "description": "Capability for the main window",
   "windows": ["main"],
   "permissions": [
+    "macos-permissions:default",
     "core:default",
     "opener:default",
     "global-shortcut:allow-is-registered",

@@ -99,14 +99,11 @@ document.addEventListener("keydown", (e) => {
 // System paste function
 async function pasteItemToSystem(item) {
     try {
-        console.log("Setting clipboard from item ID:", item.id);
-        const result = await invoke("set_clipboard_item", { id: item.id });
-        console.log("Clipboard set result:", result);
-        
-        // Call the Rust backend to simulate system paste
-        await invoke("simulate_system_paste");
+        console.log("Injecting item from ID:", item.id);
+        const result = await invoke("inject_item", { id: item.id });
+        console.log("Item injection result:", result);
     } catch (error) {
-        console.error("Failed to paste item to system clipboard:", error);
+        console.error("Failed to inject item:", error);
     }
 }
 

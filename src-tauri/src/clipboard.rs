@@ -100,7 +100,7 @@ impl Manager {
                                 .collect();
                             if !files.is_empty() {
                                 // Count the file path strings themselves (not file content size)
-                                total_size += files.iter().map(|f| f.as_bytes().len() as u64).sum::<u64>();
+                                total_size += files.iter().map(|f| f.len() as u64).sum::<u64>();
                                 formats.files = Some(files);
                             }
                         }
@@ -139,6 +139,9 @@ impl Manager {
 
 impl ClipboardHandler for Manager {
     fn on_clipboard_change(&mut self) {
+        if !IS_LISTENING.load(Ordering::Relaxed) {
+            return
+        }
         let item = self.extract_clipboard_item();
         let event = ClipboardChangeEvent { item };
 
@@ -217,7 +220,7 @@ pub fn get_clipboard_status() -> bool {
 pub fn inject_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
     println!("=== INJECTING CLIPBOARD ITEM BY ID ===");
     println!("Item ID: {}", id);
-    
+
     // Check if we're currently listening and pause if needed
     let was_listening = is_listening();
     if was_listening {
@@ -226,15 +229,20 @@ pub fn inject_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
             eprintln!("Failed to pause clipboard listener: {}", e);
         }
     }
-    
+
+    // Hide the window and app before setting clipboard
+    if let Err(e) = crate::visibility::hide(&app_handle) {
+        eprintln!("Failed to hide window: {}", e);
+    }
+
     // Set the clipboard content
     let set_result = set_clipboard_item_internal(app_handle.clone(), id);
-    
+
     // If clipboard was set successfully, simulate paste
     match set_result {
         Ok(_) => {
             println!("Clipboard set successfully, simulating paste");
-            if let Err(e) = crate::paste::simulate_system_paste_internal(app_handle) {
+            if let Err(e) = crate::paste::simulate_system_paste_internal(&app_handle) {
                 eprintln!("Failed to simulate paste: {}", e);
                 return Err(format!("Failed to simulate paste: {}", e));
             }
@@ -244,15 +252,19 @@ pub fn inject_item(app_handle: AppHandle, id: u64) -> Result<String, String> {
             return Err(e);
         }
     }
-    
-    // Resume listening if it was active before
+
+    // Resume listening if it was active before (with 1s delay)
     if was_listening {
-        println!("Resuming clipboard listener after injection");
-        if let Err(e) = start_listen(app_handle) {
-            eprintln!("Failed to resume clipboard listener: {}", e);
-        }
+        println!("Resuming clipboard listener after injection with 1s delay");
+        let app_handle_clone = app_handle.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if let Err(e) = start_listen(app_handle_clone) {
+                eprintln!("Failed to resume clipboard listener: {}", e);
+            }
+        });
     }
-    
+
     println!("Item injection completed successfully");
     Ok("Item injected successfully".to_string())
 }
@@ -267,7 +279,7 @@ pub fn set_clipboard_item(app_handle: AppHandle, id: u64) -> Result<String, Stri
 fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String, String> {
     println!("=== SETTING CLIPBOARD FROM DATABASE ITEM BY ID ===");
     println!("Item ID: {}", id);
-    
+
     // Fetch the item from database
     let item = match crate::db::db_get_item_by_id(app_handle, id) {
         Ok(item) => {
@@ -280,30 +292,30 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
             return Err(format!("Failed to fetch item from database: {}", e));
         }
     };
-    
+
     let ctx = ClipboardContext::new()
         .map_err(|e| format!("Failed to create clipboard context: {}", e))?;
-    
+
     let mut contents = Vec::new();
-    
+
     // Set text content if available
     if let Some(text) = &item.formats.txt {
         contents.push(ClipboardContent::Text(text.clone()));
         println!("Added text content: {} chars", text.len());
     }
-    
+
     // Set HTML content if available
     if let Some(html) = &item.formats.html {
         contents.push(ClipboardContent::Html(html.clone()));
         println!("Added HTML content: {} chars", html.len());
     }
-    
+
     // Set RTF content if available
     if let Some(rtf) = &item.formats.rtf {
         contents.push(ClipboardContent::Rtf(rtf.clone()));
         println!("Added RTF content: {} chars", rtf.len());
     }
-    
+
     // Set image content if available
     if let Some(image_data_uri) = &item.formats.image_data {
         // Parse data URI: data:image/png;base64,xxxxx
@@ -319,7 +331,7 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
                         temp_file.write_all(&image_bytes)
                             .map_err(|e| format!("Failed to write temp image file: {}", e))?;
                     }
-                    
+
                     // Load image using clipboard-rs
                     match clipboard_rs::common::RustImageData::from_path(temp_path.to_str().ok_or("Invalid temp file path")?) {
                         Ok(image_data) => {
@@ -333,7 +345,7 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
                             return Err(format!("Failed to load image for clipboard: {}", e));
                         }
                     }
-                    
+
                     // Clean up temp file
                     let _ = std::fs::remove_file(&temp_path);
                 }
@@ -347,7 +359,7 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
             return Err("Invalid image data URI format".to_string());
         }
     }
-    
+
     // Set files if available
     if let Some(files) = &item.formats.files {
         // Convert file paths to file URLs for clipboard
@@ -363,7 +375,7 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
         contents.push(ClipboardContent::Files(file_urls));
         println!("Added files: {} items", files.len());
     }
-    
+
     // Set custom formats if available
     if let Some(custom_formats) = &item.formats.custom_formats {
         for (format_name, data) in custom_formats {
@@ -383,26 +395,26 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
             println!("Added custom format '{}': {} bytes", format_name, data_len);
         }
     }
-    
+
     if contents.is_empty() {
         return Err("No content to set to clipboard".to_string());
     }
-    
+
     // Clear clipboard first
     ctx.clear()
         .map_err(|e| format!("Failed to clear clipboard: {}", e))?;
-    
+
     // Set all content at once
     ctx.set(contents)
         .map_err(|e| format!("Failed to set clipboard content: {}", e))?;
-    
-    println!("Clipboard set successfully with {} format(s)", 
+
+    println!("Clipboard set successfully with {} format(s)",
              if item.formats.txt.is_some() { 1 } else { 0 } +
              if item.formats.html.is_some() { 1 } else { 0 } +
              if item.formats.rtf.is_some() { 1 } else { 0 } +
              if item.formats.image_data.is_some() { 1 } else { 0 } +
              if item.formats.files.is_some() { 1 } else { 0 } +
              item.formats.custom_formats.as_ref().map_or(0, |f| f.len()));
-    
+
     Ok("Clipboard item set successfully".to_string())
 }

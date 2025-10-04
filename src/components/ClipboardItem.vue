@@ -54,15 +54,11 @@ function getContentType(item) {
 // Copy item to clipboard and paste
 async function copyToClipboard() {
     try {
-        console.log("Setting clipboard from item ID:", props.item.id);
-        const result = await invoke("set_clipboard_item", { id: props.item.id });
-        console.log("Clipboard set result:", result);
-        
-        // Simulate paste after setting clipboard
-        await invoke("simulate_system_paste");
-        console.log("Paste simulated");
+        console.log("Injecting item from ID:", props.item.id);
+        const result = await invoke("inject_item", { id: props.item.id });
+        console.log("Item injection result:", result);
     } catch (error) {
-        console.error("Failed to set clipboard and paste:", error);
+        console.error("Failed to inject item:", error);
     }
 }
 

@@ -1,17 +1,13 @@
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[tauri::command]
 pub fn simulate_system_paste(app: AppHandle) -> Result<(), String> {
-    println!("Pasting...");
+    simulate_system_paste_internal(&app)
+}
 
-    let window = app.get_webview_window("main").unwrap();
-    let _ = window.hide();
-
-    // On macOS, also hide the app to properly return focus to the previous application
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app.hide();
-    }
+/// Internal function to simulate system paste without Tauri command wrapper
+pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
+    println!("Simulating system paste...");
 
     #[cfg(target_os = "macos")]
     {
@@ -48,7 +44,7 @@ pub fn simulate_system_paste(app: AppHandle) -> Result<(), String> {
 
             // Set Command modifier flag for key up as well
             CGEvent::set_flags(Some(&key_up_event), cmd_flags);
-            println!("Sending key down");
+            println!("Sending paste key events");
             // Post the events to the system event queue
             // This ensures immediate processing by the system
             CGEvent::post(CGEventTapLocation::SessionEventTap, Some(&key_down_event));
