@@ -15,6 +15,10 @@ const itemsPerPage = 10;
 const clipboardManager = ref(null);
 let resizeObserver = null;
 
+// Cycling mode state
+const isCycling = ref(false);
+const isCtrlPressed = ref(true);
+
 // Get the currently selected item
 const selectedItem = computed(() => {
     console.log({
@@ -33,6 +37,9 @@ async function searchItems(query) {
         isLoading.value = true;
         if (!query.trim()) {
             await loadRecentItems();
+
+            // Unregister global shortcut when component mounts (window opens)
+            await unregisterGlobalShortcut();
             return;
         }
         const items = await invoke("db_search", { query, count: itemsPerPage });
@@ -110,6 +117,9 @@ async function deleteItem(id) {
 
 // Close window on Escape key
 document.addEventListener("keydown", (e) => {
+    // Handle cycling detection
+    handleKeyDown(e);
+
     // Handle Command + number keys for system paste
     if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
         const key = e.key;
@@ -129,16 +139,34 @@ document.addEventListener("keydown", (e) => {
         }
     }
 
-    // Handle arrow key navigation
-    if (e.key === "ArrowDown") {
-        e.preventDefault();
-        handleArrowDown();
-    } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        handleArrowUp();
-    } else if (e.key === "Enter") {
-        e.preventDefault();
-        handleEnter();
+    // Handle arrow key navigation (only when not in cycling mode)
+    if (!isCycling.value) {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            handleArrowDown();
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            handleArrowUp();
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            handleEnter();
+        }
+    }
+});
+
+// Handle key up events for Ctrl release detection
+document.addEventListener("keyup", (e) => {
+    handleKeyUp(e);
+
+    console.log(e.key);
+    if (e.key === "Escape") {
+        let win = getCurrentWindow();
+        win.hide();
+
+        // Re-register global shortcut when window is hidden
+        registerGlobalShortcut();
+
+        console.log({ win });
     }
 });
 
@@ -320,31 +348,135 @@ async function resizeWindowToFitContent() {
     }
 }
 
-// Load items on component mount
-onMounted(async () => {
-    document.addEventListener("keyup", (e) => {
-        console.log(e.key);
-        if (e.key === "Escape") {
-            let win = getCurrentWindow();
-            win.hide();
+// Unregister global shortcut when window opens
+async function unregisterGlobalShortcut() {
+    try {
+        await invoke("unregister_main_shortcut");
+        console.log("Global shortcut unregistered");
+    } catch (error) {
+        console.error("Failed to unregister global shortcut:", error);
+    }
+}
 
-            console.log({ win });
-        }
+// Register global shortcut when window closes
+async function registerGlobalShortcut() {
+    try {
+        await invoke("register_main_shortcut");
+        console.log("Global shortcut registered");
+    } catch (error) {
+        console.error("Failed to register global shortcut:", error);
+    }
+}
+
+// Start cycling mode (called when Ctrl+P is held)
+function startCyclingMode() {
+    console.log("Starting cycling mode");
+    isCycling.value = true;
+
+    // Start with first item selected
+    if (clipboardItems.value.length > 0) {
+        selectedIndex.value = 0;
+    }
+}
+
+// Handle cycling to next item
+function cycleToNext() {
+    if (!isCycling.value || clipboardItems.value.length === 0) return;
+
+    console.log("Cycling to next item");
+
+    // Move to next item, wrap around if at end
+    selectedIndex.value =
+        (selectedIndex.value + 1) % clipboardItems.value.length;
+}
+
+// Handle end cycling (paste selected item)
+async function endCycling() {
+    if (!isCycling.value) return;
+
+    console.log("Ending cycling mode");
+    isCycling.value = false;
+
+    // If we have a selected item, paste it
+    if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
+        await pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
+    }
+
+    // Re-register global shortcut before closing window
+    await registerGlobalShortcut();
+
+    // Close window after pasting
+    const window = getCurrentWindow();
+    window.hide();
+}
+
+// Handle keyboard events for cycling detection
+function handleKeyDown(e) {
+    // Track Ctrl key state
+    if (e.key === "Control" && !isCtrlPressed.value) {
+        isCtrlPressed.value = true;
+        console.log("Ctrl key pressed");
+    }
+
+    console.log({
+        isCtrlPressed: isCtrlPressed.value,
+        key: e.key,
+        isCycling: isCycling.value,
     });
 
+    // If Ctrl is pressed and P is pressed, cycle
+    if (isCtrlPressed.value && e.key === "p") {
+        e.preventDefault();
+        console.log("P pressed while Ctrl held - cycling");
+
+        if (!isCycling.value) {
+            startCyclingMode();
+        } else {
+            cycleToNext();
+        }
+    }
+}
+
+function handleKeyUp(e) {
+    // When Ctrl is released, end cycling if active
+    if (e.key === "Control") {
+        console.log("Ctrl key released");
+        isCtrlPressed.value = false;
+
+        // End cycling and paste if we were cycling
+        if (isCycling.value) {
+            endCycling();
+        }
+    }
+}
+
+// Load items on component mount
+onMounted(async () => {
     // Set up focus/blur listeners to reset selection
     const unlistenFocus = await getCurrentWindow().onFocusChanged(
         ({ payload: focused }) => {
             console.log("Focus changed, window is focused? " + focused);
             if (!focused) {
                 // Window lost focus (blur)
+                // End cycling mode if active
+                if (isCycling.value) {
+                    isCycling.value = false;
+                    isCtrlPressed.value = false;
+                }
+                // Re-register global shortcut when window loses focus
+                registerGlobalShortcut();
                 resetSelection();
                 loadRecentItems();
             } else {
                 // Window gained focus
-                resetSelection();
-                // Auto focus the search input
-                document.querySelector(".search-input")?.focus();
+                // Unregister global shortcut so frontend can handle keyboard events
+                unregisterGlobalShortcut();
+                if (!isCycling.value) {
+                    resetSelection();
+                    // Auto focus the search input
+                    document.querySelector(".search-input")?.focus();
+                }
+                isCtrlPressed.value = true;
                 // Resize window when gaining focus
                 resizeWindowToFitContent();
             }
@@ -373,6 +505,8 @@ onMounted(async () => {
         if (resizeObserver && clipboardManager.value) {
             resizeObserver.disconnect();
         }
+        // Re-register global shortcut when component unmounts
+        registerGlobalShortcut();
     };
 });
 </script>
@@ -560,12 +694,12 @@ onMounted(async () => {
     box-shadow: var(--shadow-light);
     color: var(--text-primary);
     width: 100%;
-    
+
     &::placeholder {
         color: var(--text-secondary);
         opacity: 0.7;
     }
-    
+
     &:focus {
         outline: none;
         border-color: var(--accent);
