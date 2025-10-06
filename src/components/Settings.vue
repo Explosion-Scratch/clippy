@@ -185,7 +185,7 @@ onMounted(() => {
 <style lang="less">
 .settings {
   font-family: system-ui, sans-serif;
-  background: var(--bg-primary);
+  background: var(--settings-bg-primary);
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -194,14 +194,14 @@ onMounted(() => {
   gap: 8px;
   
   .settings-header {
-    background: var(--bg-input);
-    border: 1px solid var(--border-color);
+    background: var(--settings-bg-input);
+    border: 1px solid var(--settings-border-color);
     border-radius: 5px;
     padding: 8px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: var(--shadow-light);
+    box-shadow: var(--settings-shadow-light);
     
     .app-info {
       display: flex;
@@ -243,7 +243,7 @@ onMounted(() => {
       justify-content: center;
       
       &:hover {
-        background: var(--bg-primary);
+        background: var(--settings-bg-primary);
         color: var(--text-primary);
       }
     }
@@ -256,11 +256,11 @@ onMounted(() => {
     gap: 8px;
     
     .section {
-      background: var(--bg-input);
-      border: 1px solid var(--border-color);
+      background: var(--settings-bg-input);
+      border: 1px solid var(--settings-border-color);
       border-radius: 5px;
       padding: 10px 12px;
-      box-shadow: var(--shadow-light);
+      box-shadow: var(--settings-shadow-light);
       
       h2 {
         margin: 0 0 8px 0;
@@ -295,7 +295,7 @@ onMounted(() => {
           font-size: 11px;
           font-weight: 500;
           cursor: pointer;
-          box-shadow: var(--shadow-light);
+          box-shadow: var(--settings-shadow-light);
           
           &:disabled {
             opacity: 0.5;
@@ -308,7 +308,7 @@ onMounted(() => {
             
             &:hover:not(:disabled) {
               filter: brightness(1.1);
-              box-shadow: var(--shadow-medium);
+              box-shadow: var(--settings-shadow-medium);
             }
           }
           
@@ -318,7 +318,7 @@ onMounted(() => {
             
             &:hover:not(:disabled) {
               background: #28A745;
-              box-shadow: var(--shadow-medium);
+              box-shadow: var(--settings-shadow-medium);
             }
           }
           
@@ -328,7 +328,7 @@ onMounted(() => {
             
             &:hover:not(:disabled) {
               background: #D70015;
-              box-shadow: var(--shadow-medium);
+              box-shadow: var(--settings-shadow-medium);
             }
           }
         }

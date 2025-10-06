@@ -40,6 +40,15 @@ onMounted(() => {
     --shadow-medium: 0 2px 8px 0 rgb(0 0 0 / 0.1);
 }
 
+/* Solid colors for settings page */
+.settings {
+    --settings-bg-primary: #f8f9fa;
+    --settings-bg-input: #ffffff;
+    --settings-border-color: #dee2e6;
+    --settings-shadow-light: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+    --settings-shadow-medium: 0 2px 8px 0 rgb(0 0 0 / 0.15);
+}
+
 /* Dark theme colors (applied via OS preference) */
 @media (prefers-color-scheme: dark) {
     :root {
@@ -58,6 +67,15 @@ onMounted(() => {
         --accent-transparent: rgba(32, 178, 170, 0.3);
         --shadow-light: 0 1px 2px 0 rgb(0 0 0 / 0.3);
         --shadow-medium: 0 2px 8px 0 rgb(0 0 0 / 0.5);
+    }
+
+    /* Solid colors for settings page (dark theme) */
+    .settings {
+        --settings-bg-primary: #1e1e1e;
+        --settings-bg-input: #2d2d2d;
+        --settings-border-color: #404040;
+        --settings-shadow-light: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+        --settings-shadow-medium: 0 2px 8px 0 rgb(0 0 0 / 0.5);
     }
 }
 
