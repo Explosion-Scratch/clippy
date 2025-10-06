@@ -184,17 +184,20 @@ onMounted(() => {
 
 <style lang="less">
 .settings {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: var(--bg-secondary);
+  font-family: system-ui, sans-serif;
+  background: var(--bg-primary);
   height: 100vh;
   display: flex;
   flex-direction: column;
   color: var(--text-primary);
+  padding: 8px;
+  gap: 8px;
   
   .settings-header {
-    background: var(--bg-primary);
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    padding: 8px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -203,24 +206,24 @@ onMounted(() => {
     .app-info {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       
       .app-icon {
-        width: 32px;
-        height: 32px;
+        width: 24px;
+        height: 24px;
       }
       
       .app-details {
         h1 {
           margin: 0;
-          font-size: 18px;
+          font-size: 14px;
           font-weight: 600;
           color: var(--text-primary);
         }
         
         .version {
-          margin: 2px 0 0 0;
-          font-size: 11px;
+          margin: 1px 0 0 0;
+          font-size: 10px;
           color: var(--text-secondary);
         }
       }
@@ -229,18 +232,18 @@ onMounted(() => {
     .close-button {
       background: none;
       border: none;
-      font-size: 18px;
+      font-size: 14px;
       cursor: pointer;
       color: var(--text-secondary);
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       
       &:hover {
-        background: var(--bg-secondary);
+        background: var(--bg-primary);
         color: var(--text-primary);
       }
     }
@@ -248,30 +251,30 @@ onMounted(() => {
   
   .settings-content {
     flex: 1;
-    padding: 12px;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     
     .section {
-      background: var(--bg-primary);
-      border-radius: 6px;
-      padding: 14px;
-      margin-bottom: 12px;
+      background: var(--bg-input);
       border: 1px solid var(--border-color);
+      border-radius: 5px;
+      padding: 10px 12px;
       box-shadow: var(--shadow-light);
       
       h2 {
-        margin: 0 0 10px 0;
-        font-size: 15px;
+        margin: 0 0 8px 0;
+        font-size: 12px;
         font-weight: 600;
         color: var(--text-primary);
       }
       
       .stats {
-        margin-bottom: 12px;
+        margin-bottom: 10px;
         
         p {
-          margin: 0;
-          font-size: 12px;
+          margin: 2px 0;
+          font-size: 11px;
           color: var(--text-secondary);
           
           strong {
@@ -283,13 +286,13 @@ onMounted(() => {
       .actions {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
         
         .action-button {
-          padding: 8px 14px;
+          padding: 6px 12px;
           border: none;
           border-radius: 4px;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 500;
           cursor: pointer;
           box-shadow: var(--shadow-light);
@@ -300,11 +303,11 @@ onMounted(() => {
           }
           
           &.export {
-            background: #007AFF;
-            color: white;
+            background: var(--accent);
+            color: var(--accent-text);
             
             &:hover:not(:disabled) {
-              background: #0056CC;
+              filter: brightness(1.1);
               box-shadow: var(--shadow-medium);
             }
           }
@@ -332,10 +335,10 @@ onMounted(() => {
       }
       
       p {
-        line-height: 1.4;
-        font-size: 12px;
+        line-height: 1.3;
+        font-size: 11px;
         color: var(--text-secondary);
-        margin: 4px 0;
+        margin: 2px 0;
       }
     }
   }

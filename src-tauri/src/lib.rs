@@ -35,23 +35,20 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
         main_window.hide()?;
     }
 
-    // Create new settings window
-    let _settings_window = WebviewWindowBuilder::new(
+    // Create new settings window using config from tauri.conf.json
+    let settings_window = WebviewWindowBuilder::new(
         &app_handle,
         "settings",
         tauri::WebviewUrl::App("/settings".into())
     )
-    .title("Clippy Settings")
-    .inner_size(400.0, 450.0)
-    .resizable(false)
-    .minimizable(true)
-    .maximizable(false)
-    .decorations(true)
-    .center()
-    .always_on_top(false)
-    .skip_taskbar(false)
-    .visible(true)
     .build()?;
+
+    // Apply vibrancy to settings window on macOS
+    #[cfg(target_os = "macos")]
+    {
+        apply_vibrancy(&settings_window, NSVisualEffectMaterial::HudWindow, None, None)
+            .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+    }
 
     Ok(())
 }

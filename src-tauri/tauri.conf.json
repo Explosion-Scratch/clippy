@@ -37,7 +37,7 @@
         "url": "/settings",
         "width": 400,
         "height": 450,
-        "transparent": false,
+        "transparent": true,
         "resizable": false,
         "minimizable": true,
         "maximizable": false,
