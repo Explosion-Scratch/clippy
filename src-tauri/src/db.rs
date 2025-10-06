@@ -21,8 +21,21 @@ impl ClipboardDatabase {
         // Create database path
         let db_path = app_data_dir.join("clipboard.db");
 
-        // Open SQLite database
-        let conn = Connection::open(&db_path)?;
+        // Try to open database, if it fails due to readonly error, backup and recreate
+        let conn = match Connection::open(&db_path) {
+            Ok(conn) => conn,
+            Err(e) => {
+                if e.to_string().contains("readonly") || e.to_string().contains("attempt to write a readonly database") {
+                    println!("Database is readonly, attempting to backup and recreate...");
+                    if let Err(backup_err) = Self::backup_and_recreate_database(&db_path) {
+                        return Err(anyhow::anyhow!("Failed to backup and recreate database: {}", backup_err));
+                    }
+                    Connection::open(&db_path)?
+                } else {
+                    return Err(anyhow::anyhow!("Failed to open database: {}", e));
+                }
+            }
+        };
 
         let db = ClipboardDatabase { conn };
 
@@ -30,6 +43,32 @@ impl ClipboardDatabase {
         db.init_schema()?;
 
         Ok(db)
+    }
+
+    /// Backup existing database and recreate a new one
+    fn backup_and_recreate_database(db_path: &std::path::Path) -> Result<()> {
+        if db_path.exists() {
+            // Create backup filename with timestamp
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let backup_path = db_path.with_extension(format!("db_{}_backup", timestamp));
+            
+            println!("Backing up database to: {:?}", backup_path);
+            
+            // Copy the database to backup location
+            std::fs::copy(db_path, &backup_path)?;
+            
+            // Remove the original database
+            std::fs::remove_file(db_path)?;
+            
+            println!("Database backed up and removed successfully");
+        } else {
+            println!("Database file does not exist, will create new one");
+        }
+        
+        Ok(())
     }
 
     /// Initialize database schema
@@ -137,6 +176,20 @@ impl ClipboardDatabase {
         Ok(arc_db)
     }
 
+    /// Force recreate the database instance
+    pub fn recreate_instance(app_handle: &AppHandle) -> Result<Arc<Mutex<Self>>> {
+        let mut db_instance = DB_INSTANCE.lock().unwrap();
+        
+        // Clear existing instance
+        *db_instance = None;
+        
+        // Create new instance
+        let db = Self::new(app_handle)?;
+        let arc_db = Arc::new(Mutex::new(db));
+        *db_instance = Some(Arc::clone(&arc_db));
+        Ok(arc_db)
+    }
+
     /// Save a clipboard item to the database
     pub fn save_item(&mut self, item: ClipboardItem) -> SaveResult {
         // Log the item being saved
@@ -162,15 +215,8 @@ impl ClipboardDatabase {
             },
         };
 
-        // Generate content hash for duplicate detection
-        let content_hash = match self.generate_content_hash(&db_item.text, &serialized_formats) {
-            Ok(hash) => hash,
-            Err(e) => return SaveResult {
-                success: false,
-                id: None,
-                error: Some(format!("Failed to generate content hash: {}", e)),
-            },
-        };
+        // Use the content hash that was already computed in the ClipboardItem
+        let content_hash = db_item.content_hash.clone();
 
         // Start a transaction
         let tx = match self.conn.transaction() {
@@ -270,31 +316,17 @@ impl ClipboardDatabase {
         }
     }
 
-    /// Generate content hash for duplicate detection
-    fn generate_content_hash(&self, text: &Option<String>, formats: &str) -> Result<String> {
-        use std::hash::{Hash, Hasher};
-        use std::collections::hash_map::DefaultHasher;
+  
 
-        let mut hasher = DefaultHasher::new();
-
-        // Hash the text content
-        if let Some(t) = text {
-            t.hash(&mut hasher);
-        }
-
-        // Hash the serialized formats
-        formats.hash(&mut hasher);
-
-        Ok(format!("{:x}", hasher.finish()))
-    }
+    
 
     /// Get recent items with pagination
     pub fn recent_items(&self, count: usize, offset: usize) -> Result<Vec<ClipboardItem>> {
 
-        let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
-             FROM items
-             ORDER BY timestamp DESC
+      let mut stmt = self.conn.prepare(
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash 
+             FROM items 
+             ORDER BY timestamp DESC 
              LIMIT ?1 OFFSET ?2"
         )?;
 
@@ -308,6 +340,7 @@ impl ClipboardDatabase {
                 let copies: u64 = row.get(4)?;
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
+                let content_hash: String = row.get(7)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
@@ -319,6 +352,7 @@ impl ClipboardDatabase {
             first_copied,
             copies,
             byte_size,
+            content_hash,
             formats,
         })
             }
@@ -336,7 +370,7 @@ impl ClipboardDatabase {
     /// Search items by text content
     pub fn search(&self, query: &str, count: usize) -> Result<Vec<ClipboardItem>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash
              FROM items
              WHERE LOWER(text) LIKE LOWER(?1)
              ORDER BY timestamp DESC
@@ -355,6 +389,7 @@ impl ClipboardDatabase {
                 let copies: u64 = row.get(4)?;
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
+                let content_hash: String = row.get(7)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
@@ -366,6 +401,7 @@ impl ClipboardDatabase {
             first_copied,
             copies,
             byte_size,
+            content_hash,
             formats,
         })
             }
@@ -421,7 +457,7 @@ impl ClipboardDatabase {
 
     /// Get database file size in bytes
     pub fn get_database_size(&self, app_handle: &AppHandle) -> Result<u64> {
-        use std::path::Path;
+  
         
         let app_data_dir = app_handle.path().app_data_dir()?;
         let db_path = app_data_dir.join("clipboard.db");
@@ -437,7 +473,7 @@ impl ClipboardDatabase {
     /// Get an item by ID
     pub fn get_item_by_id(&self, id: u64) -> Result<ClipboardItem> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash
              FROM items
              WHERE id = ?1"
         )?;
@@ -452,6 +488,7 @@ impl ClipboardDatabase {
                 let copies: u64 = row.get(4)?;
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
+                let content_hash: String = row.get(7)?;
 
                 let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
@@ -463,6 +500,7 @@ impl ClipboardDatabase {
             first_copied,
             copies,
             byte_size,
+            content_hash,
             formats,
         })
             }
@@ -526,7 +564,31 @@ pub fn db_save_item(
     let mut db = db_mutex.lock()
         .map_err(|e| format!("Failed to lock database: {}", e))?;
 
-    Ok(db.save_item(item))
+    let result = db.save_item(item.clone());
+    
+    // If save failed due to readonly database, attempt recovery
+    if !result.success && result.error.as_ref().map_or(false, |e| e.contains("readonly") || e.contains("attempt to write a readonly database")) {
+        println!("Database is readonly, attempting recovery...");
+        
+        // Drop the lock to allow database recreation
+        drop(db);
+        
+        // Create new database instance (this will trigger backup/recreate)
+        let new_db_mutex = match ClipboardDatabase::recreate_instance(&app_handle) {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(format!("Failed to recreate database: {}", e));
+            }
+        };
+        
+        let mut new_db = new_db_mutex.lock()
+            .map_err(|e| format!("Failed to lock new database: {}", e))?;
+        
+        // Retry the save operation
+        return Ok(new_db.save_item(item));
+    }
+    
+    Ok(result)
 }
 
 #[tauri::command]
@@ -637,32 +699,34 @@ pub fn db_export_all(app_handle: AppHandle) -> Result<String, String> {
     let db = db_mutex.lock()
         .map_err(|e| format!("Failed to lock database: {}", e))?;
 
-    // Get all items from database
+// Get all items from database
     let mut stmt = db.conn.prepare(
-        "SELECT id, text, timestamp, first_copied, copies, byte_size, formats
+        "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash
          FROM items
          ORDER BY timestamp DESC"
     ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
     let item_iter = stmt.query_map([], |row| {
-        let id: u64 = row.get(0)?;
-        let text: Option<String> = row.get(1)?;
-        let timestamp: u64 = row.get(2)?;
-        let first_copied: u64 = row.get(3)?;
-        let copies: u64 = row.get(4)?;
-        let byte_size: u64 = row.get(5)?;
-        let formats_json: String = row.get(6)?;
+let id: u64 = row.get(0)?;
+                let text: Option<String> = row.get(1)?;
+                let timestamp: u64 = row.get(2)?;
+                let first_copied: u64 = row.get(3)?;
+                let copies: u64 = row.get(4)?;
+                let byte_size: u64 = row.get(5)?;
+                let formats_json: String = row.get(6)?;
+                let content_hash: String = row.get(7)?;
 
-        let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
-            .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
+                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                    .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
 
-        Ok(DatabaseItem {
+      Ok(DatabaseItem {
             id,
             text,
             timestamp,
             first_copied,
             copies,
             byte_size,
+            content_hash,
             formats,
         })
     }).map_err(|e| format!("Failed to query items: {}", e))?;

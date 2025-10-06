@@ -5,6 +5,7 @@ use crate::structs::{ClipboardItem, ClipboardFormats, ClipboardChangeEvent};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use base64::{Engine as _, engine::general_purpose};
+use md5;
 
 /// Extract file paths from plist XML content
 fn extract_paths_from_plist(xml_content: &str) -> Option<Vec<String>> {
@@ -247,6 +248,16 @@ impl Manager {
             }
         }
 
+        // Compute content hash based only on the actual content data
+        let content_hash = match crate::structs::hash_content(&formats) {
+            Ok(hash) => hash,
+            Err(e) => {
+                eprintln!("Failed to compute content hash: {}", e);
+                // Fallback: use a hash of the searchable text
+                format!("{:x}", md5::compute(searchable_text.as_ref().unwrap_or(&String::new())))
+            }
+        };
+
         ClipboardItem {
             id: 0, // Will be assigned by database
             text: searchable_text,
@@ -254,6 +265,7 @@ impl Manager {
             first_copied: timestamp, // Initially same as timestamp
             copies: 1, // Initially 1 copy
             byte_size: total_size,
+            content_hash,
             formats,
         }
     }

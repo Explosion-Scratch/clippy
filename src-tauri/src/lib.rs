@@ -1,5 +1,6 @@
 use tauri::{Listener, Manager};
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+use tauri::{menu::{MenuBuilder, MenuItemBuilder}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}};
 
 mod structs;
 mod clipboard;
@@ -35,7 +36,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     }
 
     // Create new settings window
-    let settings_window = WebviewWindowBuilder::new(
+    let _settings_window = WebviewWindowBuilder::new(
         &app_handle,
         "settings",
         tauri::WebviewUrl::App("/settings".into())
@@ -94,10 +95,57 @@ pub fn run() {
             let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
             let settings_shortcut = Shortcut::new(Some(Modifiers::META), Code::Comma);
 
-            app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let app_handle = app.handle().clone();
             let window = app_handle.get_webview_window("main").unwrap();
+
+            // Create system tray
+            let show_item = MenuItemBuilder::with_id("show", "Show Clippy").build(app)?;
+            let hide_item = MenuItemBuilder::with_id("hide", "Hide Clippy").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&show_item, &hide_item, &quit_item]).build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "hide" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => (),
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
 
             /* Shorcut */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
@@ -125,11 +173,6 @@ pub fn run() {
             {
                 apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None)
                     .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
-
-                // Hide app from dock
-                if let Err(e) = visibility::hide(app.handle()) {
-                    eprintln!("Failed to hide app on startup: {}", e);
-                }
             }
 
             // Check accessibility permissions on startup

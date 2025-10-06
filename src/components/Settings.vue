@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { save, open } from '@tauri-apps/plugin-dialog';
+import { save, open, ask } from '@tauri-apps/plugin-dialog';
 import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -78,18 +78,23 @@ async function importDatabase() {
 }
 
 async function deleteAllData() {
-  if (confirm('Are you sure you want to delete all clipboard items? This action cannot be undone.')) {
-    try {
+  try {
+    const confirmed = await ask('Are you sure you want to delete all clipboard items? This action cannot be undone.', {
+      title: 'Confirm Delete All Data',
+      kind: 'warning'
+    });
+    
+    if (confirmed) {
       isDeleting.value = true;
       const result = await invoke('db_delete_all');
       alert(result);
       await loadStats(); // Refresh the count
-    } catch (error) {
-      console.error('Failed to delete all data:', error);
-      alert('Failed to delete data: ' + error);
-    } finally {
-      isDeleting.value = false;
     }
+  } catch (error) {
+    console.error('Failed to delete all data:', error);
+    alert('Failed to delete data: ' + error);
+  } finally {
+    isDeleting.value = false;
   }
 }
 
