@@ -116,7 +116,10 @@ const imageDataUrl = computed(() => {
     return props.item.formats?.imageData || null;
 });
 
-const getIndexText = (idx) => {
+const getIndexText = (idx, isSelected) => {
+    if (isSelected) {
+        return null;
+    }
     if (!idx && idx !== 0) {
         return null;
     }
@@ -149,7 +152,7 @@ const getIndexText = (idx) => {
 
         <!-- Size info -->
         <div class="info">
-            {{ getIndexText(item.index) || getInfoText(item) }}
+            {{ getIndexText(item.index, props.selected) || getInfoText(item) }}
         </div>
     </div>
 </template>
@@ -205,10 +208,6 @@ const getIndexText = (idx) => {
     flex-shrink: 0;
     color: var(--text-secondary);
     font-size: 0.8em;
-}
-
-.clipboard-item.is-selected .info {
-    color: var(--accent-text);
 }
 
 .delete-btn {

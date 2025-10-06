@@ -199,8 +199,15 @@ impl ClipboardDatabase {
         println!("First Copied: {}", item.first_copied);
         println!("Copies: {}", item.copies);
         println!("Byte Size: {}", item.byte_size);
-        println!("Text: {:?}", item.text);
-        println!("Formats: {:?}", item.formats);
+        println!("Text length: {} chars", item.text.as_ref().map_or(0, |t| t.len()));
+        let format_count = 
+            (if item.formats.txt.is_some() { 1 } else { 0 }) +
+            (if item.formats.html.is_some() { 1 } else { 0 }) +
+            (if item.formats.rtf.is_some() { 1 } else { 0 }) +
+            (if item.formats.image_data.is_some() { 1 } else { 0 }) +
+            (if item.formats.files.is_some() { 1 } else { 0 }) +
+            item.formats.custom_formats.as_ref().map_or(0, |f| f.len());
+        println!("Number of formats: {}", format_count);
         println!("==========================================");
 
         let mut db_item = DatabaseItem::from(item);

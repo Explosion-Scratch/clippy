@@ -37,12 +37,12 @@ const selectedItem = computed(() => {
 function startLoading() {
     isLoading.value = true;
     showLoadingStatus.value = false;
-    
+
     // Clear any existing timer
     if (loadingTimer) {
         clearTimeout(loadingTimer);
     }
-    
+
     // Show loading status after 300ms
     loadingTimer = setTimeout(() => {
         showLoadingStatus.value = true;
@@ -53,7 +53,7 @@ function startLoading() {
 function stopLoading() {
     isLoading.value = false;
     showLoadingStatus.value = false;
-    
+
     if (loadingTimer) {
         clearTimeout(loadingTimer);
         loadingTimer = null;
@@ -555,7 +555,10 @@ onMounted(async () => {
 
         <!-- Clipboard items list -->
         <div class="items-container">
-            <div v-if="clipboardItems?.length === 0 && !isLoading" class="empty-state">
+            <div
+                v-if="clipboardItems?.length === 0 && !isLoading"
+                class="empty-state"
+            >
                 <div class="empty-icon">📋</div>
                 <p>
                     {{
@@ -585,7 +588,7 @@ onMounted(async () => {
                 <div class="spinner"></div>
                 <span class="status-value">Loading...</span>
             </div>
-            
+
             <!-- Selected item info -->
             <template v-else-if="selectedItem">
                 <div class="status-item">
@@ -690,6 +693,10 @@ onMounted(async () => {
             &.is-selected {
                 background: var(--accent);
                 color: var(--accent-text);
+                .info {
+                    color: var(--accent-text);
+                    opacity: 0.8;
+                }
             }
         }
 
@@ -703,8 +710,6 @@ onMounted(async () => {
         }
     }
 }
-
-
 
 .search-input {
     background: var(--bg-input);
@@ -723,7 +728,7 @@ onMounted(async () => {
 
     &:focus {
         outline: none;
-        border-color: var(--accent);
+        border: none;
         box-shadow: 0 0 0 3px var(--accent-transparent);
     }
 }
@@ -765,8 +770,6 @@ onMounted(async () => {
     flex-shrink: 0;
     height: 20px;
     line-height: 20px;
-    opacity: 0.8;
-    border: 1px solid var(--border-color);
 }
 
 .status-item {
