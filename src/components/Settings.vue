@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { save, open, ask } from '@tauri-apps/plugin-dialog';
 import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { emit } from '@tauri-apps/api/event';
 
 const appVersion = ref('0.1.0');
 const itemCount = ref(0);
@@ -99,6 +100,8 @@ async function deleteAllData() {
 }
 
 async function closeSettings() {
+  // Emit event to restore dock state
+  await emit('settings-window-closed');
   const window = getCurrentWindow();
   await window.close();
 }
@@ -129,7 +132,7 @@ onMounted(() => {
   <div class="settings">
     <div class="settings-header">
       <div class="app-info">
-        <img src="/tauri.svg" alt="App Icon" class="app-icon" />
+        <img src="/icon.png" alt="App Icon" class="app-icon" />
         <div class="app-details">
           <h1>Clippy Settings</h1>
           <p class="version">Version {{ appVersion }}</p>

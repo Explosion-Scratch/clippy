@@ -42,6 +42,12 @@ fn register_main_shortcut(app: tauri::AppHandle) -> Result<(), String> {
 fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::{Manager, WebviewWindowBuilder};
 
+    // Show dock icon when opening settings
+    #[cfg(target_os = "macos")]
+    {
+        app_handle.set_activation_policy(tauri::ActivationPolicy::Regular)?;
+    }
+
     // Check if settings window already exists
     if let Some(settings_window) = app_handle.get_webview_window("settings") {
         // Settings window already exists, just show it and hide main
@@ -59,7 +65,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     }
 
     // Create new settings window using config from tauri.conf.json
-    let settings_window = WebviewWindowBuilder::new(
+    let _settings_window = WebviewWindowBuilder::new(
         &app_handle,
         "settings",
         tauri::WebviewUrl::App("/settings".into())
@@ -79,6 +85,38 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     }
 
     Ok(())
+}
+
+// Function to hide settings window and restore dock state
+fn close_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::Manager;
+
+    if let Some(settings_window) = app_handle.get_webview_window("settings") {
+        settings_window.close()?;
+    }
+
+    // Hide dock icon when settings is closed (return to accessory mode)
+    #[cfg(target_os = "macos")]
+    {
+        app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory)?;
+    }
+
+    Ok(())
+}
+
+// Function to format bytes for display
+fn format_bytes(bytes: u64) -> String {
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    
+    const K: u64 = 1024;
+    const SIZES: &[&str] = &["B", "KB", "MB", "GB"];
+    let i = (bytes as f64).log(K as f64).floor() as usize;
+    let size = SIZES.get(i).unwrap_or(&"GB");
+    let value = bytes as f64 / (K as f64).powi(i as i32);
+    
+    format!("{:.1} {}", value, size)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -127,11 +165,16 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let window = app_handle.get_webview_window("main").unwrap();
 
-            // Create system tray
+            // Create system tray menu with dynamic stats
             let show_item = MenuItemBuilder::with_id("show", "Show Clippy").build(app)?;
             let hide_item = MenuItemBuilder::with_id("hide", "Hide Clippy").build(app)?;
+            let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+  
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show_item, &hide_item, &quit_item]).build()?;
+            
+            let menu = MenuBuilder::new(app)
+                .items(&[&show_item, &hide_item, &settings_item, &quit_item])
+                .build()?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -147,6 +190,11 @@ pub fn run() {
                     "hide" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.hide();
+                        }
+                    }
+                    "settings" => {
+                        if let Err(e) = open_settings_window(app.clone()) {
+                            eprintln!("Failed to open settings: {}", e);
                         }
                     }
                     "quit" => {
@@ -173,6 +221,41 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Function to update tray menu with stats
+            let update_tray_stats = move |app_handle: tauri::AppHandle| {
+                let app_handle_clone = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    // Get database stats
+                    let count = match db::db_get_count(app_handle_clone.clone()) {
+                        Ok(count) => count,
+                        Err(_) => 0,
+                    };
+                    
+                    let size = match db::db_get_size(app_handle_clone.clone()) {
+                        Ok(size) => size,
+                        Err(_) => 0,
+                    };
+                    
+                    // Update menu items with stats if we can get the tray
+                    if let Some(tray) = app_handle_clone.tray_by_id("main") {
+                        let stats_text = format!("Items: {} | Size: {}", count, format_bytes(size));
+                        // Note: In Tauri 2.0, updating menu items dynamically requires more complex handling
+                        // For now, we'll update the tray tooltip
+                        let _ = tray.set_tooltip(Some(&stats_text));
+                    }
+                });
+            };
+
+            // Update tray stats periodically
+            let app_handle_for_stats = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    update_tray_stats(app_handle_for_stats.clone());
+                }
+            });
 
 /* Shorcut */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
@@ -258,6 +341,7 @@ pub fn run() {
             });
 
             // Listen for change-clipboard events to save items to database
+            let app_handle_for_clipboard = app_handle.clone();
             app.listen("change-clipboard", move |event| {
                 println!("Clipboard changed - saving to database");
 
@@ -266,7 +350,7 @@ pub fn run() {
                         // Parse the clipboard item from the event
                         if let Ok(clipboard_item) = serde_json::from_value::<structs::ClipboardItem>(item.clone()) {
                             // Save to database asynchronously
-                            let app_handle_clone = app_handle.clone();
+        let app_handle_clone = app_handle_for_clipboard.clone();
                             tauri::async_runtime::spawn(async move {
                                 match db::db_save_item(app_handle_clone, clipboard_item) {
                                     Ok(result) => {
@@ -289,6 +373,15 @@ pub fn run() {
                     }
                 } else {
                     eprintln!("Failed to parse clipboard change event payload");
+                }
+            });
+
+            // Listen for settings window close events to restore dock state
+            let app_handle_for_close = app_handle.clone();
+            app.listen("settings-window-closed", move |_event| {
+                println!("Settings window closed, restoring dock state");
+                if let Err(e) = close_settings_window(app_handle_for_close.clone()) {
+                    eprintln!("Failed to close settings window: {}", e);
                 }
             });
 

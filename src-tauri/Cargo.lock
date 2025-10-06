@@ -575,6 +575,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-macos-permissions",
  "tauri-plugin-opener",
+ "tokio",
  "uuid",
  "window-vibrancy",
 ]
