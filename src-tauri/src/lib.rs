@@ -43,11 +43,16 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     )
     .build()?;
 
-    // Apply vibrancy to settings window on macOS
+    // Apply vibrancy to settings window on macOS (must run on main thread)
     #[cfg(target_os = "macos")]
     {
-        apply_vibrancy(&settings_window, NSVisualEffectMaterial::HudWindow, None, None)
-            .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+        let app_handle_clone = app_handle.clone();
+        app_handle.run_on_main_thread(move || {
+            if let Some(settings_window) = app_handle_clone.get_webview_window("settings") {
+                apply_vibrancy(&settings_window, NSVisualEffectMaterial::HudWindow, None, None)
+                    .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+            }
+        })?;
     }
 
     Ok(())
