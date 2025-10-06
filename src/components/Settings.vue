@@ -238,7 +238,6 @@ onMounted(() => {
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: background-color 0.2s ease, color 0.2s ease;
       
       &:hover {
         background: var(--bg-secondary);
@@ -293,7 +292,6 @@ onMounted(() => {
           font-size: 12px;
           font-weight: 500;
           cursor: pointer;
-          transition: all 0.2s ease;
           box-shadow: var(--shadow-light);
           
           &:disabled {

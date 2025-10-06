@@ -166,7 +166,6 @@ const getIndexText = (idx) => {
     color: var(--text-primary);
     background: var(--bg-primary);
     border-radius: 4px;
-    transition: background-color 0.2s ease;
 }
 
 .clipboard-item:hover {
@@ -225,7 +224,6 @@ const getIndexText = (idx) => {
     line-height: 1;
     opacity: 0;
     color: var(--text-secondary);
-    transition: opacity 0.2s ease, color 0.2s ease;
 }
 
 .delete-btn:hover {

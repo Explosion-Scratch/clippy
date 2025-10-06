@@ -162,7 +162,8 @@ async function handleArrowDown() {
             return;
         }
 
-        selectedIndex.value = 9; // Keep selection at the same relative position (last item)
+        // Keep selection at the last valid position
+        selectedIndex.value = Math.min(9, clipboardItems.value.length - 1);
     } else {
         // Move to next item on current window
         selectedIndex.value = selectedIndex.value + 1;
@@ -190,7 +191,8 @@ async function handleArrowUp() {
             return;
         }
 
-        selectedIndex.value = 0; // Keep selection at the same relative position (first item)
+        // Keep selection at the first valid position
+        selectedIndex.value = 0;
     } else {
         // Move to previous item on current window
         selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
@@ -549,6 +551,28 @@ onMounted(async () => {
     animation: spin 1s linear infinite;
 }
 
+.search-input {
+    background: var(--bg-input);
+    border: 0.5px solid var(--border-light);
+    border-radius: 5px;
+    padding: 3px 6px;
+    font-family: system-ui;
+    box-shadow: var(--shadow-light);
+    color: var(--text-primary);
+    width: 100%;
+    
+    &::placeholder {
+        color: var(--text-secondary);
+        opacity: 0.7;
+    }
+    
+    &:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-transparent);
+    }
+}
+
 @keyframes spin {
     0% {
         transform: rotate(0deg);
@@ -577,7 +601,7 @@ onMounted(async () => {
     display: flex;
     align-items: center;
     padding: 4px 12px;
-    background: var(--bg-secondary);
+    background: var(--bg-status);
     color: var(--text-secondary);
     border-radius: 4px;
     font-size: 0.75em;

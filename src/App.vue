@@ -23,10 +23,11 @@ onMounted(() => {
 
 /* Light theme colors (default) */
 :root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f5f5f5;
-    --bg-tertiary: #fafafa;
-    --bg-input: #fff9;
+    --bg-primary: transparent;
+    --bg-secondary: transparent;
+    --bg-tertiary: transparent;
+    --bg-input: rgba(255, 255, 255, 0.3);
+    --bg-status: rgba(255, 255, 255, 0.3);
     --text-primary: #333333;
     --text-secondary: #666666;
     --text-tertiary: #999999;
@@ -42,10 +43,11 @@ onMounted(() => {
 /* Dark theme colors (applied via OS preference) */
 @media (prefers-color-scheme: dark) {
     :root {
-        --bg-primary: #1e1e1e;
-        --bg-secondary: #2d2d2d;
-        --bg-tertiary: #252525;
-        --bg-input: #3a3a3a;
+        --bg-primary: transparent;
+        --bg-secondary: transparent;
+        --bg-tertiary: transparent;
+        --bg-input: rgba(0, 0, 0, 0.3);
+        --bg-status: rgba(0, 0, 0, 0.3);
         --text-primary: #ffffff;
         --text-secondary: #cccccc;
         --text-tertiary: #999999;
@@ -68,10 +70,15 @@ input {
     box-shadow: var(--shadow-light);
     color: var(--text-primary);
     
+    &::placeholder {
+        color: var(--text-secondary);
+        opacity: 0.7;
+    }
+    
     &:focus {
-        box-shadow: 0 0 0 3px var(--accent-transparent);
         outline: none;
         border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-transparent);
     }
 }
 
