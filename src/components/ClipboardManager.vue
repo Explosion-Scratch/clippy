@@ -473,15 +473,6 @@ onMounted(async () => {
 </template>
 
 <style lang="less">
-:root {
-    --accent: lightseagreen;
-    --accent-text: white;
-}
-
-input {
-    accent-color: var(--accent);
-}
-
 .clipboard-manager {
     display: flex;
     flex-direction: column;
@@ -489,6 +480,8 @@ input {
     font-weight: normal;
     gap: 10px;
     padding: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
 
     .search-container,
     .items-container {
@@ -517,9 +510,11 @@ input {
             align-items: center;
             border-radius: 4px;
             padding: 1px 5px;
+            color: var(--text-primary);
 
             .info {
                 opacity: 0.6;
+                color: var(--text-secondary);
             }
 
             &.is-selected {
@@ -537,11 +532,6 @@ input {
             }
         }
     }
-
-    input {
-        width: 100%;
-        padding: 2px 10px;
-    }
 }
 
 .loading {
@@ -553,7 +543,7 @@ input {
 .spinner {
     width: 20px;
     height: 20px;
-    border: 2px solid;
+    border: 2px solid var(--border-color);
     border-radius: 50%;
     border-top: none;
     animation: spin 1s linear infinite;
@@ -570,10 +560,12 @@ input {
 
 .empty-state {
     text-align: center;
+    color: var(--text-secondary);
 }
 
 .empty-icon {
     font-size: 32px;
+    filter: grayscale(0.3);
 }
 
 .clipboard-list {
@@ -585,8 +577,8 @@ input {
     display: flex;
     align-items: center;
     padding: 4px 12px;
-    background: transparent;
-    color: black;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
     border-radius: 4px;
     font-size: 0.75em;
     margin-top: auto;
@@ -595,6 +587,7 @@ input {
     height: 20px;
     line-height: 20px;
     opacity: 0.8;
+    border: 1px solid var(--border-color);
 }
 
 .status-item {
@@ -609,9 +602,11 @@ input {
     width: 14px;
     height: 14px;
     opacity: 0.7;
+    color: var(--text-secondary);
 }
 
 .status-value {
     font-weight: 300;
+    color: var(--text-secondary);
 }
 </style>

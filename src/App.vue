@@ -20,40 +20,58 @@ onMounted(() => {
 </template>
 
 <style lang="less">
+
+/* Light theme colors (default) */
 :root {
-    --accent: #0662;
-    --accent-transparent: #066233;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-tertiary: #fafafa;
+    --bg-input: #fff9;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-tertiary: #999999;
+    --border-color: #e0e0e0;
+    --border-light: #0003;
+    --accent: lightseagreen;
+    --accent-text: white;
+    --accent-transparent: rgba(32, 178, 170, 0.2);
+    --shadow-light: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-medium: 0 2px 8px 0 rgb(0 0 0 / 0.1);
 }
 
-input {
-    --bg: #fff9;
-    background: var(--bg);
-    border: 0.5px solid #0003;
-    border-radius: 5px;
-    padding: 3px 6px;
-    font-family: system-ui;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    
-    &:focus {
-        box-shadow: 0 0 0 3px var(--accent-transparent);
-        outline: none;
-        border-color: var(--bg);
+/* Dark theme colors (applied via OS preference) */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #1e1e1e;
+        --bg-secondary: #2d2d2d;
+        --bg-tertiary: #252525;
+        --bg-input: #3a3a3a;
+        --text-primary: #ffffff;
+        --text-secondary: #cccccc;
+        --text-tertiary: #999999;
+        --border-color: #404040;
+        --border-light: #ffffff3;
+        --accent: #20b2aa;
+        --accent-text: white;
+        --accent-transparent: rgba(32, 178, 170, 0.3);
+        --shadow-light: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+        --shadow-medium: 0 2px 8px 0 rgb(0 0 0 / 0.5);
     }
 }
 
 input {
-    --bg: #fff9;
-    background: var(--bg);
-    border: 0.5px solid var(--accent);
+    background: var(--bg-input);
+    border: 0.5px solid var(--border-light);
     border-radius: 5px;
     padding: 3px 6px;
     font-family: system-ui;
-    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    box-shadow: var(--shadow-light);
+    color: var(--text-primary);
     
     &:focus {
-        box-shadow: 0 0 0 3px var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-transparent);
         outline: none;
-        border-color: var(--bg);
+        border-color: var(--accent);
     }
 }
 
@@ -62,6 +80,7 @@ body {
     background: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
+    color: var(--text-primary);
 }
 
 * {

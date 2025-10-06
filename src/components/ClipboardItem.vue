@@ -163,6 +163,19 @@ const getIndexText = (idx) => {
     display: flex;
     align-items: center;
     overflow: hidden;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.clipboard-item:hover {
+    background: var(--bg-secondary);
+}
+
+.clipboard-item.is-selected {
+    background: var(--accent);
+    color: var(--accent-text);
 }
 
 .image-preview {
@@ -170,6 +183,7 @@ const getIndexText = (idx) => {
     height: 80px;
     object-fit: cover;
     flex-shrink: 0;
+    border-radius: 2px;
 }
 
 .content-preview {
@@ -178,16 +192,24 @@ const getIndexText = (idx) => {
     display: flex;
     align-items: center;
     min-width: 0;
+    padding: 0 8px;
 }
 
 .preview-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: inherit;
 }
 
 .info {
     flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: 0.8em;
+}
+
+.clipboard-item.is-selected .info {
+    color: var(--accent-text);
 }
 
 .delete-btn {
@@ -202,9 +224,20 @@ const getIndexText = (idx) => {
     justify-content: center;
     line-height: 1;
     opacity: 0;
+    color: var(--text-secondary);
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.delete-btn:hover {
+    color: var(--text-primary);
 }
 
 .clipboard-item.is-selected .delete-btn {
     opacity: 1;
+    color: var(--accent-text);
+}
+
+.clipboard-item.is-selected .delete-btn:hover {
+    color: var(--accent-text);
 }
 </style>

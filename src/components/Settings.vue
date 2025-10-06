@@ -185,18 +185,20 @@ onMounted(() => {
 <style lang="less">
 .settings {
   font-family: system-ui, -apple-system, sans-serif;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   height: 100vh;
   display: flex;
   flex-direction: column;
+  color: var(--text-primary);
   
   .settings-header {
-    background: white;
+    background: var(--bg-primary);
     padding: 12px;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-shadow: var(--shadow-light);
     
     .app-info {
       display: flex;
@@ -213,13 +215,13 @@ onMounted(() => {
           margin: 0;
           font-size: 18px;
           font-weight: 600;
-          color: #333;
+          color: var(--text-primary);
         }
         
         .version {
           margin: 2px 0 0 0;
           font-size: 11px;
-          color: #666;
+          color: var(--text-secondary);
         }
       }
     }
@@ -229,16 +231,18 @@ onMounted(() => {
       border: none;
       font-size: 18px;
       cursor: pointer;
-      color: #666;
+      color: var(--text-secondary);
       width: 24px;
       height: 24px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: background-color 0.2s ease, color 0.2s ease;
       
       &:hover {
-        background: #e0e0e0;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
       }
     }
   }
@@ -249,16 +253,18 @@ onMounted(() => {
     overflow-y: auto;
     
     .section {
-      background: white;
+      background: var(--bg-primary);
       border-radius: 6px;
       padding: 14px;
       margin-bottom: 12px;
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow-light);
       
       h2 {
         margin: 0 0 10px 0;
         font-size: 15px;
         font-weight: 600;
-        color: #333;
+        color: var(--text-primary);
       }
       
       .stats {
@@ -267,10 +273,10 @@ onMounted(() => {
         p {
           margin: 0;
           font-size: 12px;
-          color: #666;
+          color: var(--text-secondary);
           
           strong {
-            color: #333;
+            color: var(--text-primary);
           }
         }
       }
@@ -288,6 +294,7 @@ onMounted(() => {
           font-weight: 500;
           cursor: pointer;
           transition: all 0.2s ease;
+          box-shadow: var(--shadow-light);
           
           &:disabled {
             opacity: 0.5;
@@ -300,6 +307,7 @@ onMounted(() => {
             
             &:hover:not(:disabled) {
               background: #0056CC;
+              box-shadow: var(--shadow-medium);
             }
           }
           
@@ -309,6 +317,7 @@ onMounted(() => {
             
             &:hover:not(:disabled) {
               background: #28A745;
+              box-shadow: var(--shadow-medium);
             }
           }
           
@@ -318,6 +327,7 @@ onMounted(() => {
             
             &:hover:not(:disabled) {
               background: #D70015;
+              box-shadow: var(--shadow-medium);
             }
           }
         }
@@ -326,7 +336,7 @@ onMounted(() => {
       p {
         line-height: 1.4;
         font-size: 12px;
-        color: #666;
+        color: var(--text-secondary);
         margin: 4px 0;
       }
     }
