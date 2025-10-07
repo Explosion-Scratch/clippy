@@ -119,6 +119,8 @@ fn format_bytes(bytes: u64) -> String {
     format!("{:.1} {}", value, size)
 }
 
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -167,7 +169,6 @@ pub fn run() {
 
             // Create system tray menu with dynamic stats
             let show_item = MenuItemBuilder::with_id("show", "Show Clippy").build(app)?;
-            let hide_item = MenuItemBuilder::with_id("hide", "Hide Clippy").build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             
@@ -176,23 +177,18 @@ pub fn run() {
                 .build(app)?;
             
             let menu = MenuBuilder::new(app)
-                .items(&[&stats_item, &show_item, &hide_item, &settings_item, &quit_item])
+                .items(&[&stats_item, &show_item, &settings_item, &quit_item])
                 .build()?;
             
             let tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
-                    "show" => {
+                  "show" => {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.unminimize();
                             let _ = window.show();
                             let _ = window.set_focus();
-                        }
-                    }
-                    "hide" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.hide();
                         }
                     }
                     "settings" => {
@@ -228,6 +224,7 @@ pub fn run() {
             // Store references for updates
             let tray_ref = tray.clone();
             let menu_ref = menu.clone();
+            
             let update_tray_stats = move |app_handle: tauri::AppHandle| {
                 let tray_ref_clone = tray_ref.clone();
                 let menu_ref_clone = menu_ref.clone();
@@ -287,6 +284,8 @@ pub fn run() {
             // Trigger initial stats update
             println!("DEBUG: Triggering initial tray stats update");
             update_tray_stats(app_handle.clone());
+            
+    
             
             // Update tray stats periodically
             let app_handle_for_stats = app_handle.clone();
@@ -427,6 +426,8 @@ pub fn run() {
                     eprintln!("Failed to close settings window: {}", e);
                 }
             });
+
+    
 
             Ok(())
         })

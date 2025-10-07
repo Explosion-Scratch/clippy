@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Check if the app or window is visible
 #[tauri::command]
@@ -32,6 +32,10 @@ pub fn hide(app: &AppHandle) -> Result<(), String> {
     }
     
     println!("Window and app hidden successfully");
+    
+    // Emit event to update tray menu
+    app.emit("window-visibility-changed", ()).map_err(|e| format!("Failed to emit visibility event: {}", e))?;
+    
     Ok(())
 }
 
@@ -58,6 +62,10 @@ pub fn show(app: AppHandle) -> Result<(), String> {
     }
     
     println!("Window and app shown successfully");
+    
+    // Emit event to update tray menu
+    app.emit("window-visibility-changed", ()).map_err(|e| format!("Failed to emit visibility event: {}", e))?;
+    
     Ok(())
 }
 

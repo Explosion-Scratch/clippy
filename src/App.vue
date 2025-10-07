@@ -20,7 +20,6 @@ onMounted(() => {
 </template>
 
 <style lang="less">
-
 /* Light theme colors (default) */
 :root {
     --bg-primary: transparent;
@@ -83,16 +82,15 @@ input {
     background: var(--bg-input);
     border: 0.5px solid var(--border-light);
     border-radius: 5px;
-    padding: 3px 6px;
     font-family: system-ui;
     box-shadow: var(--shadow-light);
     color: var(--text-primary);
-    
+
     &::placeholder {
         color: var(--text-secondary);
         opacity: 0.7;
     }
-    
+
     &:focus {
         outline: none;
         border-color: var(--accent);

@@ -15,6 +15,7 @@ const selectedIndex = ref(-1); // -1 means no item selected
 const currentPageOffset = ref(0);
 const itemsPerPage = 10;
 const clipboardManager = ref(null);
+const totalItems = ref(0);
 let resizeObserver = null;
 
 // Cycling mode state
@@ -31,6 +32,17 @@ const selectedItem = computed(() => {
         return clipboardItems.value[selectedIndex.value];
     }
     return null;
+});
+
+// Computed placeholder for search input
+const searchPlaceholder = computed(() => {
+    if (currentPageOffset.value > 0) {
+        const startOffset = currentPageOffset.value + 1;
+        const endOffset = currentPageOffset.value + clipboardItems.value.length;
+        return `Search ${totalItems.value} items (showing ${startOffset}-${endOffset})`;
+    } else {
+        return `Search ${totalItems.value} items`;
+    }
 });
 
 // Start loading with delay for status bar
@@ -82,6 +94,17 @@ async function searchItems(query) {
         console.error("Failed to search items:", error);
     } finally {
         stopLoading();
+    }
+}
+
+// Load total item count
+async function loadTotalItems() {
+    try {
+        const count = await invoke("db_get_count");
+        totalItems.value = count;
+    } catch (error) {
+        console.error("Failed to load total item count:", error);
+        totalItems.value = 0;
     }
 }
 
@@ -512,6 +535,7 @@ onMounted(async () => {
         },
     );
 
+    await loadTotalItems();
     await loadRecentItems();
 
     // Set up ResizeObserver to monitor content size changes
@@ -525,6 +549,7 @@ onMounted(async () => {
     // Listen for clipboard changes to refresh the list
     await listen("change-clipboard", async () => {
         resetSelection();
+        await loadTotalItems();
         await loadRecentItems();
     });
 
@@ -547,7 +572,7 @@ onMounted(async () => {
             <input
                 v-model="searchQuery"
                 type="text"
-                placeholder="Search..."
+                :placeholder="searchPlaceholder"
                 class="search-input"
                 autofocus
             />
@@ -715,7 +740,7 @@ onMounted(async () => {
     background: var(--bg-input);
     border: 0.5px solid var(--border-light);
     border-radius: 5px;
-    padding: 3px 6px;
+    padding: 5px 8px;
     font-family: system-ui;
     box-shadow: var(--shadow-light);
     color: var(--text-primary);
