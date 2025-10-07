@@ -158,6 +158,15 @@ impl ClipboardDatabase {
             )?;
         }
 
+        // Add image_preview column if it doesn't exist
+        if !columns.contains(&"image_preview".to_string()) {
+            println!("Adding image_preview column to existing database");
+            self.conn.execute(
+                "ALTER TABLE items ADD COLUMN image_preview TEXT",
+                [],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -272,7 +281,7 @@ impl ClipboardDatabase {
             // Insert new item
             println!("No duplicate found, inserting new item");
             let result = tx.execute(
-                "INSERT INTO items (text, timestamp, first_copied, copies, byte_size, formats, content_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO items (text, timestamp, first_copied, copies, byte_size, formats, content_hash, image_preview) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     db_item.text,
                     db_item.timestamp,
@@ -280,7 +289,8 @@ impl ClipboardDatabase {
                     db_item.copies,
                     db_item.byte_size,
                     serialized_formats,
-                    content_hash
+                    content_hash,
+                    db_item.formats.image_preview
                 ],
             );
 
@@ -331,10 +341,10 @@ impl ClipboardDatabase {
     pub fn recent_items(&self, count: usize, offset: usize) -> Result<Vec<ClipboardItem>> {
 
       let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash 
-             FROM items 
-             ORDER BY timestamp DESC 
-             LIMIT ?1 OFFSET ?2"
+          "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash, image_preview 
+              FROM items 
+              ORDER BY timestamp DESC 
+              LIMIT ?1 OFFSET ?2"
         )?;
 
         let item_iter = stmt.query_map(
@@ -348,9 +358,13 @@ impl ClipboardDatabase {
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
+                let image_preview: Option<String> = row.get(8)?;
 
-                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                let mut formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
+                
+                // Set image preview from database column
+                formats.image_preview = image_preview;
 
       Ok(DatabaseItem {
             id,
@@ -377,7 +391,7 @@ impl ClipboardDatabase {
     /// Search items by text content
     pub fn search(&self, query: &str, count: usize) -> Result<Vec<ClipboardItem>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash, image_preview
              FROM items
              WHERE LOWER(text) LIKE LOWER(?1)
              ORDER BY timestamp DESC
@@ -397,9 +411,13 @@ impl ClipboardDatabase {
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
+                let image_preview: Option<String> = row.get(8)?;
 
-                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                let mut formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
+                
+                // Set image preview from database column
+                formats.image_preview = image_preview;
 
       Ok(DatabaseItem {
             id,
@@ -480,7 +498,7 @@ impl ClipboardDatabase {
     /// Get an item by ID
     pub fn get_item_by_id(&self, id: u64) -> Result<ClipboardItem> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash
+            "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash, image_preview
              FROM items
              WHERE id = ?1"
         )?;
@@ -496,9 +514,13 @@ impl ClipboardDatabase {
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
+                let image_preview: Option<String> = row.get(8)?;
 
-                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                let mut formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
+                
+                // Set image preview from database column
+                formats.image_preview = image_preview;
 
       Ok(DatabaseItem {
             id,
@@ -708,7 +730,7 @@ pub fn db_export_all(app_handle: AppHandle) -> Result<String, String> {
 
 // Get all items from database
     let mut stmt = db.conn.prepare(
-        "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash
+        "SELECT id, text, timestamp, first_copied, copies, byte_size, formats, content_hash, image_preview
          FROM items
          ORDER BY timestamp DESC"
     ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
@@ -722,9 +744,13 @@ let id: u64 = row.get(0)?;
                 let byte_size: u64 = row.get(5)?;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
+                let image_preview: Option<String> = row.get(8)?;
 
-                let formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
+                let mut formats: crate::structs::ClipboardFormats = serde_json::from_str(&formats_json)
                     .map_err(|_e| rusqlite::Error::InvalidColumnType(6, "formats".to_string(), rusqlite::types::Type::Text))?;
+                
+                // Set image preview from database column
+                formats.image_preview = image_preview;
 
       Ok(DatabaseItem {
             id,

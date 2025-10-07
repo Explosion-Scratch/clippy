@@ -21,7 +21,8 @@ pub struct ClipboardFormats {
     pub txt: Option<String>,
     pub html: Option<String>,
     pub rtf: Option<String>,
-    pub image_data: Option<String>, // Base64 encoded PNG
+    pub image_data: Option<String>, // Base64 encoded PNG (full resolution)
+    pub image_preview: Option<String>, // Base64 encoded PNG (120px height preview)
     pub files: Option<Vec<String>>, // List of file paths
     pub custom_formats: Option<std::collections::HashMap<String, String>>, // Other formats as strings
 }
@@ -159,6 +160,7 @@ mod tests {
             html: None,
             rtf: None,
             image_data: None,
+            image_preview: None,
             files: None,
             custom_formats: None,
         };
@@ -187,6 +189,7 @@ mod tests {
             html: None,
             rtf: None,
             image_data: None,
+            image_preview: None,
             files: None,
             custom_formats: None,
         };
@@ -208,6 +211,7 @@ mod tests {
             html: None,
             rtf: None,
             image_data: Some(data_uri),
+            image_preview: None,
             files: None,
             custom_formats: None,
         };
@@ -229,6 +233,7 @@ mod tests {
             html: None,
             rtf: None,
             image_data: None,
+            image_preview: None,
             files: Some(files1),
             custom_formats: None,
         };
@@ -238,6 +243,7 @@ mod tests {
             html: None,
             rtf: None,
             image_data: None,
+            image_preview: None,
             files: Some(files2),
             custom_formats: None,
         };
@@ -256,6 +262,7 @@ mod tests {
             html: Some("<p>Sample HTML</p>".to_string()),
             rtf: None,
             image_data: None,
+            image_preview: None,
             files: None,
             custom_formats: None,
         };
@@ -265,6 +272,7 @@ mod tests {
             html: Some("<p>Sample HTML</p>".to_string()),
             rtf: None,
             image_data: None,
+            image_preview: None,
             files: None,
             custom_formats: None,
         };
