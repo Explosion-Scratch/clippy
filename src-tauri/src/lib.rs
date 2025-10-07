@@ -169,14 +169,17 @@ pub fn run() {
             let show_item = MenuItemBuilder::with_id("show", "Show Clippy").build(app)?;
             let hide_item = MenuItemBuilder::with_id("hide", "Hide Clippy").build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
-  
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             
+            // Create initial stats item (note: disabled() method not available in Tauri 2.0)
+            let stats_item = MenuItemBuilder::with_id("stats", "clippy v0.1.0 - 0 items - 0 B")
+                .build(app)?;
+            
             let menu = MenuBuilder::new(app)
-                .items(&[&show_item, &hide_item, &settings_item, &quit_item])
+                .items(&[&stats_item, &show_item, &hide_item, &settings_item, &quit_item])
                 .build()?;
-
-            let _tray = TrayIconBuilder::new()
+            
+            let tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -222,37 +225,77 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Function to update tray menu with stats
+            // Store references for updates
+            let tray_ref = tray.clone();
+            let menu_ref = menu.clone();
             let update_tray_stats = move |app_handle: tauri::AppHandle| {
+                let tray_ref_clone = tray_ref.clone();
+                let menu_ref_clone = menu_ref.clone();
                 let app_handle_clone = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    // Get database stats
-                    let count = match db::db_get_count(app_handle_clone.clone()) {
-                        Ok(count) => count,
-                        Err(_) => 0,
+                    // Get database stats with debug logging
+                    let count_result = db::db_get_count(app_handle_clone.clone());
+                    let count = match count_result {
+                        Ok(count) => {
+                            println!("DEBUG: Database count retrieved successfully: {}", count);
+                            count
+                        },
+                        Err(e) => {
+                            println!("DEBUG: Failed to get database count: {}", e);
+                            0
+                        },
                     };
                     
-                    let size = match db::db_get_size(app_handle_clone.clone()) {
-                        Ok(size) => size,
-                        Err(_) => 0,
+                    let size_result = db::db_get_size(app_handle_clone.clone());
+                    let size = match size_result {
+                        Ok(size) => {
+                            println!("DEBUG: Database size retrieved successfully: {} bytes", size);
+                            size
+                        },
+                        Err(e) => {
+                            println!("DEBUG: Failed to get database size: {}", e);
+                            0
+                        },
                     };
                     
-                    // Update menu items with stats if we can get the tray
-                    if let Some(tray) = app_handle_clone.tray_by_id("main") {
-                        let stats_text = format!("Items: {} | Size: {}", count, format_bytes(size));
-                        // Note: In Tauri 2.0, updating menu items dynamically requires more complex handling
-                        // For now, we'll update the tray tooltip
-                        let _ = tray.set_tooltip(Some(&stats_text));
+                    // Update tray menu with new stats
+                    // Get version from config
+                    let version = "0.1.0";
+                    
+                    // Format the stats text
+                    let stats_text = format!("clippy v{} - {} items - {}", version, count, format_bytes(size));
+                    println!("DEBUG: Updating tray tooltip to: {}", stats_text);
+                    
+                    // Update the tray tooltip
+                    match tray_ref_clone.set_tooltip(Some(&stats_text)) {
+                        Ok(_) => println!("DEBUG: Tray tooltip updated successfully"),
+                        Err(e) => println!("DEBUG: Failed to update tray tooltip: {}", e),
+                    }
+                    
+                    // Update the menu item text
+                    if let Some(stats_item) = menu_ref_clone.get("stats") {
+                        match stats_item.as_menuitem_unchecked().set_text(&stats_text) {
+                            Ok(_) => println!("DEBUG: Menu item text updated successfully"),
+                            Err(e) => println!("DEBUG: Failed to update menu item text: {}", e),
+                        }
+                    } else {
+                        println!("DEBUG: Could not find stats menu item");
                     }
                 });
             };
 
+            // Trigger initial stats update
+            println!("DEBUG: Triggering initial tray stats update");
+            update_tray_stats(app_handle.clone());
+            
             // Update tray stats periodically
             let app_handle_for_stats = app_handle.clone();
             tauri::async_runtime::spawn(async move {
+                println!("DEBUG: Starting periodic tray stats updates every 5 seconds");
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
                 loop {
                     interval.tick().await;
+                    println!("DEBUG: Triggering tray stats update");
                     update_tray_stats(app_handle_for_stats.clone());
                 }
             });
