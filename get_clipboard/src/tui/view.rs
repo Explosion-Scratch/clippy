@@ -42,8 +42,9 @@ pub fn draw_frame(frame: &mut Frame<'_>, state: &AppState) {
         .iter()
         .map(|item| {
             let mut spans = Vec::new();
+            let offset = item.offset;
             spans.push(Span::styled(
-                item.metadata.hash.chars().take(8).collect::<String>(),
+                format!("#{:<4}", offset),
                 Style::default().fg(Color::DarkGray),
             ));
             spans.push(Span::raw(" "));

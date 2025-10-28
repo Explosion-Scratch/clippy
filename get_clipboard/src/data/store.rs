@@ -1,29 +1,16 @@
+use crate::clipboard::{ClipboardClass, ClipboardSnapshot, handler_from_metadata};
 use crate::config::{ensure_data_dir, load_config};
 use crate::data::model::{EntryKind, EntryMetadata, SearchIndex, SearchIndexRecord};
 use crate::fs::{EntryPaths, entry_paths};
-use crate::util::time::OffsetDateTime;
-use crate::util::{hash, time};
+use crate::util::time::{self, OffsetDateTime};
 use anyhow::{Context, Result, anyhow};
+use clipboard_rs::{Clipboard, ClipboardContext};
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
-use serde_json;
+use serde_json::{self, Value};
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-
-#[derive(Debug, Clone)]
-pub struct ClipboardEntry {
-    pub metadata: EntryMetadata,
-    pub content_path: ContentPath,
-}
-
-#[derive(Debug, Clone)]
-pub enum ContentPath {
-    Text(PathBuf),
-    Binary(PathBuf),
-    FilePath(PathBuf),
-}
+use std::path::Path;
 
 static INDEX_CACHE: OnceCell<RwLock<SearchIndex>> = OnceCell::new();
 
@@ -38,8 +25,7 @@ fn index_cell() -> &'static RwLock<SearchIndex> {
 }
 
 pub fn load_index() -> Result<SearchIndex> {
-    let cell = index_cell();
-    Ok(cell.read().clone())
+    Ok(index_cell().read().clone())
 }
 
 pub fn refresh_index() -> Result<()> {
@@ -123,110 +109,91 @@ fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>> {
     Ok(entries)
 }
 
-pub fn store_text(content: &str, formats: &[String]) -> Result<ClipboardEntry> {
-    persist_entry(
-        content.as_bytes(),
-        "text/plain",
-        formats,
-        ContentFlavor::Text(content.to_string()),
-    )
-}
-
-pub fn store_binary(data: &[u8], mime: &str, formats: &[String]) -> Result<ClipboardEntry> {
-    persist_entry(data, mime, formats, ContentFlavor::Binary)
-}
-
-pub fn store_file_path(path: &Path, formats: &[String]) -> Result<ClipboardEntry> {
-    let data =
-        fs::read(path).with_context(|| format!("Failed to read file at {}", path.display()))?;
-    persist_entry(
-        &data,
-        "application/octet-stream",
-        formats,
-        ContentFlavor::File(path.to_path_buf()),
-    )
-}
-
-enum ContentFlavor {
-    Text(String),
-    Binary,
-    File(PathBuf),
-}
-
-fn persist_entry(
-    bytes: &[u8],
-    mime: &str,
-    formats: &[String],
-    flavor: ContentFlavor,
-) -> Result<ClipboardEntry> {
-    let hash = hash::sha256_bytes(bytes);
+pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
+    let handler = snapshot.classify()?;
+    let hash = snapshot.compute_hash();
     let config = load_config()?;
     let timestamp = time::now();
-    let ext = crate::fs::layout::determine_extension(mime);
-    let paths = entry_paths(&config, &hash, timestamp, ext)?;
+    let paths = entry_paths(&config, &hash, timestamp, None)?;
     crate::fs::layout::ensure_dir(&paths.item_dir)?;
-    if !paths.metadata.exists() {
-        let mut file = fs::File::create(&paths.content).with_context(|| {
-            format!(
-                "Failed to create content file at {}",
-                paths.content.display()
-            )
-        })?;
-        file.write_all(bytes)?;
-        let detected_formats = formats.to_vec();
-        let kind = EntryKind::from_formats(mime, &detected_formats);
-        let entry = ClipboardEntry {
-            metadata: EntryMetadata {
-                hash: hash.clone(),
-                kind: kind.clone(),
-                detected_formats: detected_formats.clone(),
-                copy_count: 1,
-                first_seen: timestamp,
-                last_seen: timestamp,
-                byte_size: bytes.len() as u64,
-                sources: vec![],
-                summary: match flavor {
-                    ContentFlavor::Text(ref text) => Some(text.chars().take(120).collect()),
-                    ContentFlavor::File(ref path) => Some(path.display().to_string()),
-                    ContentFlavor::Binary => None,
-                },
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                relative_path: relative_item_path(&paths)?,
-                content_filename: paths
-                    .content
-                    .file_name()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "item.bin".into()),
-            },
-            content_path: match flavor {
-                ContentFlavor::Text(_) => ContentPath::Text(paths.content.clone()),
-                ContentFlavor::Binary => ContentPath::Binary(paths.content.clone()),
-                ContentFlavor::File(_) => ContentPath::FilePath(paths.content.clone()),
-            },
-        };
-        let json = serde_json::to_vec_pretty(&entry.metadata)?;
-        fs::write(&paths.metadata, json)?;
-        update_index(entry.metadata.clone());
-        Ok(entry)
-    } else {
-        let mut metadata: EntryMetadata = serde_json::from_slice(&fs::read(&paths.metadata)?)?;
-        metadata.copy_count += 1;
-        metadata.last_seen = timestamp;
-        metadata.kind = EntryKind::from_formats(mime, &metadata.detected_formats);
-        if let ContentFlavor::Text(ref text) = flavor {
-            metadata.summary = Some(text.chars().take(120).collect());
+
+    let outputs = handler
+        .to_files()
+        .context("Snapshot handler produced no file outputs")?;
+    anyhow::ensure!(!outputs.is_empty(), "Snapshot produced no files to persist");
+
+    for output in &outputs {
+        let dest = paths.item_dir.join(&output.filename);
+        if let Some(parent) = dest.parent() {
+            crate::fs::layout::ensure_dir(parent)?;
         }
-        fs::write(&paths.metadata, serde_json::to_vec_pretty(&metadata)?)?;
-        update_index(metadata.clone());
-        Ok(ClipboardEntry {
-            metadata,
-            content_path: match flavor {
-                ContentFlavor::Text(_) => ContentPath::Text(paths.content.clone()),
-                ContentFlavor::Binary => ContentPath::Binary(paths.content.clone()),
-                ContentFlavor::File(_) => ContentPath::FilePath(paths.content.clone()),
-            },
-        })
+        fs::write(&dest, &output.bytes)
+            .with_context(|| format!("Failed to write snapshot content to {}", dest.display()))?;
     }
+
+    let primary = outputs
+        .first()
+        .map(|f| f.filename.clone())
+        .unwrap_or_else(|| "item.bin".into());
+    let summary = snapshot
+        .summary
+        .clone()
+        .unwrap_or_else(|| handler.to_string());
+
+    let mut metadata = if paths.metadata.exists() {
+        let mut existing: EntryMetadata = serde_json::from_slice(&fs::read(&paths.metadata)?)?;
+        existing.copy_count += 1;
+        existing.last_seen = timestamp;
+        existing.byte_size = snapshot.total_size();
+        existing.summary = Some(summary.clone());
+        existing.detected_formats = handler.detected_formats().to_vec();
+        existing.sources = handler.sources();
+        existing.files = snapshot.sources();
+        existing.content_filename = primary.clone();
+        existing.extra = merge_metadata(existing.extra, handler.to_metadata());
+        existing
+    } else {
+        EntryMetadata {
+            hash: hash.clone(),
+            kind: snapshot.kind.clone(),
+            detected_formats: handler.detected_formats().to_vec(),
+            copy_count: 1,
+            first_seen: timestamp,
+            last_seen: timestamp,
+            byte_size: snapshot.total_size(),
+            sources: handler.sources(),
+            summary: Some(summary.clone()),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            relative_path: relative_item_path(&paths)?,
+            content_filename: primary.clone(),
+            files: snapshot.sources(),
+            extra: handler.to_metadata(),
+        }
+    };
+
+    metadata.extra = enrich_display(metadata.extra.clone(), &summary);
+    fs::write(&paths.metadata, serde_json::to_vec_pretty(&metadata)?)?;
+    update_index(metadata.clone());
+    Ok(metadata)
+}
+
+fn merge_metadata(existing: Value, new_value: Value) -> Value {
+    match (existing, new_value) {
+        (Value::Object(mut left), Value::Object(right)) => {
+            for (key, value) in right {
+                left.insert(key, value);
+            }
+            Value::Object(left)
+        }
+        (_, Value::Null) => Value::Null,
+        (_, replacement) => replacement,
+    }
+}
+
+fn enrich_display(extra: Value, summary: &str) -> Value {
+    let mut map = extra.as_object().cloned().unwrap_or_default();
+    map.insert("summary".into(), Value::String(summary.to_string()));
+    Value::Object(map)
 }
 
 fn relative_item_path(paths: &EntryPaths) -> Result<String> {
@@ -253,19 +220,11 @@ fn update_index(metadata: EntryMetadata) {
     );
 }
 
-fn summarize_kind(kind: EntryKind, byte_size: u64) -> String {
-    match kind {
-        EntryKind::Image => format!("[Image {:.1}KB]", byte_size as f64 / 1024.0),
-        EntryKind::File => format!("[File {:.1}KB]", byte_size as f64 / 1024.0),
-        EntryKind::Text => String::from("(text item)"),
-        EntryKind::Other => String::from("(binary item)"),
-    }
-}
-
 pub struct HistoryItem {
     pub summary: String,
     pub kind: String,
     pub metadata: EntryMetadata,
+    pub offset: usize,
 }
 
 pub fn history_stream(
@@ -276,7 +235,7 @@ pub fn history_stream(
     from: Option<OffsetDateTime>,
     to: Option<OffsetDateTime>,
 ) -> Result<impl Iterator<Item = HistoryItem>> {
-    let mut entries: Vec<_> = index
+    let mut sorted: Vec<_> = index
         .values()
         .filter(|record| match (&from, &to) {
             (Some(start), Some(end)) => record.last_seen >= *start && record.last_seen <= *end,
@@ -285,9 +244,10 @@ pub fn history_stream(
             (None, None) => true,
         })
         .collect();
-    entries.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+    sorted.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+    let offsets = build_offsets(&sorted);
 
-    let iter = entries
+    let iter = sorted
         .into_iter()
         .filter(move |record| match (&query, &record.summary) {
             (Some(q), Some(summary)) => summary.to_lowercase().contains(&q.to_lowercase()),
@@ -310,7 +270,7 @@ pub fn history_stream(
             (None, _) => true,
         })
         .take(limit.unwrap_or(usize::MAX))
-        .filter_map(|record| match load_metadata(&record.hash) {
+        .filter_map(move |record| match load_metadata(&record.hash) {
             Ok(metadata) => Some(HistoryItem {
                 summary: record
                     .summary
@@ -318,6 +278,7 @@ pub fn history_stream(
                     .unwrap_or_else(|| summarize_kind(record.kind.clone(), record.byte_size)),
                 kind: format!("{:?}", record.kind),
                 metadata,
+                offset: *offsets.get(&record.hash).unwrap_or(&0),
             }),
             Err(e) => {
                 eprintln!(
@@ -328,6 +289,27 @@ pub fn history_stream(
             }
         });
     Ok(iter)
+}
+
+fn build_offsets(records: &[&SearchIndexRecord]) -> HashMap<String, usize> {
+    records
+        .iter()
+        .enumerate()
+        .map(|(index, record)| (record.hash.clone(), index))
+        .collect()
+}
+
+fn summarize_kind(kind: EntryKind, byte_size: u64) -> String {
+    match kind {
+        EntryKind::Image => format!("Image [{}]", human_kb(byte_size)),
+        EntryKind::File => format!("File [{}]", human_kb(byte_size)),
+        EntryKind::Text => String::from("(text item)"),
+        EntryKind::Other => String::from("(binary item)"),
+    }
+}
+
+fn human_kb(size: u64) -> String {
+    format!("{:.1}KB", size as f64 / 1024.0)
 }
 
 pub fn load_metadata(hash: &str) -> Result<EntryMetadata> {
@@ -386,23 +368,15 @@ pub fn resolve_selector(index: &SearchIndex, selector: &str) -> Result<String> {
 
 pub fn copy_by_selector(_index: &SearchIndex, hash: &str) -> Result<()> {
     let metadata = load_metadata(hash)?;
-    let text_path = content_path(&metadata);
-    if let Some(path) = text_path {
-        let bytes = fs::read(&path)?;
-        crate::clipboard::mac::set_clipboard_from_bytes(&bytes, &metadata.detected_formats)
-    } else {
-        Err(anyhow!("Unsupported content type"))
-    }
-}
-
-fn content_path(metadata: &EntryMetadata) -> Option<PathBuf> {
-    let config = load_config().ok()?;
-    let data_dir = config.data_dir();
-    Some(
-        data_dir
-            .join(&metadata.relative_path)
-            .join(&metadata.content_filename),
-    )
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+    let handler = handler_from_metadata(&metadata, &item_dir)?;
+    let contents = handler.to_clipboard_item(&metadata, &item_dir)?;
+    let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+    ctx.set(contents)
+        .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+    Ok(())
 }
 
 pub fn delete_entry(hash: &str) -> Result<()> {

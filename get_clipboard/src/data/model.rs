@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use time::OffsetDateTime;
 use time::serde::timestamp;
@@ -19,6 +20,10 @@ pub struct EntryMetadata {
     pub version: String,
     pub relative_path: String,
     pub content_filename: String,
+    #[serde(default)]
+    pub files: Vec<String>,
+    #[serde(default)]
+    pub extra: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
