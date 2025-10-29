@@ -1,15 +1,23 @@
-use crate::clipboard::mac;
-use crate::data::model::{EntryKind, EntryMetadata};
+use crate::data::model::EntryKind;
 use crate::util::hash::sha256_bytes;
-use anyhow::{Context, Result, anyhow};
-use clipboard_rs::common::{ClipboardContent, RustImage, RustImageData};
-use image::{GenericImageView, ImageFormat, ImageReader};
-use objc2_app_kit::{NSPasteboard, NSPasteboardItem, NSPasteboardType};
+use anyhow::{Result, anyhow};
+use clipboard_rs::common::RustImage;
+use clipboard_rs::{Clipboard, ClipboardContext, ContentFormat};
+use objc2_app_kit::NSPasteboard;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use url::Url;
+
+#[derive(Debug, Clone)]
+enum FormatPreview {
+    Text(String),
+    Binary(Vec<u8>),
+    Empty,
+}
 
 #[derive(Debug, Clone)]
 pub struct FileOutput {
@@ -38,76 +46,115 @@ pub struct ClipboardSnapshot {
     pub summary: Option<String>,
     pub detected_formats: Vec<String>,
     pub extra: Value,
+    #[serde(skip)]
+    format_previews: Vec<(String, FormatPreview)>,
 }
 
 impl ClipboardSnapshot {
-    pub fn from_pasteboard(pasteboard: &NSPasteboard) -> Result<Option<Self>> {
-        let items = pasteboard
-            .pasteboardItems()
-            .map(|arr| arr.to_vec())
-            .unwrap_or_default();
-        let item = match items.into_iter().next() {
-            Some(value) => value,
-            None => return Ok(None),
-        };
+    pub fn from_pasteboard(_pasteboard: &NSPasteboard) -> Result<Option<Self>> {
+        let ctx =
+            ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+        let available_formats = ctx
+            .available_formats()
+            .map_err(|e| anyhow!("Failed to list clipboard formats: {e}"))?;
+        if available_formats.is_empty() {
+            return Ok(None);
+        }
 
         let mut detected = Vec::new();
+        let mut format_previews: Vec<(String, FormatPreview)> = Vec::new();
         let mut text = None;
         let mut html = None;
         let mut rtf = None;
         let mut image_bytes = None;
         let mut image_mime = None;
         let mut files: Vec<FileRecord> = Vec::new();
+        let mut seen_paths: HashSet<PathBuf> = HashSet::new();
 
-        for ty in item.types().iter() {
-            let ty_string = ty.to_string();
-            if !detected.contains(&ty_string) {
-                detected.push(ty_string.clone());
+        for format in &available_formats {
+            if !detected.contains(format) {
+                detected.push(format.clone());
             }
-            match ty_string.as_str() {
-                s if s.contains("public.utf8-plain-text") || s.contains("public.text") => {
-                    if let Some(value) = read_string(&item, ty.as_ref()) {
-                        text = Some(value);
+
+            let preview = match ctx.get_buffer(format) {
+                Ok(buffer) if buffer.is_empty() => FormatPreview::Empty,
+                Ok(buffer) => {
+                    if let Ok(string_data) = String::from_utf8(buffer.clone()) {
+                        FormatPreview::Text(string_data)
+                    } else {
+                        FormatPreview::Binary(buffer)
                     }
                 }
-                s if s.contains("public.file-url") => {
-                    if let Some(raw_urls) = read_string(&item, ty.as_ref()) {
-                        for path in mac::parse_file_urls(&raw_urls) {
-                            process_file_path(&path, &mut files);
+                Err(_) => FormatPreview::Empty,
+            };
+
+            format_previews.push((format.clone(), preview));
+        }
+
+        if ctx.has(ContentFormat::Text) {
+            if let Ok(value) = ctx.get_text() {
+                if !value.is_empty() {
+                    text = Some(value);
+                }
+            }
+        }
+
+        if ctx.has(ContentFormat::Html) {
+            if let Ok(value) = ctx.get_html() {
+                if !value.is_empty() {
+                    html = Some(value);
+                }
+            }
+        }
+
+        if ctx.has(ContentFormat::Rtf) {
+            if let Ok(value) = ctx.get_rich_text() {
+                if !value.is_empty() {
+                    rtf = Some(value.into_bytes());
+                }
+            }
+        }
+
+        if ctx.has(ContentFormat::Image) {
+            if let Ok(image_data) = ctx.get_image() {
+                match image_data.to_png() {
+                    Ok(png) => {
+                        let bytes = png.get_bytes().to_vec();
+                        if !bytes.is_empty() {
+                            image_bytes = Some(bytes);
+                            image_mime = Some("image/png".to_string());
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to convert clipboard image to PNG: {err}");
+                    }
+                }
+            }
+        }
+
+        if ctx.has(ContentFormat::Files) {
+            if let Ok(raw_files) = ctx.get_files() {
+                for reference in raw_files {
+                    for entry in reference
+                        .split('\n')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        if let Some(path) = parse_clipboard_file_reference(entry) {
+                            if seen_paths.insert(path.clone()) {
+                                process_file_path(&path, &mut files);
+                            }
                         }
                     }
                 }
-                s if s.contains("public.png") => {
-                    if let Some(bytes) = read_data(&item, ty.as_ref()) {
-                        image_bytes = Some(bytes);
-                        image_mime = Some("image/png".to_string());
-                    }
-                }
-                s if s.contains("public.tiff") => {
-                    if let Some(bytes) = read_data(&item, ty.as_ref()) {
-                        image_bytes = Some(bytes);
-                        image_mime = Some("image/tiff".to_string());
-                    }
-                }
-                s if s.contains("text/html") => {
-                    if let Some(content) = read_string(&item, ty.as_ref()) {
-                        html = Some(content);
-                    }
-                }
-                s if s.contains("public.rtf") => {
-                    if let Some(bytes) = read_data(&item, ty.as_ref()) {
-                        rtf = Some(bytes);
-                    }
-                }
-                _ => {}
             }
         }
 
         if files.is_empty()
-            && text.is_none()
-            && html.is_none()
-            && image_bytes.is_none()
-            && rtf.is_none()
+            && text.as_ref().map_or(true, |s| s.is_empty())
+            && html.as_ref().map_or(true, |s| s.is_empty())
+            && rtf.as_ref().map_or(true, |s| s.is_empty())
+            && image_bytes.as_ref().map_or(true, |s| s.is_empty())
         {
             return Ok(None);
         }
@@ -151,6 +198,7 @@ impl ClipboardSnapshot {
             summary,
             detected_formats: detected,
             extra: Value::Null,
+            format_previews,
         }))
     }
 
@@ -178,19 +226,6 @@ impl ClipboardSnapshot {
         sha256_bytes(&hasher.finalize())
     }
 
-    pub fn classify(&self) -> Result<SnapshotHandler> {
-        if !self.files.is_empty() {
-            return FileHandler::from_snapshot(self).map(SnapshotHandler::File);
-        }
-        if let Some(bytes) = &self.image_bytes {
-            return ImageHandler::from_snapshot(self, bytes.clone()).map(SnapshotHandler::Image);
-        }
-        if self.text.is_some() || self.html.is_some() {
-            return TextHandler::from_snapshot(self).map(SnapshotHandler::Text);
-        }
-        OtherHandler::from_snapshot(self).map(SnapshotHandler::Other)
-    }
-
     pub fn sources(&self) -> Vec<String> {
         self.files
             .iter()
@@ -215,552 +250,72 @@ impl ClipboardSnapshot {
         total += self.files.iter().map(|f| f.size).sum::<u64>();
         total
     }
-}
 
-pub enum SnapshotHandler {
-    Text(TextHandler),
-    Image(ImageHandler),
-    File(FileHandler),
-    Other(OtherHandler),
-}
+    pub fn log_format_details(&self) {
+        eprintln!("\n=== Clipboard Change Detected ===");
+        eprintln!("All formats ({} total):", self.format_previews.len());
 
-pub trait ClipboardClass {
-    fn to_string(&self) -> String;
-    fn to_files(&self) -> Result<Vec<FileOutput>>;
-    fn to_metadata(&self) -> Value;
-    fn to_clipboard_item(
-        &self,
-        metadata: &EntryMetadata,
-        base_dir: &Path,
-    ) -> Result<Vec<ClipboardContent>>;
-    fn detected_formats(&self) -> &[String];
-    fn sources(&self) -> Vec<String>;
-    fn extra_files(&self) -> Vec<FileOutput> {
-        Vec::new()
-    }
-}
-
-impl ClipboardClass for SnapshotHandler {
-    fn to_string(&self) -> String {
-        match self {
-            SnapshotHandler::Text(handler) => handler.to_string(),
-            SnapshotHandler::Image(handler) => handler.to_string(),
-            SnapshotHandler::File(handler) => handler.to_string(),
-            SnapshotHandler::Other(handler) => handler.to_string(),
-        }
-    }
-
-    fn to_files(&self) -> Result<Vec<FileOutput>> {
-        match self {
-            SnapshotHandler::Text(handler) => handler.to_files(),
-            SnapshotHandler::Image(handler) => handler.to_files(),
-            SnapshotHandler::File(handler) => handler.to_files(),
-            SnapshotHandler::Other(handler) => handler.to_files(),
-        }
-    }
-
-    fn to_metadata(&self) -> Value {
-        match self {
-            SnapshotHandler::Text(handler) => handler.to_metadata(),
-            SnapshotHandler::Image(handler) => handler.to_metadata(),
-            SnapshotHandler::File(handler) => handler.to_metadata(),
-            SnapshotHandler::Other(handler) => handler.to_metadata(),
-        }
-    }
-
-    fn to_clipboard_item(
-        &self,
-        metadata: &EntryMetadata,
-        base_dir: &Path,
-    ) -> Result<Vec<ClipboardContent>> {
-        match self {
-            SnapshotHandler::Text(handler) => handler.to_clipboard_item(metadata, base_dir),
-            SnapshotHandler::Image(handler) => handler.to_clipboard_item(metadata, base_dir),
-            SnapshotHandler::File(handler) => handler.to_clipboard_item(metadata, base_dir),
-            SnapshotHandler::Other(handler) => handler.to_clipboard_item(metadata, base_dir),
-        }
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        match self {
-            SnapshotHandler::Text(handler) => handler.detected_formats(),
-            SnapshotHandler::Image(handler) => handler.detected_formats(),
-            SnapshotHandler::File(handler) => handler.detected_formats(),
-            SnapshotHandler::Other(handler) => handler.detected_formats(),
-        }
-    }
-
-    fn sources(&self) -> Vec<String> {
-        match self {
-            SnapshotHandler::Text(handler) => handler.sources(),
-            SnapshotHandler::Image(handler) => handler.sources(),
-            SnapshotHandler::File(handler) => handler.sources(),
-            SnapshotHandler::Other(handler) => handler.sources(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TextHandler {
-    content: String,
-    is_html: bool,
-    detected_formats: Vec<String>,
-}
-
-impl TextHandler {
-    fn from_snapshot(snapshot: &ClipboardSnapshot) -> Result<Self> {
-        if let Some(text) = &snapshot.text {
-            Ok(Self {
-                content: text.clone(),
-                is_html: false,
-                detected_formats: snapshot.detected_formats.clone(),
-            })
-        } else if let Some(html) = &snapshot.html {
-            Ok(Self {
-                content: html.clone(),
-                is_html: true,
-                detected_formats: snapshot.detected_formats.clone(),
-            })
-        } else {
-            Err(anyhow!("No textual content available"))
-        }
-    }
-
-    fn extension(&self) -> &str {
-        if self.is_html { "html" } else { "txt" }
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        &self.detected_formats
-    }
-
-    fn sources(&self) -> Vec<String> {
-        Vec::new()
-    }
-}
-
-impl ClipboardClass for TextHandler {
-    fn to_string(&self) -> String {
-        truncate_summary(&self.content)
-    }
-
-    fn to_files(&self) -> Result<Vec<FileOutput>> {
-        Ok(vec![FileOutput {
-            filename: format!("item.{}", self.extension()),
-            bytes: self.content.clone().into_bytes(),
-        }])
-    }
-
-    fn to_metadata(&self) -> Value {
-        json!({
-            "type": "text",
-            "extension": self.extension(),
-            "length": self.content.chars().count(),
-        })
-    }
-
-    fn to_clipboard_item(
-        &self,
-        _metadata: &EntryMetadata,
-        _base_dir: &Path,
-    ) -> Result<Vec<ClipboardContent>> {
-        let mut contents = Vec::new();
-        contents.push(ClipboardContent::Text(self.content.clone()));
-        if self.is_html {
-            contents.push(ClipboardContent::Html(self.content.clone()));
-        }
-        Ok(contents)
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        TextHandler::detected_formats(self)
-    }
-
-    fn sources(&self) -> Vec<String> {
-        TextHandler::sources(self)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ImageHandler {
-    bytes: Vec<u8>,
-    mime: String,
-    extension: String,
-    width: u32,
-    height: u32,
-    detected_formats: Vec<String>,
-}
-
-impl ImageHandler {
-    fn from_snapshot(snapshot: &ClipboardSnapshot, bytes: Vec<u8>) -> Result<Self> {
-        let format = image::guess_format(&bytes).unwrap_or(ImageFormat::Png);
-        let extension = match format {
-            ImageFormat::Png => "png".to_string(),
-            ImageFormat::Jpeg => "jpg".to_string(),
-            ImageFormat::Gif => "gif".to_string(),
-            ImageFormat::Tiff => "tiff".to_string(),
-            _ => "bin".to_string(),
-        };
-        let mime = snapshot
-            .image_mime
-            .clone()
-            .or_else(|| mime_for_extension(&extension))
-            .unwrap_or_else(|| "image/png".into());
-        let img = ImageReader::new(std::io::Cursor::new(&bytes))
-            .with_guessed_format()
-            .context("Unable to read image data")?
-            .decode()
-            .context("Unable to decode image")?;
-        let (width, height) = img.dimensions();
-        Ok(Self {
-            bytes,
-            mime,
-            extension,
-            width,
-            height,
-            detected_formats: snapshot.detected_formats.clone(),
-        })
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        &self.detected_formats
-    }
-
-    fn sources(&self) -> Vec<String> {
-        Vec::new()
-    }
-}
-
-impl ClipboardClass for ImageHandler {
-    fn to_string(&self) -> String {
-        format!(
-            "Image {}x{} [{} - {}]",
-            self.width,
-            self.height,
-            human_kb(self.bytes.len() as u64),
-            self.mime
-        )
-    }
-
-    fn to_files(&self) -> Result<Vec<FileOutput>> {
-        Ok(vec![FileOutput {
-            filename: format!("item.{}", self.extension),
-            bytes: self.bytes.clone(),
-        }])
-    }
-
-    fn to_metadata(&self) -> Value {
-        json!({
-            "type": "image",
-            "mime": self.mime,
-            "extension": self.extension,
-            "width": self.width,
-            "height": self.height,
-            "byte_size": self.bytes.len(),
-        })
-    }
-
-    fn to_clipboard_item(
-        &self,
-        metadata: &EntryMetadata,
-        base_dir: &Path,
-    ) -> Result<Vec<ClipboardContent>> {
-        let item_path = base_dir.join(&metadata.content_filename);
-        let temp_path =
-            std::env::temp_dir().join(format!("clipboard-{}.{}", metadata.hash, self.extension));
-        fs::copy(&item_path, &temp_path).with_context(|| {
-            format!(
-                "Failed to copy image data to temp file {}",
-                temp_path.display()
-            )
-        })?;
-        let image_data = RustImageData::from_path(temp_path.to_string_lossy().as_ref())
-            .map_err(|e| anyhow!("Failed to load image for clipboard: {e}"))?;
-        fs::remove_file(&temp_path).ok();
-        Ok(vec![ClipboardContent::Image(image_data)])
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        ImageHandler::detected_formats(self)
-    }
-
-    fn sources(&self) -> Vec<String> {
-        ImageHandler::sources(self)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FileHandler {
-    files: Vec<FileRecord>,
-    detected_formats: Vec<String>,
-}
-
-impl FileHandler {
-    fn from_snapshot(snapshot: &ClipboardSnapshot) -> Result<Self> {
-        if snapshot.files.is_empty() {
-            return Err(anyhow!("No files available"));
-        }
-        Ok(Self {
-            files: snapshot.files.clone(),
-            detected_formats: snapshot.detected_formats.clone(),
-        })
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        &self.detected_formats
-    }
-
-    fn sources(&self) -> Vec<String> {
-        self.files
-            .iter()
-            .map(|f| f.source_path.display().to_string())
-            .collect()
-    }
-}
-
-impl ClipboardClass for FileHandler {
-    fn to_string(&self) -> String {
-        format_file_summary(&self.files)
-    }
-
-    fn to_files(&self) -> Result<Vec<FileOutput>> {
-        let mut lines = Vec::new();
-        for record in &self.files {
-            let mime = record.mime.clone().unwrap_or_else(|| "file".into());
-            lines.push(format!(
-                "{} ({} - {})",
-                record.source_path.display(),
-                human_kb(record.size),
-                mime
-            ));
-        }
-        Ok(vec![FileOutput {
-            filename: "filepath.txt".into(),
-            bytes: lines.join("\n").into_bytes(),
-        }])
-    }
-
-    fn to_metadata(&self) -> Value {
-        json!({
-            "type": "file",
-            "entries": self.files.iter().map(|f| json!({
-                "path": f.source_path,
-                "size": f.size,
-                "mime": f.mime,
-                "name": f.name,
-                "extension": f.extension,
-            })).collect::<Vec<_>>()
-        })
-    }
-
-    fn to_clipboard_item(
-        &self,
-        metadata: &EntryMetadata,
-        _base_dir: &Path,
-    ) -> Result<Vec<ClipboardContent>> {
-        let urls: Vec<String> = metadata
-            .files
-            .iter()
-            .map(|path| format!("file://{}", path))
-            .collect();
-        if urls.is_empty() {
-            return Err(anyhow!("No file paths recorded"));
-        }
-        Ok(vec![ClipboardContent::Files(urls)])
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        FileHandler::detected_formats(self)
-    }
-
-    fn sources(&self) -> Vec<String> {
-        FileHandler::sources(self)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OtherHandler {
-    bytes: Vec<u8>,
-    mime: String,
-    detected_formats: Vec<String>,
-}
-
-impl OtherHandler {
-    fn from_snapshot(snapshot: &ClipboardSnapshot) -> Result<Self> {
-        if let Some(rtf) = &snapshot.rtf {
-            return Ok(Self {
-                bytes: rtf.clone(),
-                mime: "text/rtf".into(),
-                detected_formats: snapshot.detected_formats.clone(),
-            });
-        }
-        Err(anyhow!("Unsupported clipboard content"))
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        &self.detected_formats
-    }
-
-    fn sources(&self) -> Vec<String> {
-        Vec::new()
-    }
-}
-
-impl ClipboardClass for OtherHandler {
-    fn to_string(&self) -> String {
-        format!("Binary item [{}]", human_kb(self.bytes.len() as u64))
-    }
-
-    fn to_files(&self) -> Result<Vec<FileOutput>> {
-        Ok(vec![FileOutput {
-            filename: "item.bin".into(),
-            bytes: self.bytes.clone(),
-        }])
-    }
-
-    fn to_metadata(&self) -> Value {
-        json!({
-            "type": "other",
-            "mime": self.mime,
-            "byte_size": self.bytes.len(),
-        })
-    }
-
-    fn to_clipboard_item(
-        &self,
-        _metadata: &EntryMetadata,
-        _base_dir: &Path,
-    ) -> Result<Vec<ClipboardContent>> {
-        Ok(vec![ClipboardContent::Other(
-            self.mime.clone(),
-            self.bytes.clone(),
-        )])
-    }
-
-    fn detected_formats(&self) -> &[String] {
-        OtherHandler::detected_formats(self)
-    }
-
-    fn sources(&self) -> Vec<String> {
-        OtherHandler::sources(self)
-    }
-}
-
-pub fn handler_from_metadata(metadata: &EntryMetadata, item_dir: &Path) -> Result<SnapshotHandler> {
-    let typ = metadata
-        .extra
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("other");
-    match typ {
-        "text" => {
-            let content = fs::read_to_string(item_dir.join(&metadata.content_filename))
-                .with_context(|| format!("Failed to read {}", metadata.content_filename))?;
-            let is_html = metadata
-                .extra
-                .get("extension")
-                .and_then(Value::as_str)
-                .unwrap_or("txt")
-                == "html";
-            Ok(SnapshotHandler::Text(TextHandler {
-                content,
-                is_html,
-                detected_formats: metadata.detected_formats.clone(),
-            }))
-        }
-        "image" => {
-            let bytes = fs::read(item_dir.join(&metadata.content_filename))
-                .with_context(|| format!("Failed to read {}", metadata.content_filename))?;
-            let handler = ImageHandler {
-                bytes,
-                mime: metadata
-                    .extra
-                    .get("mime")
-                    .and_then(Value::as_str)
-                    .unwrap_or("image/png")
-                    .to_string(),
-                extension: metadata
-                    .extra
-                    .get("extension")
-                    .and_then(Value::as_str)
-                    .unwrap_or("png")
-                    .to_string(),
-                width: metadata
-                    .extra
-                    .get("width")
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default() as u32,
-                height: metadata
-                    .extra
-                    .get("height")
-                    .and_then(Value::as_u64)
-                    .unwrap_or_default() as u32,
-                detected_formats: metadata.detected_formats.clone(),
-            };
-            Ok(SnapshotHandler::Image(handler))
-        }
-        "file" => {
-            let mut records = Vec::new();
-            if let Some(entries) = metadata.extra.get("entries").and_then(Value::as_array) {
-                for entry in entries {
-                    let path = entry
-                        .get("path")
-                        .and_then(Value::as_str)
-                        .map(PathBuf::from)
-                        .unwrap_or_default();
-                    let name = entry
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                        .unwrap_or_else(|| {
-                            path.file_name()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_default()
-                        });
-                    records.push(FileRecord {
-                        name,
-                        extension: entry
-                            .get("extension")
-                            .and_then(Value::as_str)
-                            .map(String::from),
-                        size: entry
-                            .get("size")
-                            .and_then(Value::as_u64)
-                            .unwrap_or_default(),
-                        source_path: path,
-                        mime: entry.get("mime").and_then(Value::as_str).map(String::from),
-                    });
+        for (format_name, preview) in &self.format_previews {
+            match preview {
+                FormatPreview::Text(text) => {
+                    let preview = self.truncate_preview(text, 120);
+                    eprintln!("  • {}: \"{}\"", format_name, preview);
+                }
+                FormatPreview::Binary(bytes) => {
+                    if is_likely_text_binary(bytes) {
+                        let text = String::from_utf8_lossy(bytes);
+                        let preview = self.truncate_preview(&text, 120);
+                        eprintln!(
+                            "  • {}: \"{}\" ({} bytes)",
+                            format_name,
+                            preview,
+                            bytes.len()
+                        );
+                    } else {
+                        eprintln!("  • {}: <binary data, {} bytes>", format_name, bytes.len());
+                    }
+                }
+                FormatPreview::Empty => {
+                    eprintln!("  • {}: <empty>", format_name);
                 }
             }
-            Ok(SnapshotHandler::File(FileHandler {
-                files: records,
-                detected_formats: metadata.detected_formats.clone(),
-            }))
         }
-        _ => {
-            let bytes = fs::read(item_dir.join(&metadata.content_filename))
-                .with_context(|| format!("Failed to read {}", metadata.content_filename))?;
-            let mime = metadata
-                .extra
-                .get("mime")
-                .and_then(Value::as_str)
-                .unwrap_or("application/octet-stream")
-                .to_string();
-            Ok(SnapshotHandler::Other(OtherHandler {
-                bytes,
-                mime,
-                detected_formats: metadata.detected_formats.clone(),
-            }))
+
+        eprintln!("================================\n");
+    }
+
+    fn truncate_preview(&self, content: &str, max_len: usize) -> String {
+        let normalized = content.trim().replace('\n', " ").replace('\r', " ");
+        let mut chars = normalized.chars();
+        let char_count = normalized.chars().count();
+
+        if char_count > max_len {
+            let take_len = max_len.saturating_sub(3);
+            let mut truncated = String::new();
+            for ch in chars.by_ref().take(take_len) {
+                truncated.push(ch);
+            }
+            truncated.push_str("...");
+            truncated
+        } else {
+            normalized
         }
     }
 }
 
-fn read_string(item: &NSPasteboardItem, ty: &NSPasteboardType) -> Option<String> {
-    unsafe { item.stringForType(ty).map(|s| s.to_string()) }
-}
+fn parse_clipboard_file_reference(raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
 
-fn read_data(item: &NSPasteboardItem, ty: &NSPasteboardType) -> Option<Vec<u8>> {
-    unsafe { item.dataForType(ty).map(|d| d.to_vec()) }
+    if let Ok(url) = Url::parse(trimmed) {
+        if url.scheme() == "file" {
+            return url.to_file_path().ok();
+        }
+    }
+
+    Some(PathBuf::from(trimmed))
 }
 
 fn process_file_path(path: &Path, files: &mut Vec<FileRecord>) {
@@ -789,11 +344,11 @@ fn is_temporary_file(path: &Path) -> bool {
     path_str.contains("/.file/id=") || path_str.starts_with("/.file/") || path_str.contains("/tmp/")
 }
 
-fn human_kb(size: u64) -> String {
+pub(crate) fn human_kb(size: u64) -> String {
     format!("{:.1} KB", size as f64 / 1024.0)
 }
 
-fn truncate_summary(input: &str) -> String {
+pub(crate) fn truncate_summary(input: &str) -> String {
     let mut snippet = input.trim().replace('\n', " ").replace('\r', " ");
     if snippet.len() > 120 {
         snippet.truncate(117);
@@ -802,7 +357,7 @@ fn truncate_summary(input: &str) -> String {
     snippet
 }
 
-fn format_file_summary(files: &[FileRecord]) -> String {
+pub(crate) fn format_file_summary(files: &[FileRecord]) -> String {
     files
         .iter()
         .map(|f| {
@@ -818,6 +373,19 @@ fn format_file_summary(files: &[FileRecord]) -> String {
         .join(", ")
 }
 
-fn mime_for_extension(ext: &str) -> Option<String> {
+pub(crate) fn mime_for_extension(ext: &str) -> Option<String> {
     mime_guess::from_ext(ext).first_raw().map(String::from)
+}
+
+fn is_likely_text_binary(bytes: &[u8]) -> bool {
+    if bytes.is_empty() {
+        return false;
+    }
+    let sample_size = bytes.len().min(512);
+    let sample = &bytes[..sample_size];
+    let non_printable = sample
+        .iter()
+        .filter(|&&b| b < 32 && b != 9 && b != 10 && b != 13)
+        .count();
+    non_printable < sample_size / 10
 }

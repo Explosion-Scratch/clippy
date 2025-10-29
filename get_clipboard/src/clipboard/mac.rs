@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 use objc2::rc::autoreleasepool;
 use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString, NSPasteboardTypeTIFF};
 use objc2_foundation::{NSData, NSString};
-use std::path::PathBuf;
 
 pub fn assert_macos() -> Result<()> {
     if cfg!(target_os = "macos") {
@@ -10,18 +9,6 @@ pub fn assert_macos() -> Result<()> {
     } else {
         Err(anyhow!("get_clipboard supports macOS only"))
     }
-}
-
-pub fn parse_file_urls(raw: &str) -> Vec<PathBuf> {
-    raw.split('\n')
-        .filter_map(|line| line.strip_prefix("file://"))
-        .map(|path| {
-            percent_encoding::percent_decode_str(path)
-                .decode_utf8_lossy()
-                .to_string()
-        })
-        .map(PathBuf::from)
-        .collect()
 }
 
 pub fn set_clipboard_from_bytes(bytes: &[u8], formats: &[String]) -> Result<()> {

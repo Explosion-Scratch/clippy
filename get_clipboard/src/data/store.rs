@@ -1,4 +1,4 @@
-use crate::clipboard::{ClipboardClass, ClipboardSnapshot, handler_from_metadata};
+use crate::clipboard::{ClipboardSnapshot, FileOutput, plugins};
 use crate::config::{ensure_data_dir, load_config};
 use crate::data::model::{EntryKind, EntryMetadata, SearchIndex, SearchIndexRecord};
 use crate::fs::{EntryPaths, entry_paths};
@@ -7,8 +7,8 @@ use anyhow::{Context, Result, anyhow};
 use clipboard_rs::{Clipboard, ClipboardContext};
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
-use serde_json::{self, Value};
-use std::collections::HashMap;
+use serde_json::{self, Map, Value};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -110,16 +110,23 @@ fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>> {
 }
 
 pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
-    let handler = snapshot.classify()?;
+    let plugin_captures = plugins::capture_plugins(&snapshot);
+    anyhow::ensure!(
+        !plugin_captures.is_empty(),
+        "No clipboard plugins matched snapshot"
+    );
+
     let hash = snapshot.compute_hash();
     let config = load_config()?;
     let timestamp = time::now();
     let paths = entry_paths(&config, &hash, timestamp, None)?;
     crate::fs::layout::ensure_dir(&paths.item_dir)?;
 
-    let outputs = handler
-        .to_files()
-        .context("Snapshot handler produced no file outputs")?;
+    let outputs: Vec<FileOutput> = plugin_captures
+        .iter()
+        .flat_map(|capture| capture.files.clone())
+        .collect();
+
     anyhow::ensure!(!outputs.is_empty(), "Snapshot produced no files to persist");
 
     for output in &outputs {
@@ -131,69 +138,97 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
             .with_context(|| format!("Failed to write snapshot content to {}", dest.display()))?;
     }
 
-    let primary = outputs
+    let prioritized = plugins::prioritized_capture(&plugin_captures).unwrap_or(&plugin_captures[0]);
+
+    let primary = prioritized
+        .files
         .first()
         .map(|f| f.filename.clone())
+        .or_else(|| outputs.first().map(|f| f.filename.clone()))
         .unwrap_or_else(|| "item.bin".into());
-    let summary = snapshot
+
+    let summary = prioritized
         .summary
         .clone()
-        .unwrap_or_else(|| handler.to_string());
+        .or_else(|| snapshot.summary.clone())
+        .unwrap_or_else(|| prioritized.plugin_type.as_str().to_string());
 
-    let mut metadata = if paths.metadata.exists() {
+    let total_byte_size: u64 = plugin_captures
+        .iter()
+        .map(|capture| capture.byte_size)
+        .sum();
+
+    let mut source_set = HashSet::new();
+    let mut combined_sources = Vec::new();
+    for capture in &plugin_captures {
+        for source in &capture.sources {
+            if source_set.insert(source.clone()) {
+                combined_sources.push(source.clone());
+            }
+        }
+    }
+    for source in snapshot.sources() {
+        if source_set.insert(source.clone()) {
+            combined_sources.push(source);
+        }
+    }
+
+    let plugin_order = plugins::plugin_order(&plugin_captures);
+    let mut plugin_meta_map = Map::new();
+    for capture in &plugin_captures {
+        plugin_meta_map.insert(capture.plugin_id.to_string(), capture.metadata.clone());
+    }
+
+    let mut extra_root = Map::new();
+    extra_root.insert("plugins".into(), Value::Object(plugin_meta_map));
+    extra_root.insert(
+        "pluginOrder".into(),
+        Value::Array(plugin_order.into_iter().map(Value::String).collect()),
+    );
+    let extra = Value::Object(extra_root);
+
+    let entry_kind = match prioritized.plugin_type {
+        plugins::PluginType::File => EntryKind::File,
+        plugins::PluginType::Image => EntryKind::Image,
+        plugins::PluginType::Text | plugins::PluginType::Html | plugins::PluginType::Rtf => {
+            EntryKind::Text
+        }
+    };
+
+    let metadata = if paths.metadata.exists() {
         let mut existing: EntryMetadata = serde_json::from_slice(&fs::read(&paths.metadata)?)?;
         existing.copy_count += 1;
         existing.last_seen = timestamp;
-        existing.byte_size = snapshot.total_size();
+        existing.byte_size = total_byte_size;
         existing.summary = Some(summary.clone());
-        existing.detected_formats = handler.detected_formats().to_vec();
-        existing.sources = handler.sources();
-        existing.files = snapshot.sources();
+        existing.detected_formats = snapshot.detected_formats.clone();
+        existing.sources = combined_sources.clone();
+        existing.files = combined_sources.clone();
         existing.content_filename = primary.clone();
-        existing.extra = merge_metadata(existing.extra, handler.to_metadata());
+        existing.extra = extra.clone();
+        existing.kind = entry_kind;
         existing
     } else {
         EntryMetadata {
             hash: hash.clone(),
-            kind: snapshot.kind.clone(),
-            detected_formats: handler.detected_formats().to_vec(),
+            kind: entry_kind,
+            detected_formats: snapshot.detected_formats.clone(),
             copy_count: 1,
             first_seen: timestamp,
             last_seen: timestamp,
-            byte_size: snapshot.total_size(),
-            sources: handler.sources(),
+            byte_size: total_byte_size,
+            sources: combined_sources.clone(),
             summary: Some(summary.clone()),
             version: env!("CARGO_PKG_VERSION").to_string(),
             relative_path: relative_item_path(&paths)?,
             content_filename: primary.clone(),
-            files: snapshot.sources(),
-            extra: handler.to_metadata(),
+            files: combined_sources.clone(),
+            extra: extra.clone(),
         }
     };
-
-    metadata.extra = enrich_display(metadata.extra.clone(), &summary);
     fs::write(&paths.metadata, serde_json::to_vec_pretty(&metadata)?)?;
     update_index(metadata.clone());
     Ok(metadata)
-}
-
-fn merge_metadata(existing: Value, new_value: Value) -> Value {
-    match (existing, new_value) {
-        (Value::Object(mut left), Value::Object(right)) => {
-            for (key, value) in right {
-                left.insert(key, value);
-            }
-            Value::Object(left)
-        }
-        (_, Value::Null) => Value::Null,
-        (_, replacement) => replacement,
-    }
-}
-
-fn enrich_display(extra: Value, summary: &str) -> Value {
-    let mut map = extra.as_object().cloned().unwrap_or_default();
-    map.insert("summary".into(), Value::String(summary.to_string()));
-    Value::Object(map)
 }
 
 fn relative_item_path(paths: &EntryPaths) -> Result<String> {
@@ -371,8 +406,7 @@ pub fn copy_by_selector(_index: &SearchIndex, hash: &str) -> Result<()> {
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
     let item_dir = data_dir.join(&metadata.relative_path);
-    let handler = handler_from_metadata(&metadata, &item_dir)?;
-    let contents = handler.to_clipboard_item(&metadata, &item_dir)?;
+    let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
     let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
     ctx.set(contents)
         .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;

@@ -28,21 +28,26 @@ pub fn run_watch(max_iterations: Option<u64>) -> Result<()> {
             autoreleasepool(|_| {
                 let pasteboard = NSPasteboard::generalPasteboard();
                 match ClipboardSnapshot::from_pasteboard(&pasteboard) {
-                    Ok(Some(snapshot)) => match store_snapshot(snapshot) {
-                        Ok(metadata) => {
-                            let summary = metadata
-                                .summary
-                                .clone()
-                                .unwrap_or_else(|| "(no summary)".into());
-                            eprintln!(
-                                "Stored clipboard item: {} [{} copies]",
-                                summary, metadata.copy_count
-                            );
+                    Ok(Some(snapshot)) => {
+                        // Log all detected formats with previews
+                        snapshot.log_format_details();
+
+                        match store_snapshot(snapshot) {
+                            Ok(metadata) => {
+                                let summary = metadata
+                                    .summary
+                                    .clone()
+                                    .unwrap_or_else(|| "(no summary)".into());
+                                eprintln!(
+                                    "Stored clipboard item: {} [{} copies]",
+                                    summary, metadata.copy_count
+                                );
+                            }
+                            Err(err) => {
+                                eprintln!("Failed to persist clipboard item: {err:?}");
+                            }
                         }
-                        Err(err) => {
-                            eprintln!("Failed to persist clipboard item: {err:?}");
-                        }
-                    },
+                    }
                     Ok(None) => {
                         eprintln!("Clipboard change had no supported content");
                     }
