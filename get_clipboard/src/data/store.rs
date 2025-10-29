@@ -5,12 +5,14 @@ use crate::fs::{EntryPaths, entry_paths};
 use crate::util::time::{self, OffsetDateTime};
 use anyhow::{Context, Result, anyhow};
 use clipboard_rs::{Clipboard, ClipboardContext};
+use image::io::Reader as ImageReader;
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use serde_json::{self, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 static INDEX_CACHE: OnceCell<RwLock<SearchIndex>> = OnceCell::new();
 
@@ -262,11 +264,70 @@ pub struct HistoryItem {
     pub offset: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SelectionFilter {
+    pub include_text: bool,
+    pub include_image: bool,
+    pub include_file: bool,
+    pub include_other: bool,
+    pub require_html: bool,
+    pub require_rtf: bool,
+}
+
+impl SelectionFilter {
+    pub fn matches(&self, record: &SearchIndexRecord) -> bool {
+        let kind_match =
+            if self.include_text || self.include_image || self.include_file || self.include_other {
+                (self.include_text && record.kind == EntryKind::Text)
+                    || (self.include_image && record.kind == EntryKind::Image)
+                    || (self.include_file && record.kind == EntryKind::File)
+                    || (self.include_other && record.kind == EntryKind::Other)
+            } else {
+                true
+            };
+
+        let html_match = if self.require_html {
+            contains_format(&record.detected_formats, "html")
+        } else {
+            true
+        };
+
+        let rtf_match = if self.require_rtf {
+            contains_format(&record.detected_formats, "rtf")
+        } else {
+            true
+        };
+
+        kind_match && html_match && rtf_match
+    }
+}
+
+fn contains_format(formats: &[String], needle: &str) -> bool {
+    formats
+        .iter()
+        .any(|f| f.to_ascii_lowercase().contains(needle))
+}
+
+#[derive(Debug, Clone)]
+pub struct FileDescriptor {
+    pub filename: String,
+    pub path: PathBuf,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ItemPreview {
+    pub content_path: Option<PathBuf>,
+    pub text: Option<String>,
+    pub files: Vec<FileDescriptor>,
+    pub dimensions: Option<(u32, u32)>,
+}
+
 pub fn history_stream(
     index: &SearchIndex,
     limit: Option<usize>,
     query: Option<String>,
-    kind: Option<crate::cli::args::EntryKind>,
+    filter: &SelectionFilter,
     from: Option<OffsetDateTime>,
     to: Option<OffsetDateTime>,
 ) -> Result<impl Iterator<Item = HistoryItem>> {
@@ -278,6 +339,7 @@ pub fn history_stream(
             (None, Some(end)) => record.last_seen <= *end,
             (None, None) => true,
         })
+        .filter(|record| filter.matches(record))
         .collect();
     sorted.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
     let offsets = build_offsets(&sorted);
@@ -287,21 +349,6 @@ pub fn history_stream(
         .filter(move |record| match (&query, &record.summary) {
             (Some(q), Some(summary)) => summary.to_lowercase().contains(&q.to_lowercase()),
             (Some(_), None) => false,
-            (None, _) => true,
-        })
-        .filter(move |record| match (&kind, &record.kind) {
-            (Some(expected), EntryKind::Text) => {
-                matches!(expected, crate::cli::args::EntryKind::Text)
-            }
-            (Some(expected), EntryKind::Image) => {
-                matches!(expected, crate::cli::args::EntryKind::Image)
-            }
-            (Some(expected), EntryKind::File) => {
-                matches!(expected, crate::cli::args::EntryKind::File)
-            }
-            (Some(expected), EntryKind::Other) => {
-                matches!(expected, crate::cli::args::EntryKind::Other)
-            }
             (None, _) => true,
         })
         .take(limit.unwrap_or(usize::MAX))
@@ -383,16 +430,26 @@ where
     Ok(())
 }
 
-pub fn resolve_selector(index: &SearchIndex, selector: &str) -> Result<String> {
+pub fn resolve_selector(
+    index: &SearchIndex,
+    selector: &str,
+    filter: &SelectionFilter,
+) -> Result<String> {
     if selector.len() >= 6 {
         if let Some(record) = index.get(selector) {
+            if !filter.matches(record) {
+                anyhow::bail!("Selector did not match active filters");
+            }
             return Ok(record.hash.clone());
         }
     }
     let offset: usize = selector
         .parse()
         .with_context(|| format!("Invalid selector {selector}"))?;
-    let mut records: Vec<_> = index.values().collect();
+    let mut records: Vec<_> = index
+        .values()
+        .filter(|record| filter.matches(record))
+        .collect();
     records.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
     if let Some(record) = records.get(offset) {
         Ok(record.hash.clone())
@@ -401,7 +458,7 @@ pub fn resolve_selector(index: &SearchIndex, selector: &str) -> Result<String> {
     }
 }
 
-pub fn copy_by_selector(_index: &SearchIndex, hash: &str) -> Result<()> {
+pub fn copy_by_selector(hash: &str) -> Result<EntryMetadata> {
     let metadata = load_metadata(hash)?;
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
@@ -410,7 +467,7 @@ pub fn copy_by_selector(_index: &SearchIndex, hash: &str) -> Result<()> {
     let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
     ctx.set(contents)
         .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
-    Ok(())
+    Ok(metadata)
 }
 
 pub fn delete_entry(hash: &str) -> Result<()> {
@@ -423,4 +480,164 @@ pub fn delete_entry(hash: &str) -> Result<()> {
     }
     index_cell().write().remove(hash);
     Ok(())
+}
+
+pub fn load_item_preview(metadata: &EntryMetadata) -> Result<ItemPreview> {
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+
+    let mut files = Vec::new();
+    if item_dir.exists() {
+        for entry in fs::read_dir(&item_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let filename = entry.file_name().to_string_lossy().to_string();
+                if filename == "metadata.json" {
+                    continue;
+                }
+                let size = entry.metadata()?.len();
+                files.push(FileDescriptor {
+                    filename,
+                    path,
+                    size,
+                });
+            }
+        }
+    }
+    files.sort_by(|a, b| a.filename.cmp(&b.filename));
+
+    let content_path = item_dir.join(&metadata.content_filename);
+    let text = read_text_preview(&content_path);
+    let dimensions = if metadata.kind == EntryKind::Image {
+        image_dimensions(&content_path)
+    } else {
+        None
+    };
+    let content_path = if content_path.exists() {
+        Some(content_path)
+    } else {
+        None
+    };
+
+    Ok(ItemPreview {
+        content_path,
+        text,
+        files,
+        dimensions,
+    })
+}
+
+pub fn preview_snippet(preview: &ItemPreview, metadata: &EntryMetadata) -> String {
+    const MAX_PREVIEW_CHARS: usize = 160;
+    if let Some(text) = &preview.text {
+        return truncate_for_preview(text, MAX_PREVIEW_CHARS);
+    }
+
+    if metadata.kind == EntryKind::File {
+        let count = metadata.sources.len().max(preview.files.len());
+        let descriptor = if count == 1 { "file" } else { "files" };
+        let location = narrowest_folder(&metadata.sources)
+            .or_else(|| Some(String::from("(multiple locations)")))
+            .unwrap_or_else(|| String::from("(unknown location)"));
+        return format!(
+            "[{} {} in {} - total {}]",
+            count,
+            descriptor,
+            location,
+            human_size(metadata.byte_size)
+        );
+    }
+
+    if metadata.kind == EntryKind::Image {
+        let (width_text, height_text) = match preview.dimensions {
+            Some((w, h)) if w > 0 && h > 0 => (w.to_string(), h.to_string()),
+            _ => ("?".into(), "?".into()),
+        };
+        return format!(
+            "(Image item [{} x {}] [{}])",
+            width_text,
+            height_text,
+            human_size(metadata.byte_size)
+        );
+    }
+
+    metadata
+        .summary
+        .clone()
+        .unwrap_or_else(|| format!("{:?}", metadata.kind))
+}
+
+pub fn human_size(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+
+    let value = bytes as f64;
+    if value >= GB {
+        format!("{:.2} GB", value / GB)
+    } else if value >= MB {
+        format!("{:.2} MB", value / MB)
+    } else if value >= KB {
+        format!("{:.2} KB", value / KB)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+fn truncate_for_preview(text: &str, max_len: usize) -> String {
+    let mut clean = text.trim().replace('\r', "");
+    if clean.len() > max_len {
+        clean.truncate(max_len.saturating_sub(3));
+        clean.push_str("...");
+    }
+    clean
+}
+
+fn read_text_preview(path: &Path) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    let mut file = fs::File::open(path).ok()?;
+    let mut buffer = Vec::new();
+    file.by_ref()
+        .take(64 * 1024)
+        .read_to_end(&mut buffer)
+        .ok()?;
+    if buffer.is_empty() {
+        return None;
+    }
+    String::from_utf8(buffer.clone()).ok().or_else(|| {
+        if buffer.iter().all(|b| b.is_ascii()) {
+            Some(String::from_utf8_lossy(&buffer).to_string())
+        } else {
+            None
+        }
+    })
+}
+
+pub fn narrowest_folder(paths: &[String]) -> Option<String> {
+    let mut iter = paths.iter().filter_map(|raw| {
+        let path = Path::new(raw);
+        path.parent().map(|parent| parent.to_path_buf())
+    });
+    let mut common = iter.next()?;
+    for path in iter {
+        while !path.starts_with(&common) {
+            if !common.pop() {
+                return Some(String::from("/"));
+            }
+        }
+    }
+    Some(common.to_string_lossy().to_string())
+}
+
+fn image_dimensions(path: &Path) -> Option<(u32, u32)> {
+    if !path.exists() {
+        return None;
+    }
+    let reader = ImageReader::open(path).ok()?;
+    let reader = reader.with_guessed_format().ok()?;
+    reader.into_dimensions().ok()
 }

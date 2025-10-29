@@ -1,11 +1,27 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about = "Minimal yet powerful clipboard history for macOS", long_about = None)]
 pub struct Cli {
+    #[command(flatten)]
+    pub filters: FilterFlags,
     #[command(subcommand)]
     pub command: Option<Command>,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct FilterFlags {
+    #[arg(long, global = true)]
+    pub text: bool,
+    #[arg(long, global = true)]
+    pub image: bool,
+    #[arg(long, global = true)]
+    pub file: bool,
+    #[arg(long, global = true)]
+    pub html: bool,
+    #[arg(long, global = true)]
+    pub rtf: bool,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -15,6 +31,15 @@ pub enum Command {
         query: Option<String>,
     },
     Copy {
+        #[arg(default_value = "0")]
+        selector: String,
+    },
+    Delete {
+        #[arg(default_value = "0")]
+        selector: String,
+    },
+    Show {
+        #[arg(default_value = "0")]
         selector: String,
     },
     Watch,
