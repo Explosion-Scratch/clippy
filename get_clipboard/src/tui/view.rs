@@ -1,4 +1,6 @@
-use crate::data::store::{human_size, narrowest_folder, preview_snippet};
+use crate::data::store::{
+    human_size, narrowest_folder, preview_snippet, resolved_file_paths, saved_format_labels,
+};
 use crate::tui::state::AppState;
 use crate::util::time::format_human;
 use ratatui::Frame;
@@ -135,11 +137,18 @@ fn render_preview(frame: &mut Frame<'_>, state: &AppState, area: Rect) {
         .constraints([Constraint::Min(6), Constraint::Length(6)])
         .split(inner);
 
-    let text_widget = Paragraph::new(text_content).wrap(Wrap { trim: false });
+    let preview_style = Style::default()
+        .fg(Color::White)
+        .bg(Color::Rgb(24, 24, 24))
+        .add_modifier(Modifier::BOLD);
+    let text_widget = Paragraph::new(text_content)
+        .wrap(Wrap { trim: false })
+        .style(preview_style);
     frame.render_widget(text_widget, preview_layout[0]);
 
     let info_lines = build_info_lines(&selected.metadata, &preview_state.content);
-    let info_widget = Paragraph::new(info_lines).style(Style::default().fg(Color::Gray));
+    let metadata_style = Style::default().fg(Color::Gray).add_modifier(Modifier::DIM);
+    let info_widget = Paragraph::new(info_lines).style(metadata_style);
     frame.render_widget(info_widget, preview_layout[1]);
 }
 
@@ -151,13 +160,6 @@ fn build_info_lines(
     if let Some(summary) = file_summary_line(metadata, preview) {
         lines.push(Line::from(summary));
     }
-    for file in &preview.files {
-        lines.push(Line::from(format!(
-            "  • {} ({})",
-            file.filename,
-            human_size(file.size)
-        )));
-    }
 
     let label_style = Style::default().fg(Color::White);
     let mut info_pairs = Vec::new();
@@ -167,14 +169,12 @@ fn build_info_lines(
     if metadata.first_seen != metadata.last_seen {
         info_pairs.push(("Last", format_human(metadata.last_seen)));
     }
-    if let Some(app) = extract_application(metadata) {
-        info_pairs.push(("App", app));
-    }
     if let Some((w, h)) = preview.dimensions {
         info_pairs.push(("Dimensions", format!("{} x {}", w, h)));
     }
-    if !metadata.detected_formats.is_empty() {
-        info_pairs.push(("Formats", metadata.detected_formats.join(", ")));
+    let format_labels = saved_format_labels(metadata);
+    if !format_labels.is_empty() {
+        info_pairs.push(("Formats", format_labels.join(", ")));
     }
     info_pairs.push(("Version", metadata.version.clone()));
 
@@ -193,19 +193,24 @@ fn file_summary_line(
     metadata: &crate::data::model::EntryMetadata,
     preview: &crate::data::store::ItemPreview,
 ) -> Option<String> {
-    let count = preview.files.len();
+    let resolved_paths = resolved_file_paths(metadata);
+    let mut count = resolved_paths.len();
+    if count == 0 {
+        count = metadata.sources.len();
+    }
+    if count == 0 {
+        count = preview.files.len();
+    }
     if count <= 1 {
         return None;
     }
-    let mut sources = metadata.sources.clone();
-    if sources.is_empty() {
-        sources = preview
-            .files
-            .iter()
-            .map(|file| file.path.display().to_string())
-            .collect();
-    }
-    let folder = narrowest_folder(&sources).unwrap_or_else(|| String::from("(unknown)"));
+    let folder = if !resolved_paths.is_empty() {
+        narrowest_folder(resolved_paths.as_slice()).unwrap_or_else(|| String::from("(unknown)"))
+    } else if !metadata.sources.is_empty() {
+        narrowest_folder(metadata.sources.as_slice()).unwrap_or_else(|| String::from("(unknown)"))
+    } else {
+        String::from("(unknown)")
+    };
     Some(format!(
         "[{} {} in {} - total {}]",
         count,
@@ -229,45 +234,6 @@ fn truncate_display(input: &str, max_len: usize) -> String {
         }
     }
     text
-}
-
-fn extract_application(metadata: &crate::data::model::EntryMetadata) -> Option<String> {
-    extract_application_from_value(&metadata.extra).or_else(|| metadata.sources.first().cloned())
-}
-
-fn extract_application_from_value(value: &serde_json::Value) -> Option<String> {
-    match value {
-        serde_json::Value::Object(map) => {
-            for key in [
-                "application",
-                "applicationName",
-                "sourceApplication",
-                "bundleId",
-                "bundleIdentifier",
-            ] {
-                if let Some(entry) = map.get(key).and_then(serde_json::Value::as_str) {
-                    if !entry.is_empty() {
-                        return Some(entry.to_string());
-                    }
-                }
-            }
-            for value in map.values() {
-                if let Some(found) = extract_application_from_value(value) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        serde_json::Value::Array(items) => {
-            for item in items {
-                if let Some(found) = extract_application_from_value(item) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
 }
 
 fn default_status() -> String {

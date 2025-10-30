@@ -536,9 +536,21 @@ pub fn preview_snippet(preview: &ItemPreview, metadata: &EntryMetadata) -> Strin
     }
 
     if metadata.kind == EntryKind::File {
-        let count = metadata.sources.len().max(preview.files.len());
+        let resolved_paths = resolved_file_paths(metadata);
+        let count = if !resolved_paths.is_empty() {
+            resolved_paths.len()
+        } else {
+            metadata.sources.len().max(preview.files.len())
+        };
         let descriptor = if count == 1 { "file" } else { "files" };
-        let location = narrowest_folder(&metadata.sources)
+        let location_hint = if !resolved_paths.is_empty() {
+            narrowest_folder(resolved_paths.as_slice())
+        } else if !metadata.sources.is_empty() {
+            narrowest_folder(metadata.sources.as_slice())
+        } else {
+            None
+        };
+        let location = location_hint
             .or_else(|| Some(String::from("(multiple locations)")))
             .unwrap_or_else(|| String::from("(unknown location)"));
         return format!(
@@ -640,4 +652,140 @@ fn image_dimensions(path: &Path) -> Option<(u32, u32)> {
     let reader = ImageReader::open(path).ok()?;
     let reader = reader.with_guessed_format().ok()?;
     reader.into_dimensions().ok()
+}
+
+pub fn resolved_file_paths(metadata: &EntryMetadata) -> Vec<String> {
+    let plugin_paths = file_plugin_paths(metadata);
+    if !plugin_paths.is_empty() {
+        return dedupe_preserve_order(plugin_paths);
+    }
+    if !metadata.files.is_empty() {
+        return dedupe_preserve_order(metadata.files.clone());
+    }
+    if !metadata.sources.is_empty() {
+        return dedupe_preserve_order(metadata.sources.clone());
+    }
+    Vec::new()
+}
+
+pub fn saved_format_labels(metadata: &EntryMetadata) -> Vec<String> {
+    let mut labels = Vec::new();
+    if let Some(root) = metadata.extra.as_object() {
+        if let Some(plugins) = root.get("plugins").and_then(Value::as_object) {
+            let mut ordered_ids: Vec<String> = root
+                .get("pluginOrder")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(Value::as_str)
+                        .map(String::from)
+                        .collect::<Vec<String>>()
+                })
+                .unwrap_or_else(|| plugins.keys().cloned().collect());
+            if ordered_ids.is_empty() {
+                ordered_ids = plugins.keys().cloned().collect();
+            }
+            for plugin_id in ordered_ids {
+                if let Some(plugin) = plugins.get(plugin_id.as_str()).and_then(Value::as_object) {
+                    let plugin_type = plugin
+                        .get("pluginType")
+                        .and_then(Value::as_str)
+                        .unwrap_or(plugin_id.as_str());
+                    let label = normalize_plugin_label(plugin_type);
+                    if !label.is_empty() && !labels.contains(&label) {
+                        labels.push(label);
+                    }
+                }
+            }
+        }
+    }
+    if labels.is_empty() {
+        fallback_format_labels(metadata)
+    } else {
+        labels
+    }
+}
+
+fn file_plugin_paths(metadata: &EntryMetadata) -> Vec<String> {
+    metadata
+        .extra
+        .as_object()
+        .and_then(|root| root.get("plugins"))
+        .and_then(Value::as_object)
+        .and_then(|plugins| plugins.get("files"))
+        .and_then(Value::as_object)
+        .and_then(|file_plugin| file_plugin.get("entries"))
+        .and_then(Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| {
+                    entry
+                        .get("source_path")
+                        .or_else(|| entry.get("path"))
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                })
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default()
+}
+
+fn dedupe_preserve_order(items: Vec<String>) -> Vec<String> {
+    let mut seen = Vec::new();
+    for item in items {
+        if !seen.contains(&item) {
+            seen.push(item);
+        }
+    }
+    seen
+}
+
+fn normalize_plugin_label(plugin_type: &str) -> String {
+    match plugin_type {
+        "file" | "files" => String::from("Files"),
+        "text" => String::from("Text"),
+        "html" => String::from("HTML"),
+        "rtf" => String::from("RTF"),
+        "image" => String::from("Image"),
+        other => capitalize_label(other),
+    }
+}
+
+fn capitalize_label(value: &str) -> String {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut label = String::new();
+    for upper in first.to_uppercase() {
+        label.push(upper);
+    }
+    label.push_str(chars.as_str());
+    label
+}
+
+fn fallback_format_labels(metadata: &EntryMetadata) -> Vec<String> {
+    let mut labels = Vec::new();
+    for format in &metadata.detected_formats {
+        let lower = format.to_ascii_lowercase();
+        let label = if lower.contains("html") {
+            "HTML"
+        } else if lower.contains("rtf") {
+            "RTF"
+        } else if lower.contains("text") || lower.contains("utf8") {
+            "Text"
+        } else if lower.contains("image") || lower.contains("png") || lower.contains("jpeg") {
+            "Image"
+        } else if lower.contains("file") {
+            "Files"
+        } else {
+            continue;
+        };
+        let label_string = String::from(label);
+        if !labels.contains(&label_string) {
+            labels.push(label_string);
+        }
+    }
+    labels
 }
