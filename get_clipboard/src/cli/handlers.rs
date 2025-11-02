@@ -1,34 +1,62 @@
+use crate::api;
 use crate::cli::args::{
-    Cli, Command, DirCommand, EntryKind as CliEntryKind, FilterFlags, HistoryArgs, ServiceAction,
+    ApiArgs, Cli, Command, DirCommand, EntryKind as CliEntryKind, FilterFlags, HistoryArgs,
+    SearchArgs, ServiceAction,
 };
-use crate::config::{AppConfig, load_config, save_config};
-use crate::data::model::{EntryKind, EntryMetadata};
+use crate::clipboard::plugins::{self, DisplayContent, ImageDisplay};
+use crate::config::{self, ensure_data_dir, load_config};
+use crate::data::model::EntryMetadata;
 use crate::data::store::{
-    ItemPreview, SelectionFilter, copy_by_selector, delete_entry, history_stream, human_size,
-    load_index, load_item_preview, load_metadata, preview_snippet, refresh_index, resolve_selector,
+    HistoryItem, SelectionFilter, copy_by_selector, delete_entry, human_size, load_history_items,
+    load_index, load_metadata, refresh_index, resolve_selector,
 };
-use crate::service::{launchd, watch};
+use crate::search::SearchOptions;
+use crate::service::{self, ServiceStatus, watch};
 use crate::tui;
-use crate::util::time::{format_human, parse_date};
+use crate::util::time::{OffsetDateTime, format_iso, parse_date};
 use anyhow::{Context, Result, bail};
-use std::{env, fs, path::PathBuf};
+use serde_json::to_string_pretty;
+use std::{
+    env,
+    io::{self, ErrorKind, IsTerminal, Write},
+    path::Path,
+};
 use viuer::Config as ViuerConfig;
 
 pub fn dispatch(cli: Cli) -> Result<()> {
     let filters = cli.filters.clone();
+    let json = cli.json;
     let command = cli
         .command
         .unwrap_or(Command::History(HistoryArgs::default()));
     match command {
-        Command::Interactive { query } => run_interactive(query),
+        Command::Interactive { query } => {
+            ensure_filters_unsupported(&cli.filters, cli.json, "interactive")?;
+            run_interactive(query)
+        }
         Command::Copy { selector } => copy_entry(&selector, &filters),
         Command::Delete { selector } => delete_item(&selector, &filters),
-        Command::Show { selector } => show_item(&selector, &filters),
+        Command::Show { selector } => show_item(&selector, &filters, json),
         Command::Watch => watch::run_watch(None),
         Command::Service(args) => run_service(args.action),
-        Command::Dir(args) => run_dir(args.command),
-        Command::History(args) => print_history(args, &filters),
+        Command::Dir(args) => {
+            ensure_filters_unsupported(&cli.filters, cli.json, "dir")?;
+            run_dir(args.command)
+        }
+        Command::Search(args) => run_search(args, &filters, json),
+        Command::Api(args) => run_api(args),
+        Command::History(args) => print_history(args, &filters, json),
     }
+}
+
+fn ensure_filters_unsupported(filters: &FilterFlags, json: bool, command: &str) -> Result<()> {
+    if json {
+        bail!("--json is not supported for {command} command");
+    }
+    if !filters.is_empty() {
+        bail!("Format filters are not supported for {command} command");
+    }
+    Ok(())
 }
 
 fn run_interactive(query: Option<String>) -> Result<()> {
@@ -44,8 +72,7 @@ fn copy_entry(selector: &str, filters: &FilterFlags) -> Result<()> {
     let target = resolve_selector(&index, selector, &selection_filter)
         .with_context(|| format!("No clipboard item found for selector {selector}"))?;
     let metadata = copy_by_selector(&target)?;
-    let preview = load_item_preview(&metadata)?;
-    log_copy(&metadata, &preview);
+    log_copy(&metadata);
     Ok(())
 }
 
@@ -65,25 +92,76 @@ fn delete_item(selector: &str, filters: &FilterFlags) -> Result<()> {
     Ok(())
 }
 
-fn show_item(selector: &str, filters: &FilterFlags) -> Result<()> {
+fn show_item(selector: &str, filters: &FilterFlags, json: bool) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
     let selection_filter = build_selection_filter(filters, None);
     let target = resolve_selector(&index, selector, &selection_filter)
         .with_context(|| format!("No clipboard item found for selector {selector}"))?;
     let metadata = load_metadata(&target)?;
-    let preview = load_item_preview(&metadata)?;
-    display_item(&metadata, &preview)
+    let selector_index = selector.parse::<usize>().ok();
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+    let preferred_plugin = preferred_display_plugin(filters);
+
+    if json {
+        let json_item = plugins::build_json_item_with_preference(
+            &metadata,
+            &item_dir,
+            selector_index.unwrap_or(0),
+            preferred_plugin,
+        )?;
+        let output = to_string_pretty(&vec![json_item])?;
+        if !write_line(&output)? {
+            return Ok(());
+        }
+    } else {
+        let content =
+            plugins::build_display_content_with_preference(&metadata, &item_dir, preferred_plugin)?;
+        render_display(content)?;
+    }
+
+    if !json {
+        log_item_details(&metadata, &item_dir)?;
+    }
+    Ok(())
 }
 
 fn run_service(action: ServiceAction) -> Result<()> {
     match action {
-        ServiceAction::Install => launchd::install_agent(),
-        ServiceAction::Uninstall => launchd::uninstall_agent(),
-        ServiceAction::Start => launchd::start_agent(),
-        ServiceAction::Stop => launchd::stop_agent(),
-        ServiceAction::Logs { lines, follow } => launchd::print_logs(lines, follow),
+        ServiceAction::Install => {
+            service::install_agent()?;
+            if let Ok(status) = service::service_status() {
+                print_service_status(&status);
+            }
+            Ok(())
+        }
+        ServiceAction::Uninstall => {
+            service::uninstall_agent()?;
+            if let Ok(status) = service::service_status() {
+                print_service_status(&status);
+            }
+            Ok(())
+        }
+        ServiceAction::Start => service::start_agent(),
+        ServiceAction::Stop => service::stop_agent(),
+        ServiceAction::Status => {
+            let status = service::service_status()?;
+            print_service_status(&status);
+            Ok(())
+        }
+        ServiceAction::Logs { lines, follow } => service::print_logs(lines, follow),
     }
+}
+
+fn run_api(args: ApiArgs) -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("Failed to initialize async runtime")?;
+    runtime.block_on(api::serve(args.port))?;
+    Ok(())
 }
 
 fn run_dir(command: DirCommand) -> Result<()> {
@@ -94,104 +172,151 @@ fn run_dir(command: DirCommand) -> Result<()> {
             Ok(())
         }
         DirCommand::Set { path } => {
-            config.override_data_dir = Some(normalize(path));
-            save_config(&config)
+            config::io::set_data_dir(path)?;
+            Ok(())
         }
-        DirCommand::Move { path } => move_dir(&mut config, normalize(path)),
+        DirCommand::Move { path } => {
+            config::io::move_data_dir(path)?;
+            config = load_config().unwrap_or_default();
+            println!("Moved data directory to {}", config.data_dir().display());
+            Ok(())
+        }
     }
 }
 
-fn move_dir(config: &mut AppConfig, target: PathBuf) -> Result<()> {
-    let current = config.data_dir();
-    if current == target {
-        bail!("Directory already set to {}", current.display());
-    }
-    fs::create_dir_all(&target)
-        .with_context(|| format!("Failed to create target directory {}", target.display()))?;
-    for entry in fs::read_dir(&current)? {
-        let entry = entry?;
-        let source = entry.path();
-        let dest = target.join(entry.file_name());
-        fs::rename(source, dest)?;
-    }
-    config.override_data_dir = Some(target.clone());
-    save_config(config)?;
-    println!("Moved data directory to {}", target.display());
-    Ok(())
-}
-
-fn print_history(args: HistoryArgs, filters: &FilterFlags) -> Result<()> {
+fn print_history(args: HistoryArgs, filters: &FilterFlags, json: bool) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
-    let from = args.from.map(|d| parse_date(&d)).transpose()?;
-    let to = args.to.map(|d| parse_date(&d)).transpose()?;
-    let selection_filter = build_selection_filter(filters, args.kind.clone());
-    let items = history_stream(&index, args.limit, args.query, &selection_filter, from, to)?;
+    let HistoryArgs {
+        limit,
+        query,
+        kind,
+        from: from_str,
+        to: to_str,
+    } = args;
+
+    let from = from_str.map(|value| parse_date(&value)).transpose()?;
+    let to = to_str.map(|value| parse_date(&value)).transpose()?;
+    let selection_filter = build_selection_filter(filters, kind.clone());
+
+    let mut options = SearchOptions::default();
+    options.limit = limit;
+    options.query = query;
+    options.filter = selection_filter;
+    options.from = from;
+    options.to = to;
+
+    let (items, _) = load_history_items(&index, &options)?;
+    output_history(&items, json)
+}
+
+fn run_search(args: SearchArgs, filters: &FilterFlags, json: bool) -> Result<()> {
+    refresh_index()?;
+    let index = load_index()?;
+    let SearchArgs { query, limit } = args;
+    let selection_filter = build_selection_filter(filters, None);
+
+    let mut options = SearchOptions::default();
+    options.limit = limit;
+    options.query = Some(query);
+    options.filter = selection_filter;
+
+    let (items, _) = load_history_items(&index, &options)?;
+    output_history(&items, json)
+}
+
+fn output_history(items: &[HistoryItem], json: bool) -> Result<()> {
+    if json {
+        let config = load_config()?;
+        let data_dir = ensure_data_dir(&config)?;
+        let mut json_items = Vec::new();
+        for item in items {
+            let item_dir = data_dir.join(&item.metadata.relative_path);
+            json_items.push(plugins::build_json_item(
+                &item.metadata,
+                &item_dir,
+                item.offset,
+            )?);
+        }
+        let output = to_string_pretty(&json_items)?;
+        if !write_line(&output)? {
+            return Ok(());
+        }
+        return Ok(());
+    }
+
+    let is_interactive = io::stdout().is_terminal();
+    let terminal_width = if is_interactive {
+        crossterm::terminal::size()
+            .map(|(width, _)| width as usize)
+            .unwrap_or(80)
+    } else {
+        usize::MAX
+    };
 
     for item in items {
-        let short_hash = item.metadata.hash.chars().take(12).collect::<String>();
-        let date_str = format_human(item.metadata.last_seen);
-        let type_str = format!("{:?}", item.metadata.kind);
-        let summary = item.summary.replace('\n', " ").replace('\r', " ");
-        let size_str = human_size(item.metadata.byte_size);
-        println!(
-            "{}	{}	{}	{}	{}	{}",
-            item.offset, short_hash, date_str, type_str, size_str, summary
-        );
+        let timestamp = format_history_timestamp(item.metadata.last_seen);
+        let copies = item.metadata.copy_count;
+        let summary = if is_interactive {
+            clip_summary_to_width(
+                &item.summary,
+                terminal_width,
+                item.offset,
+                &timestamp,
+                copies,
+            )
+        } else {
+            clean_summary(&item.summary)
+        };
+        let line = format!("{} [{} x{}]   {}", item.offset, timestamp, copies, summary);
+        if !write_line(&line)? {
+            break;
+        }
     }
+
     Ok(())
 }
 
-fn display_item(metadata: &EntryMetadata, preview: &ItemPreview) -> Result<()> {
-    match metadata.kind {
-        EntryKind::Text => {
-            if let Some(text) = &preview.text {
-                println!("{}", text);
-            } else if let Some(path) = &preview.content_path {
-                println!("{}", path.display());
-            } else if let Some(summary) = &metadata.summary {
-                println!("{}", summary);
-            }
-            Ok(())
-        }
-        EntryKind::Image => show_image(preview, metadata),
-        EntryKind::File => {
-            print_file_paths(metadata, preview);
-            Ok(())
-        }
-        EntryKind::Other => {
-            if let Some(path) = &preview.content_path {
-                println!("{}", path.display());
-            }
-            Ok(())
-        }
-    }
-}
-
-fn show_image(preview: &ItemPreview, metadata: &EntryMetadata) -> Result<()> {
-    if let Some(path) = &preview.content_path {
-        if terminal_supports_images() {
-            let mut config = ViuerConfig::default();
-            config.restore_cursor = false;
-            if viuer::print_from_file(path, &config).is_ok() {
+fn render_display(content: DisplayContent) -> Result<()> {
+    match content {
+        DisplayContent::Text(text) => {
+            if !write_text_block(&text)? {
                 return Ok(());
             }
+            Ok(())
         }
+        DisplayContent::Lines(lines) => {
+            for line in lines {
+                if !write_line(&line)? {
+                    break;
+                }
+            }
+            Ok(())
+        }
+        DisplayContent::Image(image) => render_image(&image),
+        DisplayContent::Empty => Ok(()),
     }
-    println!("{}", preview_snippet(preview, metadata));
-    Ok(())
 }
 
-fn print_file_paths(metadata: &EntryMetadata, preview: &ItemPreview) {
-    if metadata.sources.is_empty() {
-        for file in &preview.files {
-            println!("{}", file.path.display());
-        }
-    } else {
-        for source in &metadata.sources {
-            println!("{}", source);
+fn render_image(image: &ImageDisplay) -> Result<()> {
+    if terminal_supports_images() {
+        let mut config = ViuerConfig::default();
+        config.restore_cursor = false;
+        if viuer::print_from_file(&image.path, &config).is_ok() {
+            return Ok(());
         }
     }
+    if let Some(fallback) = &image.fallback {
+        if !write_line(fallback)? {
+            return Ok(());
+        }
+    } else {
+        let path_text = format!("{}", image.path.display());
+        if !write_line(&path_text)? {
+            return Ok(());
+        }
+    }
+    Ok(())
 }
 
 fn terminal_supports_images() -> bool {
@@ -226,15 +351,134 @@ fn build_selection_filter(filters: &FilterFlags, kind: Option<CliEntryKind>) -> 
     selection
 }
 
-fn log_copy(metadata: &EntryMetadata, preview: &ItemPreview) {
-    let snippet = preview_snippet(preview, metadata).replace('\n', " ");
+fn preferred_display_plugin(filters: &FilterFlags) -> Option<&'static str> {
+    if filters.file {
+        return Some("files");
+    }
+    if filters.html {
+        return Some("html");
+    }
+    if filters.rtf {
+        return Some("rtf");
+    }
+    if filters.text {
+        return Some("text");
+    }
+    if filters.image {
+        return Some("image");
+    }
+    None
+}
+
+fn print_service_status(status: &ServiceStatus) {
+    println!("Service installed: {}", bool_word(status.installed));
+    println!("Service running: {}", bool_word(status.running));
+    if !status.details.is_empty() {
+        for (key, value) in &status.details {
+            println!("{}: {}", key, value);
+        }
+    }
+}
+
+fn bool_word(flag: bool) -> &'static str {
+    if flag { "yes" } else { "no" }
+}
+
+fn log_copy(metadata: &EntryMetadata) {
+    let summary = metadata
+        .summary
+        .clone()
+        .unwrap_or_else(|| metadata.hash.chars().take(12).collect());
+    let snippet = clean_summary(&summary);
     eprintln!("Copied: {}", snippet);
 }
 
-fn normalize(path: PathBuf) -> PathBuf {
-    if path.is_absolute() {
-        path
+fn log_item_details(metadata: &EntryMetadata, item_dir: &Path) -> Result<()> {
+    let mut details = Vec::new();
+    details.push(("date".to_string(), format_iso(metadata.last_seen)));
+    details.push(("copies".to_string(), metadata.copy_count.to_string()));
+    details.push(("hash".to_string(), metadata.hash.clone()));
+    details.push(("size".to_string(), human_size(metadata.byte_size)));
+    details.push(("path".to_string(), item_dir.to_string_lossy().to_string()));
+    details.push(("kind".to_string(), format!("{:?}", metadata.kind)));
+    if let Some(summary) = &metadata.summary {
+        details.push(("summary".to_string(), clean_summary(summary)));
+    }
+    for (key, value) in plugins::build_detail_log(metadata, item_dir)? {
+        details.push((key, value));
+    }
+    let message = details
+        .into_iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join(" ");
+    eprintln!("\u{001b}[2m[details] {}\u{001b}[0m", message);
+    Ok(())
+}
+
+fn format_history_timestamp(dt: OffsetDateTime) -> String {
+    use time::macros::format_description;
+    let format = format_description!("[month]/[day]@[hour]:[minute]");
+    dt.format(&format).unwrap_or_else(|_| dt.to_string())
+}
+
+fn clean_summary(input: &str) -> String {
+    let clean = input.replace('\n', " ").replace('\r', " ");
+    let trimmed = clean.trim();
+    if trimmed.is_empty() {
+        "(empty)".into()
     } else {
-        fs::canonicalize(&path).unwrap_or(path)
+        trimmed.to_string()
+    }
+}
+
+fn clip_summary_to_width(
+    input: &str,
+    terminal_width: usize,
+    index: usize,
+    timestamp: &str,
+    copies: u64,
+) -> String {
+    let clean = clean_summary(input);
+    let prefix = format!("{} [{} x{}]   ", index, timestamp, copies);
+    let prefix_len = prefix.chars().count();
+
+    if terminal_width <= prefix_len {
+        return String::new();
+    }
+
+    let available_width = terminal_width - prefix_len;
+    if available_width == 0 {
+        return String::new();
+    }
+
+    let char_count = clean.chars().count();
+    if char_count <= available_width {
+        return clean;
+    }
+
+    if available_width <= 3 {
+        return clean.chars().take(available_width).collect();
+    }
+
+    let truncated: String = clean.chars().take(available_width - 3).collect();
+    format!("{}...", truncated)
+}
+
+fn write_line(line: &str) -> Result<bool> {
+    let mut stdout = io::stdout();
+    match writeln!(stdout, "{}", line) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == ErrorKind::BrokenPipe => Ok(false),
+        Err(err) => Err(err.into()),
+    }
+}
+
+fn write_text_block(text: &str) -> Result<bool> {
+    let mut stdout = io::stdout();
+    match writeln!(stdout, "{}", text) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == ErrorKind::BrokenPipe => Ok(false),
+        Err(err) => Err(err.into()),
     }
 }

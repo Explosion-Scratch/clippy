@@ -2,10 +2,12 @@ use crate::clipboard::{ClipboardSnapshot, FileOutput, plugins};
 use crate::config::{ensure_data_dir, load_config};
 use crate::data::model::{EntryKind, EntryMetadata, SearchIndex, SearchIndexRecord};
 use crate::fs::{EntryPaths, entry_paths};
+pub use crate::search::SelectionFilter;
+use crate::search::{SearchOptions, fallback_summary, search};
 use crate::util::time::{self, OffsetDateTime};
 use anyhow::{Context, Result, anyhow};
 use clipboard_rs::{Clipboard, ClipboardContext};
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use serde_json::{self, Map, Value};
@@ -15,6 +17,8 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 static INDEX_CACHE: OnceCell<RwLock<SearchIndex>> = OnceCell::new();
+const MAX_SEARCH_TEXT_CHARS: usize = 65536;
+const MAX_SEARCH_TEXT_SEGMENTS: usize = 4;
 
 pub fn ensure_index() -> Result<SearchIndex> {
     let config = load_config()?;
@@ -86,6 +90,7 @@ fn load_index_from_disk(data_dir: &Path) -> Result<SearchIndex> {
                                 kind: meta.kind.clone(),
                                 copy_count: meta.copy_count,
                                 summary: meta.summary.clone(),
+                                search_text: meta.search_text.clone(),
                                 detected_formats: meta.detected_formats.clone(),
                                 byte_size: meta.byte_size,
                             },
@@ -153,7 +158,37 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
         .summary
         .clone()
         .or_else(|| snapshot.summary.clone())
-        .unwrap_or_else(|| prioritized.plugin_type.as_str().to_string());
+        .unwrap_or_else(|| prioritized.kind.to_string());
+
+    let mut seen_search = HashSet::new();
+    let mut search_segments = Vec::new();
+    for capture in &plugin_captures {
+        if let Some(text) = capture.search_text.as_ref() {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if seen_search.insert(trimmed.to_string()) {
+                let segment_max_chars = MAX_SEARCH_TEXT_CHARS / MAX_SEARCH_TEXT_SEGMENTS.max(1);
+                let clipped = clip_search_text_to_max(trimmed, segment_max_chars);
+                if !clipped.is_empty() {
+                    search_segments.push(clipped);
+                }
+                if search_segments.len() >= MAX_SEARCH_TEXT_SEGMENTS {
+                    break;
+                }
+            }
+        }
+    }
+
+    let combined_search = if search_segments.is_empty() {
+        Some(summary.clone())
+    } else {
+        Some(search_segments.join("\n\n"))
+    };
+    let search_text = combined_search
+        .map(|value| clip_search_text(&value))
+        .filter(|value| !value.is_empty());
 
     let total_byte_size: u64 = plugin_captures
         .iter()
@@ -189,13 +224,7 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
     );
     let extra = Value::Object(extra_root);
 
-    let entry_kind = match prioritized.plugin_type {
-        plugins::PluginType::File => EntryKind::File,
-        plugins::PluginType::Image => EntryKind::Image,
-        plugins::PluginType::Text | plugins::PluginType::Html | plugins::PluginType::Rtf => {
-            EntryKind::Text
-        }
-    };
+    let entry_kind = prioritized.entry_kind.clone();
 
     let metadata = if paths.metadata.exists() {
         let mut existing: EntryMetadata = serde_json::from_slice(&fs::read(&paths.metadata)?)?;
@@ -203,6 +232,7 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
         existing.last_seen = timestamp;
         existing.byte_size = total_byte_size;
         existing.summary = Some(summary.clone());
+        existing.search_text = search_text.clone();
         existing.detected_formats = snapshot.detected_formats.clone();
         existing.sources = combined_sources.clone();
         existing.files = combined_sources.clone();
@@ -221,6 +251,7 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
             byte_size: total_byte_size,
             sources: combined_sources.clone(),
             summary: Some(summary.clone()),
+            search_text: search_text.clone(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             relative_path: relative_item_path(&paths)?,
             content_filename: primary.clone(),
@@ -231,6 +262,18 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
     fs::write(&paths.metadata, serde_json::to_vec_pretty(&metadata)?)?;
     update_index(metadata.clone());
     Ok(metadata)
+}
+
+fn clip_search_text(input: &str) -> String {
+    clip_search_text_to_max(input, MAX_SEARCH_TEXT_CHARS)
+}
+
+fn clip_search_text_to_max(input: &str, max_chars: usize) -> String {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    trimmed.chars().take(max_chars).collect::<String>()
 }
 
 fn relative_item_path(paths: &EntryPaths) -> Result<String> {
@@ -251,6 +294,7 @@ fn update_index(metadata: EntryMetadata) {
             kind: metadata.kind,
             copy_count: metadata.copy_count,
             summary: metadata.summary,
+            search_text: metadata.search_text,
             detected_formats: metadata.detected_formats,
             byte_size: metadata.byte_size,
         },
@@ -262,50 +306,6 @@ pub struct HistoryItem {
     pub kind: String,
     pub metadata: EntryMetadata,
     pub offset: usize,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SelectionFilter {
-    pub include_text: bool,
-    pub include_image: bool,
-    pub include_file: bool,
-    pub include_other: bool,
-    pub require_html: bool,
-    pub require_rtf: bool,
-}
-
-impl SelectionFilter {
-    pub fn matches(&self, record: &SearchIndexRecord) -> bool {
-        let kind_match =
-            if self.include_text || self.include_image || self.include_file || self.include_other {
-                (self.include_text && record.kind == EntryKind::Text)
-                    || (self.include_image && record.kind == EntryKind::Image)
-                    || (self.include_file && record.kind == EntryKind::File)
-                    || (self.include_other && record.kind == EntryKind::Other)
-            } else {
-                true
-            };
-
-        let html_match = if self.require_html {
-            contains_format(&record.detected_formats, "html")
-        } else {
-            true
-        };
-
-        let rtf_match = if self.require_rtf {
-            contains_format(&record.detected_formats, "rtf")
-        } else {
-            true
-        };
-
-        kind_match && html_match && rtf_match
-    }
-}
-
-fn contains_format(formats: &[String], needle: &str) -> bool {
-    formats
-        .iter()
-        .any(|f| f.to_ascii_lowercase().contains(needle))
 }
 
 #[derive(Debug, Clone)]
@@ -323,6 +323,37 @@ pub struct ItemPreview {
     pub dimensions: Option<(u32, u32)>,
 }
 
+pub fn load_history_items(
+    index: &SearchIndex,
+    options: &SearchOptions,
+) -> Result<(Vec<HistoryItem>, bool)> {
+    let result = search(index, options);
+    let mut items = Vec::new();
+    for hit in result.hits {
+        match load_metadata(&hit.hash) {
+            Ok(metadata) => {
+                let summary = hit
+                    .summary
+                    .clone()
+                    .unwrap_or_else(|| fallback_summary(&hit.kind, hit.byte_size));
+                items.push(HistoryItem {
+                    summary,
+                    kind: format!("{:?}", hit.kind),
+                    metadata,
+                    offset: hit.offset,
+                });
+            }
+            Err(error) => {
+                eprintln!(
+                    "Warning: Failed to load metadata for {}: {}",
+                    hit.hash, error
+                );
+            }
+        }
+    }
+    Ok((items, result.has_more))
+}
+
 pub fn history_stream(
     index: &SearchIndex,
     limit: Option<usize>,
@@ -331,67 +362,15 @@ pub fn history_stream(
     from: Option<OffsetDateTime>,
     to: Option<OffsetDateTime>,
 ) -> Result<impl Iterator<Item = HistoryItem>> {
-    let mut sorted: Vec<_> = index
-        .values()
-        .filter(|record| match (&from, &to) {
-            (Some(start), Some(end)) => record.last_seen >= *start && record.last_seen <= *end,
-            (Some(start), None) => record.last_seen >= *start,
-            (None, Some(end)) => record.last_seen <= *end,
-            (None, None) => true,
-        })
-        .filter(|record| filter.matches(record))
-        .collect();
-    sorted.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
-    let offsets = build_offsets(&sorted);
+    let mut options = SearchOptions::default();
+    options.limit = limit;
+    options.query = query;
+    options.filter = filter.clone();
+    options.from = from;
+    options.to = to;
 
-    let iter = sorted
-        .into_iter()
-        .filter(move |record| match (&query, &record.summary) {
-            (Some(q), Some(summary)) => summary.to_lowercase().contains(&q.to_lowercase()),
-            (Some(_), None) => false,
-            (None, _) => true,
-        })
-        .take(limit.unwrap_or(usize::MAX))
-        .filter_map(move |record| match load_metadata(&record.hash) {
-            Ok(metadata) => Some(HistoryItem {
-                summary: record
-                    .summary
-                    .clone()
-                    .unwrap_or_else(|| summarize_kind(record.kind.clone(), record.byte_size)),
-                kind: format!("{:?}", record.kind),
-                metadata,
-                offset: *offsets.get(&record.hash).unwrap_or(&0),
-            }),
-            Err(e) => {
-                eprintln!(
-                    "Warning: Failed to load metadata for {}: {}",
-                    record.hash, e
-                );
-                None
-            }
-        });
-    Ok(iter)
-}
-
-fn build_offsets(records: &[&SearchIndexRecord]) -> HashMap<String, usize> {
-    records
-        .iter()
-        .enumerate()
-        .map(|(index, record)| (record.hash.clone(), index))
-        .collect()
-}
-
-fn summarize_kind(kind: EntryKind, byte_size: u64) -> String {
-    match kind {
-        EntryKind::Image => format!("Image [{}]", human_kb(byte_size)),
-        EntryKind::File => format!("File [{}]", human_kb(byte_size)),
-        EntryKind::Text => String::from("(text item)"),
-        EntryKind::Other => String::from("(binary item)"),
-    }
-}
-
-fn human_kb(size: u64) -> String {
-    format!("{:.1}KB", size as f64 / 1024.0)
+    let (items, _) = load_history_items(index, &options)?;
+    Ok(items.into_iter())
 }
 
 pub fn load_metadata(hash: &str) -> Result<EntryMetadata> {
@@ -480,6 +459,18 @@ pub fn delete_entry(hash: &str) -> Result<()> {
     }
     index_cell().write().remove(hash);
     Ok(())
+}
+
+pub fn increment_copy_count(hash: &str) -> Result<EntryMetadata> {
+    let mut metadata = load_metadata(hash)?;
+    metadata.copy_count = metadata.copy_count.saturating_add(1);
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+    let metadata_path = item_dir.join("metadata.json");
+    fs::write(&metadata_path, serde_json::to_vec_pretty(&metadata)?)?;
+    update_index(metadata.clone());
+    Ok(metadata)
 }
 
 pub fn load_item_preview(metadata: &EntryMetadata) -> Result<ItemPreview> {

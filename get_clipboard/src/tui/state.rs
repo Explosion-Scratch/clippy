@@ -1,5 +1,6 @@
 use crate::data::store::{HistoryItem, ItemPreview};
 use crossterm::event::KeyCode;
+use std::time::Instant;
 
 pub struct AppState {
     pub items: Vec<HistoryItem>,
@@ -9,6 +10,10 @@ pub struct AppState {
     pub filter: String,
     pub sticky_query: Option<String>,
     pub preview: Option<PreviewState>,
+    pub has_more: bool,
+    pub loading: bool,
+    pub pending_reload: bool,
+    pub last_filter_change: Option<Instant>,
 }
 
 pub struct PreviewState {
@@ -26,6 +31,10 @@ impl AppState {
             filter: String::new(),
             sticky_query: None,
             preview: None,
+            has_more: false,
+            loading: false,
+            pending_reload: false,
+            last_filter_change: None,
         }
     }
 
@@ -42,6 +51,7 @@ impl AppState {
         self.query = self.filter.clone();
         self.selected = 0;
         self.invalidate_preview();
+        self.mark_filter_dirty();
     }
 
     pub fn backspace(&mut self) {
@@ -50,6 +60,7 @@ impl AppState {
             self.query = self.filter.clone();
             self.selected = 0;
             self.invalidate_preview();
+            self.mark_filter_dirty();
         }
     }
 
@@ -71,12 +82,41 @@ impl AppState {
         self.status = Some(message.into());
     }
 
-    pub fn set_items(&mut self, items: Vec<HistoryItem>) {
+    pub fn set_items(&mut self, items: Vec<HistoryItem>, has_more: bool) {
         self.items = items;
         if self.selected >= self.items.len() {
             self.selected = self.items.len().saturating_sub(1);
         }
         self.invalidate_preview();
+        self.has_more = has_more;
+        self.loading = false;
+        self.pending_reload = false;
+        self.last_filter_change = None;
+        self.query = self.filter.clone();
+    }
+
+    pub fn append_items(&mut self, items: Vec<HistoryItem>, has_more: bool) {
+        let previous_len = self.items.len();
+        for item in items {
+            let exists = self
+                .items
+                .iter()
+                .any(|existing| existing.metadata.hash == item.metadata.hash);
+            if !exists {
+                self.items.push(item);
+            }
+        }
+        if self.items.is_empty() {
+            self.selected = 0;
+        } else if self.selected >= self.items.len() {
+            self.selected = self.items.len().saturating_sub(1);
+            self.invalidate_preview();
+        } else if previous_len == 0 {
+            self.selected = 0;
+            self.invalidate_preview();
+        }
+        self.has_more = has_more;
+        self.loading = false;
     }
 
     pub fn invalidate_preview(&mut self) {
@@ -85,5 +125,20 @@ impl AppState {
 
     pub fn selected_item(&self) -> Option<&HistoryItem> {
         self.items.get(self.selected)
+    }
+
+    pub fn mark_filter_dirty(&mut self) {
+        self.pending_reload = true;
+        self.last_filter_change = Some(Instant::now());
+    }
+
+    pub fn should_reload(&self, debounce: std::time::Duration) -> bool {
+        if !self.pending_reload {
+            return false;
+        }
+        match self.last_filter_change {
+            Some(timestamp) => timestamp.elapsed() >= debounce,
+            None => true,
+        }
     }
 }

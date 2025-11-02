@@ -21,11 +21,14 @@ pub fn draw_frame(frame: &mut Frame<'_>, state: &AppState) {
         ])
         .split(frame.size());
 
-    let title = format!(
+    let mut title = format!(
         "get_clipboard v{} — {} items",
         env!("CARGO_PKG_VERSION"),
         state.items.len()
     );
+    if state.loading {
+        title.push_str(" • searching…");
+    }
     let header = Paragraph::new(title)
         .block(Block::default().borders(Borders::BOTTOM))
         .style(Style::default().fg(Color::White));
@@ -224,16 +227,24 @@ fn truncate_display(input: &str, max_len: usize) -> String {
     if max_len == 0 {
         return String::new();
     }
-    let mut text = input.replace('\n', " ").replace('\r', " ");
-    if text.len() > max_len {
-        if max_len > 3 {
-            text.truncate(max_len - 3);
-            text.push_str("...");
-        } else {
-            text.truncate(max_len);
-        }
+    let text = input.replace('\n', " ").replace('\r', " ");
+    let char_count = text.chars().count();
+    if char_count <= max_len {
+        return text;
     }
-    text
+
+    let target = if max_len > 3 { max_len - 3 } else { max_len };
+    let mut truncated = String::new();
+    for (index, ch) in text.chars().enumerate() {
+        if index >= target {
+            break;
+        }
+        truncated.push(ch);
+    }
+    if max_len > 3 {
+        truncated.push_str("...");
+    }
+    truncated
 }
 
 fn default_status() -> String {

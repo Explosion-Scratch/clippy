@@ -1,9 +1,10 @@
+mod api;
 mod cli;
 mod clipboard;
 mod config;
 mod data;
 mod fs;
-mod index;
+mod search;
 mod service;
 mod tui;
 mod util;

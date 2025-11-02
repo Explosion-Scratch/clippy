@@ -1,8 +1,9 @@
 use crate::data::SearchIndex;
 use crate::data::store::{
-    SelectionFilter, copy_by_selector, delete_entry, history_stream, load_index, load_item_preview,
+    HistoryItem, copy_by_selector, delete_entry, load_history_items, load_index, load_item_preview,
     preview_snippet,
 };
+use crate::search::SearchOptions;
 use crate::tui::state::{AppState, PreviewState};
 use crate::tui::view::draw_frame;
 use anyhow::Result;
@@ -11,6 +12,9 @@ use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{ExecutableCommand, execute};
 use std::io::{Stdout, stdout};
 use std::time::Duration;
+
+const PAGE_SIZE: usize = 100;
+const SEARCH_DEBOUNCE_MS: u64 = 160;
 
 pub fn start(mut index: SearchIndex, query: Option<String>) -> Result<()> {
     let mut stdout = stdout();
@@ -46,20 +50,41 @@ fn teardown_terminal(stdout: &mut Stdout) -> Result<()> {
 
 fn rebuild_items(state: &mut AppState, index: &mut SearchIndex) -> Result<()> {
     *index = load_index()?;
-    let items: Vec<_> = history_stream(
-        index,
-        Some(200),
-        if state.filter.is_empty() {
-            None
-        } else {
-            Some(state.filter.clone())
-        },
-        &SelectionFilter::default(),
-        None,
-        None,
-    )?
-    .collect();
-    state.set_items(items);
+    let (items, has_more) = fetch_page(index, state, 0)?;
+    state.set_items(items, has_more);
+    Ok(())
+}
+
+fn fetch_page(
+    index: &SearchIndex,
+    state: &AppState,
+    offset: usize,
+) -> Result<(Vec<HistoryItem>, bool)> {
+    let mut options = SearchOptions::default();
+    options.limit = Some(PAGE_SIZE);
+    options.offset = offset;
+    if !state.filter.is_empty() {
+        options.query = Some(state.filter.clone());
+    }
+    load_history_items(index, &options)
+}
+
+fn maybe_load_more(state: &mut AppState, index: &SearchIndex) -> Result<()> {
+    if !state.has_more {
+        return Ok(());
+    }
+    let offset = state.items.len();
+    if offset == 0 {
+        return Ok(());
+    }
+    state.loading = true;
+    let (items, has_more) = fetch_page(index, state, offset)?;
+    if items.is_empty() {
+        state.has_more = has_more;
+        state.loading = false;
+        return Ok(());
+    }
+    state.append_items(items, has_more);
     Ok(())
 }
 
@@ -112,6 +137,16 @@ fn event_loop(
     index: &mut SearchIndex,
 ) -> Result<()> {
     loop {
+        if state.should_reload(Duration::from_millis(SEARCH_DEBOUNCE_MS)) {
+            if !state.loading {
+                state.loading = true;
+                terminal.draw(|frame| draw_frame(frame, state))?;
+            }
+            rebuild_items(state, index)?;
+            ensure_preview(state)?;
+            terminal.draw(|frame| draw_frame(frame, state))?;
+            continue;
+        }
         if event::poll(Duration::from_millis(200))? {
             match event::read()? {
                 Event::Key(KeyEvent {
@@ -147,15 +182,22 @@ fn event_loop(
                             state.set_status("Deleted item");
                         }
                     }
+                    KeyCode::Down => {
+                        if state.selected + 1 >= state.items.len() {
+                            maybe_load_more(state, index)?;
+                        }
+                        state.next();
+                    }
+                    KeyCode::Up => {
+                        state.previous();
+                    }
                     KeyCode::Char(ch) => {
                         if !modifiers.contains(KeyModifiers::CONTROL) {
                             state.handle_char(ch);
-                            rebuild_items(state, index)?;
                         }
                     }
                     KeyCode::Backspace => {
                         state.backspace();
-                        rebuild_items(state, index)?;
                     }
                     KeyCode::Esc => {
                         if let Some(original) = &state.sticky_query {
@@ -163,7 +205,10 @@ fn event_loop(
                         } else {
                             state.filter.clear();
                         }
-                        rebuild_items(state, index)?;
+                        state.selected = 0;
+                        state.invalidate_preview();
+                        state.query = state.filter.clone();
+                        state.mark_filter_dirty();
                     }
                     other => {
                         state.handle_key(other);

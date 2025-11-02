@@ -6,6 +6,8 @@ use std::path::PathBuf;
 pub struct Cli {
     #[command(flatten)]
     pub filters: FilterFlags,
+    #[arg(long, global = true)]
+    pub json: bool,
     #[command(subcommand)]
     pub command: Option<Command>,
 }
@@ -22,6 +24,12 @@ pub struct FilterFlags {
     pub html: bool,
     #[arg(long, global = true)]
     pub rtf: bool,
+}
+
+impl FilterFlags {
+    pub fn is_empty(&self) -> bool {
+        !self.text && !self.image && !self.file && !self.html && !self.rtf
+    }
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -45,6 +53,8 @@ pub enum Command {
     Watch,
     Service(ServiceArgs),
     Dir(DirArgs),
+    Search(SearchArgs),
+    Api(ApiArgs),
     History(HistoryArgs),
 }
 
@@ -60,6 +70,7 @@ pub enum ServiceAction {
     Uninstall,
     Start,
     Stop,
+    Status,
     Logs {
         #[arg(short = 'n', long, default_value_t = 200)]
         lines: usize,
@@ -93,6 +104,19 @@ pub struct HistoryArgs {
     pub from: Option<String>,
     #[arg(long)]
     pub to: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SearchArgs {
+    pub query: String,
+    #[arg(short, long)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ApiArgs {
+    #[arg(long, default_value_t = 3016)]
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, ValueEnum)]

@@ -17,6 +17,8 @@ pub struct EntryMetadata {
     pub byte_size: u64,
     pub sources: Vec<String>,
     pub summary: Option<String>,
+    #[serde(default)]
+    pub search_text: Option<String>,
     pub version: String,
     pub relative_path: String,
     pub content_filename: String,
@@ -68,6 +70,8 @@ pub struct SearchIndexRecord {
     pub kind: EntryKind,
     pub copy_count: u64,
     pub summary: Option<String>,
+    #[serde(default)]
+    pub search_text: Option<String>,
     pub detected_formats: Vec<String>,
     pub byte_size: u64,
 }

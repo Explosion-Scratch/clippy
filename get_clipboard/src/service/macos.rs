@@ -1,3 +1,4 @@
+use super::ServiceStatus;
 use crate::config::io::resolve_paths;
 use crate::util::time;
 use anyhow::{Result, anyhow, bail};
@@ -15,7 +16,14 @@ pub fn install_agent() -> Result<()> {
         fs::create_dir_all(dir)?;
     }
     fs::write(&plist_path, content)?;
-    run_launchctl(["load", "-w", plist_path.to_string_lossy().as_ref()])
+    run_launchctl(["load", "-w", plist_path.to_string_lossy().as_ref()])?;
+    println!(
+        "Installed launch agent {} at {}",
+        LABEL,
+        plist_path.display()
+    );
+    println!("Service logs: {}", log_file_path()?.display());
+    Ok(())
 }
 
 pub fn uninstall_agent() -> Result<()> {
@@ -23,22 +31,67 @@ pub fn uninstall_agent() -> Result<()> {
     if plist_path.exists() {
         let _ = run_launchctl(["unload", "-w", plist_path.to_string_lossy().as_ref()]);
         fs::remove_file(&plist_path)?;
+        println!("Removed launch agent {}", plist_path.display());
+    } else {
+        println!("Launch agent not installed");
     }
     Ok(())
 }
 
 pub fn start_agent() -> Result<()> {
+    println!("Starting launch agent {}", LABEL);
     run_launchctl(["start", LABEL])
 }
 
 pub fn stop_agent() -> Result<()> {
+    println!("Stopping launch agent {}", LABEL);
     run_launchctl(["stop", LABEL])
+}
+
+pub fn service_status() -> Result<ServiceStatus> {
+    let plist_path = agent_plist_path()?;
+    let installed = plist_path.exists();
+    let running = if installed {
+        Command::new("launchctl")
+            .args(["list", LABEL])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    let mut status = ServiceStatus::new(installed, running)
+        .with_detail("label", LABEL)
+        .with_detail("plist", plist_path.to_string_lossy())
+        .with_detail("log", log_file_path()?.to_string_lossy());
+
+    if installed {
+        if let Ok(output) = Command::new("launchctl").args(["list", LABEL]).output() {
+            if !output.stdout.is_empty() {
+                let snippet = String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                if !snippet.is_empty() {
+                    status.details.push(("launchctl".into(), snippet));
+                }
+            }
+        }
+    }
+
+    Ok(status)
 }
 
 pub fn print_logs(lines: usize, follow: bool) -> Result<()> {
     let log_path = log_file_path()?;
     if !log_path.exists() {
         bail!("Log file not found at {}", log_path.display());
+    }
+    println!("Streaming logs from {}", log_path.display());
+    if follow {
+        println!("Press Ctrl+C to stop following logs.");
     }
     let mut command = Command::new("tail");
     command.arg("-n").arg(lines.to_string());
