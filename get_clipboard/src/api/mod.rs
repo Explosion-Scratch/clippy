@@ -29,6 +29,8 @@ use crate::util::time::format_iso;
 
 use tokio::net::TcpListener;
 
+const API_DOCS: &str = include_str!("../../API.md");
+
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -41,6 +43,7 @@ pub async fn serve(port: u16) -> Result<()> {
 
 fn router() -> Router {
     Router::new()
+        .route("/", get(get_docs))
         .route("/items", get(get_items))
         .route("/item/:selector/data", get(get_item_data))
         .route(
@@ -145,6 +148,14 @@ impl From<anyhow::Error> for ApiError {
     fn from(error: anyhow::Error) -> Self {
         ApiError::Internal(error)
     }
+}
+
+async fn get_docs() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [("Content-Type", "text/plain; charset=utf-8")],
+        API_DOCS,
+    )
 }
 
 async fn get_items(

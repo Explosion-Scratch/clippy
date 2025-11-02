@@ -156,7 +156,7 @@ impl ClipboardPlugin for ImagePlugin {
         };
         let png_size = png_bytes.len();
 
-        let mut temp_file = NamedTempFile::new()
+        let mut temp_file = NamedTempFile::with_suffix(".png")
             .map_err(|err| anyhow!("Failed to create temporary file: {err}"))?;
         temp_file
             .write_all(&png_bytes)
