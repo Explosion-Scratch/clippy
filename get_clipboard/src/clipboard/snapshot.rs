@@ -1,8 +1,8 @@
 use crate::data::model::EntryKind;
 use crate::util::hash::sha256_bytes;
 use anyhow::{Result, anyhow};
-use clipboard_rs::common::RustImage;
 use clipboard_rs::{Clipboard, ClipboardContext, ContentFormat};
+use clipboard_rs::common::RustImage;
 use objc2_app_kit::NSPasteboard;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -170,22 +170,7 @@ impl ClipboardSnapshot {
             EntryKind::Other
         };
 
-        let summary = match kind {
-            EntryKind::File => Some(format_file_summary(&files)),
-            EntryKind::Image => {
-                let mime = image_mime.clone().unwrap_or_else(|| "image".into());
-                let size = image_bytes
-                    .as_ref()
-                    .map(|b| human_kb(b.len() as u64))
-                    .unwrap_or_else(|| "? KB".into());
-                Some(format!("Image [{} - {}]", size, mime))
-            }
-            EntryKind::Text => {
-                let content = text.clone().or(html.clone()).unwrap_or_default();
-                Some(truncate_summary(&content))
-            }
-            EntryKind::Other => Some("(binary item)".into()),
-        };
+        let summary = None;
 
         Ok(Some(Self {
             kind,

@@ -7,14 +7,15 @@ mod text;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
-use clipboard_rs::common::{ClipboardContent, RustImage, RustImageData};
+use anyhow::{Context, Result, anyhow, bail};
+use clipboard_rs::common::ClipboardContent;
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::clipboard::snapshot::{ClipboardSnapshot, FileOutput};
 use crate::data::model::EntryMetadata;
+use crate::util::hash::sha256_bytes;
 
 pub use files::FILES_PLUGIN;
 pub use html::HTML_PLUGIN;
@@ -32,6 +33,7 @@ pub trait ClipboardPlugin: Sync + Send {
     fn to_clipboard_items(&self, ctx: &PluginContext<'_>) -> Result<Vec<ClipboardContent>>;
     fn display_content(&self, ctx: &PluginContext<'_>) -> Result<DisplayContent>;
     fn export_json(&self, ctx: &PluginContext<'_>) -> Result<Value>;
+    fn import_json(&self, format: &ClipboardJsonFormat) -> Result<PluginImport>;
     fn detail_log(&self, ctx: &PluginContext<'_>) -> Result<Vec<(String, String)>>;
     fn searchable_text(
         &self,
@@ -138,6 +140,61 @@ pub struct ClipboardJsonItem {
     pub data: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardJsonFormat {
+    pub plugin_id: String,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub priority: Option<u8>,
+    #[serde(default)]
+    pub entry_kind: Option<crate::data::model::EntryKind>,
+    #[serde(default)]
+    pub data: Value,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardJsonFullItem {
+    #[serde(default)]
+    pub index: Option<usize>,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(rename = "type", default)]
+    pub item_type: Option<String>,
+    #[serde(default)]
+    pub size: Option<u64>,
+    #[serde(default)]
+    pub copy_count: Option<u64>,
+    #[serde(default)]
+    pub detected_formats: Vec<String>,
+    #[serde(default)]
+    pub sources: Vec<String>,
+    #[serde(default)]
+    pub search_text: Option<String>,
+    #[serde(rename = "dataPath", default)]
+    pub data_path: Option<String>,
+    #[serde(default)]
+    pub formats: Vec<ClipboardJsonFormat>,
+}
+
+pub struct ClipboardJsonImport {
+    pub captures: Vec<PluginCapture>,
+    pub clipboard_contents: Vec<ClipboardContent>,
+}
+
+pub struct PluginImport {
+    pub capture: PluginCapture,
+    pub clipboard_contents: Vec<ClipboardContent>,
+}
+
 static REGISTRY: Lazy<Vec<&'static dyn ClipboardPlugin>> = Lazy::new(|| {
     vec![
         FILES_PLUGIN as &'static dyn ClipboardPlugin,
@@ -190,51 +247,20 @@ pub fn rebuild_clipboard_contents(
     metadata: &EntryMetadata,
     item_dir: &Path,
 ) -> Result<Vec<ClipboardContent>> {
-    if let Some(contents) = rebuild_with_plugins(metadata, item_dir)? {
-        if contents.is_empty() {
-            return rebuild_legacy_clipboard_contents(metadata, item_dir);
-        }
-        return Ok(contents);
-    }
-    rebuild_legacy_clipboard_contents(metadata, item_dir)
-}
+    let (order, map) = extract_plugin_meta(metadata)?
+        .ok_or_else(|| anyhow!("Missing plugin metadata for {}", metadata.hash))?;
 
-fn rebuild_with_plugins(
-    metadata: &EntryMetadata,
-    item_dir: &Path,
-) -> Result<Option<Vec<ClipboardContent>>> {
-    if let Some((order, map)) = extract_plugin_meta(metadata)? {
-        return apply_plugins(order, map, metadata, item_dir, |instance| {
-            instance.plugin.to_clipboard_items(&instance.context())
-        });
-    }
-    Ok(None)
-}
-
-fn apply_plugins<F, T>(
-    order: Vec<String>,
-    plugin_map: Map<String, Value>,
-    metadata: &EntryMetadata,
-    item_dir: &Path,
-    mut f: F,
-) -> Result<Option<Vec<T>>>
-where
-    F: FnMut(&PluginInstance<'_>) -> Result<Vec<T>>,
-{
     let mut results = Vec::new();
     for plugin_id in order {
-        let plugin_meta = match plugin_map.get(&plugin_id) {
-            Some(value) => value,
-            None => continue,
-        };
-        let plugin = match plugin_by_id(&plugin_id) {
-            Some(plugin) => plugin,
-            None => continue,
-        };
+        let plugin_meta = map
+            .get(&plugin_id)
+            .ok_or_else(|| anyhow!("Missing plugin metadata for plugin {plugin_id}"))?;
+        let plugin = plugin_by_id(&plugin_id)
+            .ok_or_else(|| anyhow!("Unknown clipboard plugin {plugin_id}"))?;
         let instance = PluginInstance::new(plugin, metadata, item_dir, plugin_meta)?;
-        results.extend(f(&instance)?);
+        results.extend(plugin.to_clipboard_items(&instance.context())?);
     }
-    Ok(Some(results))
+    Ok(results)
 }
 
 pub fn build_display_content(metadata: &EntryMetadata, item_dir: &Path) -> Result<DisplayContent> {
@@ -246,20 +272,22 @@ pub fn build_display_content_with_preference(
     item_dir: &Path,
     preferred: Option<&str>,
 ) -> Result<DisplayContent> {
-    if let Some(order_map) = extract_plugin_meta(metadata)? {
-        let (order, map) = order_map;
-        if let Some(plugin_id) = preferred {
-            if let Some(content) = display_with_plugin(metadata, item_dir, &map, plugin_id)? {
-                return Ok(content);
-            }
-        }
-        for plugin_id in order {
-            if let Some(content) = display_with_plugin(metadata, item_dir, &map, &plugin_id)? {
-                return Ok(content);
-            }
+    let (order, map) = extract_plugin_meta(metadata)?
+        .ok_or_else(|| anyhow!("Missing plugin metadata for {}", metadata.hash))?;
+
+    if let Some(plugin_id) = preferred {
+        if let Some(content) = display_with_plugin(metadata, item_dir, &map, plugin_id)? {
+            return Ok(content);
         }
     }
-    legacy_display(metadata, item_dir)
+
+    for plugin_id in order {
+        if let Some(content) = display_with_plugin(metadata, item_dir, &map, &plugin_id)? {
+            return Ok(content);
+        }
+    }
+
+    Ok(DisplayContent::Empty)
 }
 
 fn display_with_plugin(
@@ -344,24 +372,113 @@ pub fn build_json_item_with_preference(
     let item_path = item_dir
         .canonicalize()
         .unwrap_or_else(|_| item_dir.to_path_buf());
-    if let Some(order_map) = extract_plugin_meta(metadata)? {
-        let (order, map) = order_map;
-        if let Some(plugin_id) = preferred {
-            if let Some(item) =
-                json_with_plugin(metadata, item_dir, &item_path, &map, plugin_id, index)?
-            {
-                return Ok(item);
-            }
-        }
-        for plugin_id in order {
-            if let Some(item) =
-                json_with_plugin(metadata, item_dir, &item_path, &map, &plugin_id, index)?
-            {
-                return Ok(item);
-            }
+    let (order, map) = extract_plugin_meta(metadata)?
+        .ok_or_else(|| anyhow!("Missing plugin metadata for {}", metadata.hash))?;
+
+    if let Some(plugin_id) = preferred {
+        if let Some(item) =
+            json_with_plugin(metadata, item_dir, &item_path, &map, plugin_id, index)?
+        {
+            return Ok(item);
         }
     }
-    build_legacy_json_item(metadata, &item_path, index)
+    for plugin_id in order {
+        if let Some(item) =
+            json_with_plugin(metadata, item_dir, &item_path, &map, &plugin_id, index)?
+        {
+            return Ok(item);
+        }
+    }
+
+    Err(anyhow!(
+        "No plugin could build JSON item for {}",
+        metadata.hash
+    ))
+}
+
+pub fn build_full_json_item(
+    metadata: &EntryMetadata,
+    item_dir: &Path,
+    index: Option<usize>,
+) -> Result<ClipboardJsonFullItem> {
+    let item_path = item_dir
+        .canonicalize()
+        .unwrap_or_else(|_| item_dir.to_path_buf());
+    let mut formats = Vec::new();
+
+    let (order, map) = extract_plugin_meta(metadata)?
+        .ok_or_else(|| anyhow!("Missing plugin metadata for {}", metadata.hash))?;
+
+    for plugin_id in order {
+        let Some(plugin_meta) = map.get(&plugin_id) else {
+            continue;
+        };
+        let Some(plugin) = plugin_by_id(&plugin_id) else {
+            continue;
+        };
+        let instance = PluginInstance::new(plugin, metadata, item_dir, plugin_meta)?;
+        let data = plugin.export_json(&instance.context())?;
+        formats.push(ClipboardJsonFormat {
+            plugin_id: plugin.id().to_string(),
+            kind: Some(plugin.kind().to_string()),
+            priority: Some(plugin.priority()),
+            entry_kind: Some(plugin.entry_kind()),
+            data,
+            metadata: plugin_meta.clone(),
+        });
+    }
+
+    Ok(ClipboardJsonFullItem {
+        index,
+        id: Some(metadata.hash.clone()),
+        date: Some(crate::util::time::format_iso(metadata.last_seen)),
+        summary: metadata.summary.clone(),
+        item_type: Some(format!("{:?}", metadata.kind)),
+        size: Some(metadata.byte_size),
+        copy_count: Some(metadata.copy_count),
+        detected_formats: metadata.detected_formats.clone(),
+        sources: metadata.sources.clone(),
+        search_text: metadata.search_text.clone(),
+        data_path: Some(item_path.to_string_lossy().to_string()),
+        formats,
+    })
+}
+
+pub fn prepare_import(item: &ClipboardJsonFullItem) -> Result<ClipboardJsonImport> {
+    if item.formats.is_empty() {
+        bail!("clipboard item includes no formats");
+    }
+
+    let mut captures = Vec::new();
+    let mut clipboard_contents = Vec::new();
+
+    for format in &item.formats {
+        let plugin = plugin_by_id(&format.plugin_id)
+            .ok_or_else(|| anyhow!("Unknown clipboard plugin {}", format.plugin_id))?;
+        let import = plugin.import_json(format)?;
+        captures.push(import.capture);
+        clipboard_contents.extend(import.clipboard_contents);
+    }
+
+    Ok(ClipboardJsonImport {
+        captures,
+        clipboard_contents,
+    })
+}
+
+pub fn compute_json_item_hash(item: &ClipboardJsonFullItem) -> Result<String> {
+    let mut normalized = Vec::new();
+    for format in &item.formats {
+        let mut entry = Map::new();
+        entry.insert("pluginId".into(), Value::String(format.plugin_id.clone()));
+        entry.insert("data".into(), format.data.clone());
+        if !format.metadata.is_null() {
+            entry.insert("metadata".into(), format.metadata.clone());
+        }
+        normalized.push(Value::Object(entry));
+    }
+    let bytes = serde_json::to_vec(&normalized)?;
+    Ok(sha256_bytes(&bytes))
 }
 
 fn extract_plugin_meta(
@@ -446,140 +563,5 @@ fn bytes_to_kb(bytes: u64) -> u64 {
         0
     } else {
         ((bytes as f64) / 1024.0).ceil() as u64
-    }
-}
-
-fn legacy_display(metadata: &EntryMetadata, item_dir: &Path) -> Result<DisplayContent> {
-    let contents = rebuild_legacy_clipboard_contents(metadata, item_dir)?;
-    if contents.is_empty() {
-        return Ok(DisplayContent::Empty);
-    }
-    match &contents[0] {
-        ClipboardContent::Text(text) => Ok(DisplayContent::Text(text.clone())),
-        ClipboardContent::Html(html) => Ok(DisplayContent::Text(html.clone())),
-        ClipboardContent::Rtf(rtf) => Ok(DisplayContent::Text(rtf.clone())),
-        ClipboardContent::Files(files) => Ok(DisplayContent::Lines(files.clone())),
-        ClipboardContent::Image(_) => Ok(DisplayContent::Empty),
-        ClipboardContent::Other(_, _) => Ok(DisplayContent::Empty),
-    }
-}
-
-fn build_legacy_json_item(
-    metadata: &EntryMetadata,
-    item_path: &Path,
-    index: usize,
-) -> Result<ClipboardJsonItem> {
-    Ok(ClipboardJsonItem {
-        index,
-        id: metadata.hash.clone(),
-        date: crate::util::time::format_iso(metadata.last_seen),
-        item_type: format!("{:?}", metadata.kind),
-        size: bytes_to_kb(metadata.byte_size),
-        dataPath: item_path.to_string_lossy().to_string(),
-        data: Value::Null,
-    })
-}
-
-fn rebuild_legacy_clipboard_contents(
-    metadata: &EntryMetadata,
-    item_dir: &Path,
-) -> Result<Vec<ClipboardContent>> {
-    if let Some(legacy_type) = metadata.extra.get("type").and_then(Value::as_str) {
-        match legacy_type {
-            "text" => {
-                let text_path = item_dir.join(&metadata.content_filename);
-                let content = fs::read_to_string(&text_path)
-                    .with_context(|| format!("Failed to read {}", text_path.display()))?;
-                let mut contents = vec![ClipboardContent::Text(content.clone())];
-                let is_html = metadata
-                    .extra
-                    .get("extension")
-                    .and_then(Value::as_str)
-                    .unwrap_or("txt")
-                    == "html";
-                if is_html {
-                    contents.push(ClipboardContent::Html(content));
-                }
-                return Ok(contents);
-            }
-            "image" => {
-                let image_path = item_dir.join(&metadata.content_filename);
-                let image_data = RustImageData::from_path(image_path.to_string_lossy().as_ref())
-                    .map_err(|e| anyhow!("Failed to load image: {e}"))?;
-                return Ok(vec![ClipboardContent::Image(image_data)]);
-            }
-            "file" => {
-                let urls: Vec<String> = if !metadata.files.is_empty() {
-                    metadata
-                        .files
-                        .iter()
-                        .map(|path| format!("file://{}", path))
-                        .collect()
-                } else if let Some(entries) =
-                    metadata.extra.get("entries").and_then(Value::as_array)
-                {
-                    entries
-                        .iter()
-                        .filter_map(|entry| {
-                            entry
-                                .get("path")
-                                .or_else(|| entry.get("source_path"))
-                                .and_then(Value::as_str)
-                                .map(|path| format!("file://{}", path))
-                        })
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-
-                if urls.is_empty() {
-                    return Err(anyhow!("Legacy file item missing recorded paths"));
-                }
-
-                return Ok(vec![ClipboardContent::Files(urls)]);
-            }
-            _ => {}
-        }
-    }
-
-    let bytes = fs::read(item_dir.join(&metadata.content_filename))
-        .with_context(|| format!("Failed to read {}", metadata.content_filename))?;
-    let mime = metadata
-        .extra
-        .get("mime")
-        .and_then(Value::as_str)
-        .unwrap_or("application/octet-stream");
-
-    if mime == "text/rtf" || mime == "application/rtf" {
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        return Ok(vec![ClipboardContent::Rtf(text)]);
-    }
-
-    Ok(vec![ClipboardContent::Other(
-        coerce_mime_to_uti(mime),
-        bytes,
-    )])
-}
-
-fn coerce_mime_to_uti(mime: &str) -> String {
-    if mime.is_empty() {
-        return "public.data".into();
-    }
-    if !mime.contains('/') {
-        return mime.to_string();
-    }
-    match mime {
-        "text/plain" | "text/utf-8" | "text/x-diff" => "public.utf8-plain-text".into(),
-        "text/html" => "public.html".into(),
-        "text/rtf" | "application/rtf" => "public.rtf".into(),
-        "application/json" => "public.json".into(),
-        "application/pdf" => "com.adobe.pdf".into(),
-        "application/octet-stream" => "public.data".into(),
-        "application/zip" => "com.pkware.zip-archive".into(),
-        "image/png" => "public.png".into(),
-        "image/jpeg" | "image/jpg" => "public.jpeg".into(),
-        "image/gif" => "com.compuserve.gif".into(),
-        "image/tiff" => "public.tiff".into(),
-        _ => "public.data".into(),
     }
 }

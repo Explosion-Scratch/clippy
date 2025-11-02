@@ -1,9 +1,10 @@
-use crate::clipboard::{ClipboardSnapshot, FileOutput, plugins};
+use crate::clipboard::{plugins, ClipboardSnapshot};
+use crate::clipboard::plugins::PluginCapture;
 use crate::config::{ensure_data_dir, load_config};
 use crate::data::model::{EntryKind, EntryMetadata, SearchIndex, SearchIndexRecord};
 use crate::fs::{EntryPaths, entry_paths};
 pub use crate::search::SelectionFilter;
-use crate::search::{SearchOptions, fallback_summary, search};
+use crate::search::{SearchOptions, search};
 use crate::util::time::{self, OffsetDateTime};
 use anyhow::{Context, Result, anyhow};
 use clipboard_rs::{Clipboard, ClipboardContext};
@@ -19,6 +20,11 @@ use std::path::{Path, PathBuf};
 static INDEX_CACHE: OnceCell<RwLock<SearchIndex>> = OnceCell::new();
 const MAX_SEARCH_TEXT_CHARS: usize = 65536;
 const MAX_SEARCH_TEXT_SEGMENTS: usize = 4;
+
+enum CopyCountMode {
+    Increment,
+    Override(u64),
+}
 
 pub fn ensure_index() -> Result<SearchIndex> {
     let config = load_config()?;
@@ -124,53 +130,114 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
     );
 
     let hash = snapshot.compute_hash();
-    let config = load_config()?;
     let timestamp = time::now();
-    let paths = entry_paths(&config, &hash, timestamp, None)?;
-    crate::fs::layout::ensure_dir(&paths.item_dir)?;
+    let sources = snapshot.sources();
+    let detected_formats = snapshot.detected_formats.clone();
+    let summary_hint = snapshot.summary.clone();
 
-    let outputs: Vec<FileOutput> = plugin_captures
-        .iter()
-        .flat_map(|capture| capture.files.clone())
-        .collect();
+    persist_entry(
+        &hash,
+        timestamp,
+        &plugin_captures,
+        summary_hint,
+        detected_formats,
+        sources,
+        CopyCountMode::Increment,
+        None,
+    )
+}
 
-    anyhow::ensure!(!outputs.is_empty(), "Snapshot produced no files to persist");
+pub fn store_json_item(item: &plugins::ClipboardJsonFullItem) -> Result<EntryMetadata> {
+    let import = plugins::prepare_import(item)?;
+    let timestamp = match item.date.as_ref() {
+        Some(raw) => crate::util::time::parse_date(raw).unwrap_or_else(|_| time::now()),
+        None => time::now(),
+    };
+    let hash = if let Some(existing) = item
+        .id
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        existing.to_string()
+    } else {
+        plugins::compute_json_item_hash(item)?
+    };
+    let detected_formats = if !item.detected_formats.is_empty() {
+        item.detected_formats.clone()
+    } else {
+        inferred_detected_formats(&import)
+    };
+    let summary = item.summary.clone();
+    let copy_count = item.copy_count.unwrap_or(1);
+    let sources = item.sources.clone();
+    let search_override = item.search_text.clone();
 
-    for output in &outputs {
-        let dest = paths.item_dir.join(&output.filename);
-        if let Some(parent) = dest.parent() {
-            crate::fs::layout::ensure_dir(parent)?;
+    persist_entry(
+        &hash,
+        timestamp,
+        &import.captures,
+        summary,
+        detected_formats,
+        sources,
+        CopyCountMode::Override(copy_count),
+        search_override,
+    )
+}
+
+pub fn copy_json_item(item: &plugins::ClipboardJsonFullItem) -> Result<()> {
+    let import = plugins::prepare_import(item)?;
+    anyhow::ensure!(
+        !import.clipboard_contents.is_empty(),
+        "Clipboard payload included no formats"
+    );
+    let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+    ctx.set(import.clipboard_contents)
+        .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+    Ok(())
+}
+
+fn inferred_detected_formats(import: &plugins::ClipboardJsonImport) -> Vec<String> {
+    let mut formats = Vec::new();
+    for capture in &import.captures {
+        let label = match capture.plugin_id {
+            "text" => "public.utf8-plain-text",
+            "html" => "public.html",
+            "rtf" => "public.rtf",
+            "image" => "public.png",
+            "files" => "public.file-url",
+            _ => "public.data",
+        };
+        if !formats.iter().any(|existing| existing == label) {
+            formats.push(label.to_string());
         }
-        fs::write(&dest, &output.bytes)
-            .with_context(|| format!("Failed to write snapshot content to {}", dest.display()))?;
     }
+    formats
+}
 
-    let prioritized = plugins::prioritized_capture(&plugin_captures).unwrap_or(&plugin_captures[0]);
-
-    let primary = prioritized
-        .files
-        .first()
-        .map(|f| f.filename.clone())
-        .or_else(|| outputs.first().map(|f| f.filename.clone()))
-        .unwrap_or_else(|| "item.bin".into());
-
-    let summary = prioritized
-        .summary
-        .clone()
-        .or_else(|| snapshot.summary.clone())
-        .unwrap_or_else(|| prioritized.kind.to_string());
+fn build_search_text(
+    captures: &[PluginCapture],
+    summary: &str,
+    override_text: Option<&str>,
+) -> Option<String> {
+    if let Some(override_text) = override_text {
+        let clipped = clip_search_text(override_text);
+        if !clipped.is_empty() {
+            return Some(clipped);
+        }
+    }
 
     let mut seen_search = HashSet::new();
     let mut search_segments = Vec::new();
-    for capture in &plugin_captures {
+    for capture in captures {
         if let Some(text) = capture.search_text.as_ref() {
             let trimmed = text.trim();
             if trimmed.is_empty() {
                 continue;
             }
             if seen_search.insert(trimmed.to_string()) {
-                let segment_max_chars = MAX_SEARCH_TEXT_CHARS / MAX_SEARCH_TEXT_SEGMENTS.max(1);
-                let clipped = clip_search_text_to_max(trimmed, segment_max_chars);
+                let segment_max = MAX_SEARCH_TEXT_CHARS / MAX_SEARCH_TEXT_SEGMENTS.max(1);
+                let clipped = clip_search_text_to_max(trimmed, segment_max);
                 if !clipped.is_empty() {
                     search_segments.push(clipped);
                 }
@@ -181,38 +248,110 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
         }
     }
 
-    let combined_search = if search_segments.is_empty() {
-        Some(summary.clone())
+    if search_segments.is_empty() {
+        let fallback = clip_search_text(summary);
+        if fallback.is_empty() {
+            None
+        } else {
+            Some(fallback)
+        }
     } else {
-        Some(search_segments.join("\n\n"))
-    };
-    let search_text = combined_search
-        .map(|value| clip_search_text(&value))
-        .filter(|value| !value.is_empty());
+        let joined = search_segments.join("\n\n");
+        let clipped = clip_search_text(&joined);
+        if clipped.is_empty() {
+            None
+        } else {
+            Some(clipped)
+        }
+    }
+}
+
+fn combine_sources(captures: &[PluginCapture], base_sources: Vec<String>) -> Vec<String> {
+    let mut source_set = HashSet::new();
+    let mut combined = Vec::new();
+    for capture in captures {
+        for source in &capture.sources {
+            if source_set.insert(source.clone()) {
+                combined.push(source.clone());
+            }
+        }
+    }
+    for source in base_sources {
+        if source_set.insert(source.clone()) {
+            combined.push(source);
+        }
+    }
+    combined
+}
+
+fn persist_entry(
+    hash: &str,
+    timestamp: OffsetDateTime,
+    plugin_captures: &[PluginCapture],
+    summary_hint: Option<String>,
+    detected_formats: Vec<String>,
+    base_sources: Vec<String>,
+    copy_mode: CopyCountMode,
+    search_override: Option<String>,
+) -> Result<EntryMetadata> {
+    anyhow::ensure!(!plugin_captures.is_empty(), "No plugin captures available");
+
+    let config = load_config()?;
+    let paths = entry_paths(&config, hash, timestamp, None)?;
+    crate::fs::layout::ensure_dir(&paths.item_dir)?;
+
+    let mut wrote_file = false;
+    for capture in plugin_captures {
+        for output in &capture.files {
+            let dest = paths.item_dir.join(&output.filename);
+            if let Some(parent) = dest.parent() {
+                crate::fs::layout::ensure_dir(parent)?;
+            }
+            fs::write(&dest, &output.bytes).with_context(|| {
+                format!("Failed to write snapshot content to {}", dest.display())
+            })?;
+            wrote_file = true;
+        }
+    }
+    anyhow::ensure!(wrote_file, "No plugin produced persisted files");
+
+    let prioritized = plugins::prioritized_capture(plugin_captures).unwrap_or(&plugin_captures[0]);
+    let primary = prioritized
+        .files
+        .first()
+        .map(|file| file.filename.clone())
+        .or_else(|| {
+            plugin_captures
+                .iter()
+                .flat_map(|capture| capture.files.first())
+                .map(|file| file.filename.clone())
+                .next()
+        })
+        .unwrap_or_else(|| "item.bin".into());
+
+    let summary = prioritized
+        .summary
+        .clone()
+        .or(summary_hint)
+        .or_else(|| {
+            plugin_captures
+                .iter()
+                .find_map(|capture| capture.summary.clone())
+        })
+        .unwrap_or_else(|| prioritized.kind.to_string());
+
+    let search_text = build_search_text(plugin_captures, &summary, search_override.as_deref());
 
     let total_byte_size: u64 = plugin_captures
         .iter()
         .map(|capture| capture.byte_size)
         .sum();
 
-    let mut source_set = HashSet::new();
-    let mut combined_sources = Vec::new();
-    for capture in &plugin_captures {
-        for source in &capture.sources {
-            if source_set.insert(source.clone()) {
-                combined_sources.push(source.clone());
-            }
-        }
-    }
-    for source in snapshot.sources() {
-        if source_set.insert(source.clone()) {
-            combined_sources.push(source);
-        }
-    }
+    let combined_sources = combine_sources(plugin_captures, base_sources);
 
-    let plugin_order = plugins::plugin_order(&plugin_captures);
+    let plugin_order = plugins::plugin_order(plugin_captures);
     let mut plugin_meta_map = Map::new();
-    for capture in &plugin_captures {
+    for capture in plugin_captures {
         plugin_meta_map.insert(capture.plugin_id.to_string(), capture.metadata.clone());
     }
 
@@ -228,24 +367,35 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
 
     let metadata = if paths.metadata.exists() {
         let mut existing: EntryMetadata = serde_json::from_slice(&fs::read(&paths.metadata)?)?;
-        existing.copy_count += 1;
         existing.last_seen = timestamp;
         existing.byte_size = total_byte_size;
         existing.summary = Some(summary.clone());
         existing.search_text = search_text.clone();
-        existing.detected_formats = snapshot.detected_formats.clone();
+        existing.detected_formats = detected_formats.clone();
         existing.sources = combined_sources.clone();
         existing.files = combined_sources.clone();
         existing.content_filename = primary.clone();
         existing.extra = extra.clone();
-        existing.kind = entry_kind;
+        existing.kind = entry_kind.clone();
+        match copy_mode {
+            CopyCountMode::Increment => {
+                existing.copy_count = existing.copy_count.saturating_add(1);
+            }
+            CopyCountMode::Override(value) => {
+                existing.copy_count = value.max(1);
+            }
+        }
         existing
     } else {
+        let copy_count = match copy_mode {
+            CopyCountMode::Increment => 1,
+            CopyCountMode::Override(value) => value.max(1),
+        };
         EntryMetadata {
-            hash: hash.clone(),
-            kind: entry_kind,
-            detected_formats: snapshot.detected_formats.clone(),
-            copy_count: 1,
+            hash: hash.to_string(),
+            kind: entry_kind.clone(),
+            detected_formats: detected_formats.clone(),
+            copy_count,
             first_seen: timestamp,
             last_seen: timestamp,
             byte_size: total_byte_size,
@@ -259,6 +409,7 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
             extra: extra.clone(),
         }
     };
+
     fs::write(&paths.metadata, serde_json::to_vec_pretty(&metadata)?)?;
     update_index(metadata.clone());
     Ok(metadata)
@@ -335,7 +486,8 @@ pub fn load_history_items(
                 let summary = hit
                     .summary
                     .clone()
-                    .unwrap_or_else(|| fallback_summary(&hit.kind, hit.byte_size));
+                    .or_else(|| metadata.summary.clone())
+                    .unwrap_or_else(|| String::from("Clipboard item"));
                 items.push(HistoryItem {
                     summary,
                     kind: format!("{:?}", hit.kind),

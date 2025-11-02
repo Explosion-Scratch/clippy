@@ -3,10 +3,13 @@ use std::fs;
 use anyhow::{Result, anyhow};
 use serde_json::json;
 
-use crate::clipboard::snapshot::{ClipboardSnapshot, FileOutput};
+use crate::clipboard::snapshot::{ClipboardSnapshot, FileOutput, truncate_summary};
 use crate::data::model::EntryKind;
 
-use super::{ClipboardPlugin, DisplayContent, PluginCapture, PluginContext};
+use super::{
+    ClipboardJsonFormat, ClipboardPlugin, DisplayContent, PluginCapture, PluginContext,
+    PluginImport,
+};
 
 pub static HTML_PLUGIN: &HtmlPlugin = &HtmlPlugin;
 
@@ -48,12 +51,14 @@ impl ClipboardPlugin for HtmlPlugin {
             bytes: html.clone().into_bytes(),
         }];
 
+        let summary = truncate_summary(html);
+
         Some(PluginCapture {
             plugin_id: self.id(),
             kind: self.kind(),
             entry_kind: self.entry_kind(),
             priority: self.priority(),
-            summary: None,
+            summary: Some(summary.clone()),
             search_text: Some(html.clone()),
             files,
             metadata: json!({
@@ -78,6 +83,42 @@ impl ClipboardPlugin for HtmlPlugin {
 
     fn export_json(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
         read_html(ctx).map(serde_json::Value::String)
+    }
+
+    fn import_json(&self, format: &ClipboardJsonFormat) -> Result<PluginImport> {
+        let html = format
+            .data
+            .as_str()
+            .map(|value| value.to_string())
+            .ok_or_else(|| anyhow!("html plugin expects string data"))?;
+
+        let files = vec![FileOutput {
+            filename: "html__content.html".to_string(),
+            bytes: html.clone().into_bytes(),
+        }];
+
+        let summary = truncate_summary(&html);
+
+        let mut capture = PluginCapture {
+            plugin_id: self.id(),
+            kind: self.kind(),
+            entry_kind: self.entry_kind(),
+            priority: self.priority(),
+            summary: Some(summary.clone()),
+            search_text: Some(html.clone()),
+            files,
+            metadata: json!({
+                "length": html.chars().count(),
+            }),
+            byte_size: html.len() as u64,
+            sources: Vec::new(),
+        };
+        capture.finalize_metadata();
+
+        Ok(PluginImport {
+            capture,
+            clipboard_contents: vec![clipboard_rs::common::ClipboardContent::Html(html)],
+        })
     }
 
     fn detail_log(&self, ctx: &PluginContext<'_>) -> Result<Vec<(String, String)>> {

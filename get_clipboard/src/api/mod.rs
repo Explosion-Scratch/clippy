@@ -21,8 +21,8 @@ use crate::config::{ensure_data_dir, load_config};
 use crate::data::SearchIndex;
 use crate::data::model::{EntryMetadata, SearchIndexRecord};
 use crate::data::store::{
-    copy_by_selector, delete_entry, increment_copy_count, load_history_items, load_index,
-    load_metadata, refresh_index,
+    copy_by_selector, copy_json_item, delete_entry, increment_copy_count, load_history_items,
+    load_index, load_metadata, refresh_index, store_json_item,
 };
 use crate::search::SearchOptions;
 use crate::util::time::format_iso;
@@ -42,6 +42,7 @@ pub async fn serve(port: u16) -> Result<()> {
 fn router() -> Router {
     Router::new()
         .route("/items", get(get_items))
+        .route("/item/:selector/data", get(get_item_data))
         .route(
             "/item/:selector",
             get(get_item).delete(axum_delete(delete_item)).put(put_item),
@@ -50,6 +51,8 @@ fn router() -> Router {
         .route("/search", get(search_items))
         .route("/mtime", get(get_mtime))
         .route("/dir", get(get_dir).post(update_dir))
+        .route("/copy", post(copy_payload))
+        .route("/save", post(save_payload))
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,6 +189,20 @@ async fn get_item(
     Ok(Json(item))
 }
 
+async fn get_item_data(
+    Path(selector): Path<String>,
+) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
+    let index = load_fresh_index()?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
+    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+    let item = plugins::build_full_json_item(&metadata, &item_dir, Some(offset))
+        .map_err(ApiError::from)?;
+    Ok(Json(item))
+}
+
 async fn copy_item(
     Path(selector): Path<String>,
 ) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
@@ -280,6 +297,27 @@ async fn update_dir(Json(payload): Json<DirUpdateRequest>) -> Result<Json<DirRes
     Ok(Json(DirResponse {
         path: config.data_dir().to_string_lossy().to_string(),
     }))
+}
+
+async fn copy_payload(
+    Json(payload): Json<plugins::ClipboardJsonFullItem>,
+) -> Result<StatusCode, ApiError> {
+    copy_json_item(&payload).map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn save_payload(
+    Json(payload): Json<plugins::ClipboardJsonFullItem>,
+) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
+    let metadata = store_json_item(&payload).map_err(ApiError::from)?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+    let index = load_index().map_err(ApiError::from)?;
+    let (_, offsets) = ordered_index(&index);
+    let offset = offsets.get(&metadata.hash).copied();
+    let item =
+        plugins::build_full_json_item(&metadata, &item_dir, offset).map_err(ApiError::from)?;
+    Ok(Json(item))
 }
 
 fn items_by_selectors(

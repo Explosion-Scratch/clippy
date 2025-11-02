@@ -7,7 +7,10 @@ use crate::clipboard::snapshot::ClipboardSnapshot;
 use crate::clipboard::snapshot::{FileOutput, truncate_summary};
 use crate::data::model::EntryKind;
 
-use super::{ClipboardPlugin, DisplayContent, PluginCapture, PluginContext};
+use super::{
+    ClipboardJsonFormat, ClipboardPlugin, DisplayContent, PluginCapture, PluginContext,
+    PluginImport,
+};
 
 pub static TEXT_PLUGIN: &TextPlugin = &TextPlugin;
 
@@ -79,6 +82,40 @@ impl ClipboardPlugin for TextPlugin {
 
     fn export_json(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
         read_text(ctx).map(serde_json::Value::String)
+    }
+
+    fn import_json(&self, format: &ClipboardJsonFormat) -> Result<PluginImport> {
+        let text = format
+            .data
+            .as_str()
+            .map(|value| value.to_string())
+            .ok_or_else(|| anyhow!("text plugin expects string data"))?;
+
+        let files = vec![FileOutput {
+            filename: "text__content.txt".to_string(),
+            bytes: text.clone().into_bytes(),
+        }];
+
+        let mut capture = PluginCapture {
+            plugin_id: self.id(),
+            kind: self.kind(),
+            entry_kind: self.entry_kind(),
+            priority: self.priority(),
+            summary: Some(truncate_summary(&text)),
+            search_text: Some(text.clone()),
+            files,
+            metadata: json!({
+                "length": text.chars().count(),
+            }),
+            byte_size: text.len() as u64,
+            sources: Vec::new(),
+        };
+        capture.finalize_metadata();
+
+        Ok(PluginImport {
+            capture,
+            clipboard_contents: vec![clipboard_rs::common::ClipboardContent::Text(text)],
+        })
     }
 
     fn detail_log(&self, ctx: &PluginContext<'_>) -> Result<Vec<(String, String)>> {

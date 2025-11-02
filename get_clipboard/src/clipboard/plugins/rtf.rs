@@ -3,10 +3,13 @@ use std::fs;
 use anyhow::{Result, anyhow};
 use serde_json::json;
 
-use crate::clipboard::snapshot::{ClipboardSnapshot, FileOutput};
+use crate::clipboard::snapshot::{ClipboardSnapshot, FileOutput, human_kb};
 use crate::data::model::EntryKind;
 
-use super::{ClipboardPlugin, DisplayContent, PluginCapture, PluginContext};
+use super::{
+    ClipboardJsonFormat, ClipboardPlugin, DisplayContent, PluginCapture, PluginContext,
+    PluginImport,
+};
 
 pub static RTF_PLUGIN: &RtfPlugin = &RtfPlugin;
 
@@ -48,12 +51,14 @@ impl ClipboardPlugin for RtfPlugin {
             bytes: rtf.clone(),
         }];
 
+        let summary = format!("RTF document [{}]", human_kb(rtf.len() as u64));
+
         Some(PluginCapture {
             plugin_id: self.id(),
             kind: self.kind(),
             entry_kind: self.entry_kind(),
             priority: self.priority(),
-            summary: None,
+            summary: Some(summary.clone()),
             search_text: Some(String::from_utf8_lossy(rtf).into_owned()),
             files,
             metadata: json!({
@@ -78,6 +83,42 @@ impl ClipboardPlugin for RtfPlugin {
 
     fn export_json(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
         read_rtf(ctx).map(serde_json::Value::String)
+    }
+
+    fn import_json(&self, format: &ClipboardJsonFormat) -> Result<PluginImport> {
+        let rtf = format
+            .data
+            .as_str()
+            .map(|value| value.to_string())
+            .ok_or_else(|| anyhow!("rtf plugin expects string data"))?;
+
+        let files = vec![FileOutput {
+            filename: "rtf__content.rtf".to_string(),
+            bytes: rtf.clone().into_bytes(),
+        }];
+
+        let summary = format!("RTF document [{}]", human_kb(rtf.len() as u64));
+
+        let mut capture = PluginCapture {
+            plugin_id: self.id(),
+            kind: self.kind(),
+            entry_kind: self.entry_kind(),
+            priority: self.priority(),
+            summary: Some(summary.clone()),
+            search_text: Some(rtf.clone()),
+            files,
+            metadata: json!({
+                "byteSize": rtf.len(),
+            }),
+            byte_size: rtf.len() as u64,
+            sources: Vec::new(),
+        };
+        capture.finalize_metadata();
+
+        Ok(PluginImport {
+            capture,
+            clipboard_contents: vec![clipboard_rs::common::ClipboardContent::Rtf(rtf)],
+        })
     }
 
     fn detail_log(&self, ctx: &PluginContext<'_>) -> Result<Vec<(String, String)>> {

@@ -126,15 +126,6 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
     }
 }
 
-pub fn fallback_summary(kind: &EntryKind, byte_size: u64) -> String {
-    match kind {
-        EntryKind::Image => format!("Image [{}]", human_kb(byte_size)),
-        EntryKind::File => format!("File [{}]", human_kb(byte_size)),
-        EntryKind::Text => String::from("(text item)"),
-        EntryKind::Other => String::from("(binary item)"),
-    }
-}
-
 fn in_range(
     record: &SearchIndexRecord,
     from: Option<&OffsetDateTime>,
@@ -173,8 +164,4 @@ fn contains_format(formats: &[String], needle: &str) -> bool {
     formats
         .iter()
         .any(|format| format.to_ascii_lowercase().contains(needle))
-}
-
-fn human_kb(size: u64) -> String {
-    format!("{:.1}KB", size as f64 / 1024.0)
 }

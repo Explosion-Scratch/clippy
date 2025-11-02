@@ -1,10 +1,18 @@
+use std::fs;
+use std::path::PathBuf;
+
 use anyhow::{Result, anyhow};
 use serde_json::json;
 
-use crate::clipboard::snapshot::{ClipboardSnapshot, FileOutput, format_file_summary, human_kb};
+use crate::clipboard::snapshot::{
+    ClipboardSnapshot, FileOutput, FileRecord, format_file_summary, human_kb,
+};
 use crate::data::model::EntryKind;
 
-use super::{ClipboardPlugin, DisplayContent, PluginCapture, PluginContext};
+use super::{
+    ClipboardJsonFormat, ClipboardPlugin, DisplayContent, PluginCapture, PluginContext,
+    PluginImport,
+};
 
 pub static FILES_PLUGIN: &FilesPlugin = &FilesPlugin;
 
@@ -94,6 +102,105 @@ impl ClipboardPlugin for FilesPlugin {
         Ok(serde_json::Value::Array(
             paths.into_iter().map(serde_json::Value::String).collect(),
         ))
+    }
+
+    fn import_json(&self, format: &ClipboardJsonFormat) -> Result<PluginImport> {
+        let array = format
+            .data
+            .as_array()
+            .ok_or_else(|| anyhow!("files plugin expects an array"))?;
+
+        let mut paths = Vec::new();
+        for value in array {
+            if let Some(path) = value.as_str() {
+                paths.push(path.to_string());
+                continue;
+            }
+            if let Some(object) = value.as_object() {
+                if let Some(path) = object
+                    .get("source_path")
+                    .or_else(|| object.get("sourcePath"))
+                    .or_else(|| object.get("path"))
+                    .and_then(serde_json::Value::as_str)
+                {
+                    paths.push(path.to_string());
+                }
+            }
+        }
+
+        if paths.is_empty() {
+            anyhow::bail!("files plugin requires at least one path entry");
+        }
+
+        let mut records = Vec::new();
+        let mut lines = Vec::new();
+        let mut total_size = 0u64;
+
+        for raw_path in &paths {
+            let path_buf = PathBuf::from(raw_path);
+            let metadata = fs::metadata(&path_buf).ok();
+            let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+            total_size += size;
+            let name = path_buf
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| raw_path.clone());
+            let extension = path_buf
+                .extension()
+                .map(|ext| ext.to_string_lossy().to_string());
+            let mime = mime_guess::from_path(&path_buf)
+                .first_raw()
+                .map(String::from);
+
+            records.push(FileRecord {
+                name,
+                extension,
+                size,
+                source_path: path_buf.clone(),
+                mime: mime.clone(),
+            });
+
+            let mime_label = mime.unwrap_or_else(|| "file".into());
+            lines.push(format!(
+                "{} ({} - {})",
+                path_buf.display(),
+                human_kb(size),
+                mime_label
+            ));
+        }
+
+        let summary = Some(format_file_summary(&records));
+        let joined = lines.join("\n");
+        let files = vec![FileOutput {
+            filename: "files__paths.txt".to_string(),
+            bytes: joined.clone().into_bytes(),
+        }];
+
+        let mut capture = PluginCapture {
+            plugin_id: self.id(),
+            kind: self.kind(),
+            entry_kind: self.entry_kind(),
+            priority: self.priority(),
+            summary,
+            search_text: Some(joined),
+            files,
+            metadata: json!({
+                "entries": records,
+            }),
+            byte_size: total_size,
+            sources: paths.clone(),
+        };
+        capture.finalize_metadata();
+
+        let urls = paths
+            .iter()
+            .map(|path| format!("file://{}", path))
+            .collect::<Vec<_>>();
+
+        Ok(PluginImport {
+            capture,
+            clipboard_contents: vec![clipboard_rs::common::ClipboardContent::Files(urls)],
+        })
     }
 
     fn detail_log(&self, ctx: &PluginContext<'_>) -> Result<Vec<(String, String)>> {
