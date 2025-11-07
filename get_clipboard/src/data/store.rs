@@ -506,6 +506,44 @@ pub fn load_history_items(
     Ok((items, result.has_more))
 }
 
+pub fn stream_history_items<F>(
+    index: &SearchIndex,
+    options: &SearchOptions,
+    mut callback: F,
+) -> Result<()>
+where
+    F: FnMut(&HistoryItem) -> Result<bool>,
+{
+    let result = search(index, options);
+    for hit in result.hits {
+        match load_metadata(&hit.hash) {
+            Ok(metadata) => {
+                let summary = hit
+                    .summary
+                    .clone()
+                    .or_else(|| metadata.summary.clone())
+                    .unwrap_or_else(|| String::from("Clipboard item"));
+                let item = HistoryItem {
+                    summary,
+                    kind: format!("{:?}", hit.kind),
+                    metadata,
+                    offset: hit.offset,
+                };
+                if !callback(&item)? {
+                    break;
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "Warning: Failed to load metadata for {}: {}",
+                    hit.hash, error
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn history_stream(
     index: &SearchIndex,
     limit: Option<usize>,

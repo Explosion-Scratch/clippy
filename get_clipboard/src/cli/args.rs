@@ -94,8 +94,8 @@ pub enum DirCommand {
 
 #[derive(Parser, Debug, Clone, Default)]
 pub struct HistoryArgs {
-    #[arg(short, long)]
-    pub limit: Option<usize>,
+    #[arg(short, long, default_value_t = 100)]
+    pub limit: usize,
     #[arg(short, long)]
     pub query: Option<String>,
     #[arg(long, value_enum)]
@@ -104,6 +104,8 @@ pub struct HistoryArgs {
     pub from: Option<String>,
     #[arg(long)]
     pub to: Option<String>,
+    #[arg(long)]
+    pub full: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -111,6 +113,8 @@ pub struct SearchArgs {
     pub query: String,
     #[arg(short, long)]
     pub limit: Option<usize>,
+    #[arg(long)]
+    pub full: bool,
 }
 
 #[derive(Args, Debug, Clone)]

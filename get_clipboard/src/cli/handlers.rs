@@ -8,7 +8,7 @@ use crate::config::{self, ensure_data_dir, load_config};
 use crate::data::model::EntryMetadata;
 use crate::data::store::{
     HistoryItem, SelectionFilter, copy_by_selector, delete_entry, human_size, load_history_items,
-    load_index, load_metadata, refresh_index, resolve_selector,
+    load_index, load_metadata, refresh_index, resolve_selector, stream_history_items,
 };
 use crate::search::SearchOptions;
 use crate::service::{self, ServiceStatus, watch};
@@ -23,6 +23,13 @@ use std::{
 };
 use viuer::Config as ViuerConfig;
 
+#[derive(Debug, Clone, Copy)]
+enum OutputMode {
+    Text,
+    JsonSimple,
+    JsonFull,
+}
+
 pub fn dispatch(cli: Cli) -> Result<()> {
     let filters = cli.filters.clone();
     let json = cli.json;
@@ -36,16 +43,45 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         }
         Command::Copy { selector } => copy_entry(&selector, &filters),
         Command::Delete { selector } => delete_item(&selector, &filters),
-        Command::Show { selector } => show_item(&selector, &filters, json),
+        Command::Show { selector } => {
+            let mode = if json {
+                OutputMode::JsonFull
+            } else {
+                OutputMode::Text
+            };
+            show_item(&selector, &filters, mode)
+        }
         Command::Watch => watch::run_watch(None),
         Command::Service(args) => run_service(args.action),
         Command::Dir(args) => {
             ensure_filters_unsupported(&cli.filters, cli.json, "dir")?;
             run_dir(args.command)
         }
-        Command::Search(args) => run_search(args, &filters, json),
+        Command::Search(args) => {
+            let mode = if json {
+                if args.full {
+                    OutputMode::JsonFull
+                } else {
+                    OutputMode::JsonSimple
+                }
+            } else {
+                OutputMode::Text
+            };
+            run_search(args, &filters, mode)
+        }
         Command::Api(args) => run_api(args),
-        Command::History(args) => print_history(args, &filters, json),
+        Command::History(args) => {
+            let mode = if json {
+                if args.full {
+                    OutputMode::JsonFull
+                } else {
+                    OutputMode::JsonSimple
+                }
+            } else {
+                OutputMode::Text
+            };
+            print_history(args, &filters, mode)
+        }
     }
 }
 
@@ -92,7 +128,7 @@ fn delete_item(selector: &str, filters: &FilterFlags) -> Result<()> {
     Ok(())
 }
 
-fn show_item(selector: &str, filters: &FilterFlags, json: bool) -> Result<()> {
+fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
     let selection_filter = build_selection_filter(filters, None);
@@ -105,26 +141,38 @@ fn show_item(selector: &str, filters: &FilterFlags, json: bool) -> Result<()> {
     let item_dir = data_dir.join(&metadata.relative_path);
     let preferred_plugin = preferred_display_plugin(filters);
 
-    if json {
-        let json_item = plugins::build_json_item_with_preference(
-            &metadata,
-            &item_dir,
-            selector_index.unwrap_or(0),
-            preferred_plugin,
-        )?;
-        let output = to_string_pretty(&vec![json_item])?;
-        if !write_line(&output)? {
-            return Ok(());
+    match mode {
+        OutputMode::JsonFull => {
+            let json_item = plugins::build_full_json_item(
+                &metadata,
+                &item_dir,
+                selector_index,
+            )?;
+            let output = to_string_pretty(&json_item)?;
+            if !write_line(&output)? {
+                return Ok(());
+            }
         }
-    } else {
-        let content =
-            plugins::build_display_content_with_preference(&metadata, &item_dir, preferred_plugin)?;
-        render_display(content)?;
+        OutputMode::JsonSimple => {
+            let json_item = plugins::build_json_item_with_preference(
+                &metadata,
+                &item_dir,
+                selector_index.unwrap_or(0),
+                preferred_plugin,
+            )?;
+            let output = to_string_pretty(&json_item)?;
+            if !write_line(&output)? {
+                return Ok(());
+            }
+        }
+        OutputMode::Text => {
+            let content =
+                plugins::build_display_content_with_preference(&metadata, &item_dir, preferred_plugin)?;
+            render_display(content)?;
+            log_item_details(&metadata, &item_dir)?;
+        }
     }
 
-    if !json {
-        log_item_details(&metadata, &item_dir)?;
-    }
     Ok(())
 }
 
@@ -184,7 +232,7 @@ fn run_dir(command: DirCommand) -> Result<()> {
     }
 }
 
-fn print_history(args: HistoryArgs, filters: &FilterFlags, json: bool) -> Result<()> {
+fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
     let HistoryArgs {
@@ -193,6 +241,7 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, json: bool) -> Result
         kind,
         from: from_str,
         to: to_str,
+        ..
     } = args;
 
     let from = from_str.map(|value| parse_date(&value)).transpose()?;
@@ -200,20 +249,29 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, json: bool) -> Result
     let selection_filter = build_selection_filter(filters, kind.clone());
 
     let mut options = SearchOptions::default();
-    options.limit = limit;
+    options.limit = Some(limit);
     options.query = query;
     options.filter = selection_filter;
     options.from = from;
     options.to = to;
 
-    let (items, _) = load_history_items(&index, &options)?;
-    output_history(&items, json)
+    match mode {
+        OutputMode::Text => {
+            stream_history_items(&index, &options, |item| {
+                output_single_item(item, mode)
+            })
+        }
+        _ => {
+            let (items, _) = load_history_items(&index, &options)?;
+            output_history(&items, mode)
+        }
+    }
 }
 
-fn run_search(args: SearchArgs, filters: &FilterFlags, json: bool) -> Result<()> {
+fn run_search(args: SearchArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
-    let SearchArgs { query, limit } = args;
+    let SearchArgs { query, limit, .. } = args;
     let selection_filter = build_selection_filter(filters, None);
 
     let mut options = SearchOptions::default();
@@ -221,56 +279,118 @@ fn run_search(args: SearchArgs, filters: &FilterFlags, json: bool) -> Result<()>
     options.query = Some(query);
     options.filter = selection_filter;
 
-    let (items, _) = load_history_items(&index, &options)?;
-    output_history(&items, json)
+    match mode {
+        OutputMode::Text => {
+            stream_history_items(&index, &options, |item| {
+                output_single_item(item, mode)
+            })
+        }
+        _ => {
+            let (items, _) = load_history_items(&index, &options)?;
+            output_history(&items, mode)
+        }
+    }
 }
 
-fn output_history(items: &[HistoryItem], json: bool) -> Result<()> {
-    if json {
-        let config = load_config()?;
-        let data_dir = ensure_data_dir(&config)?;
-        let mut json_items = Vec::new();
-        for item in items {
-            let item_dir = data_dir.join(&item.metadata.relative_path);
-            json_items.push(plugins::build_json_item(
-                &item.metadata,
-                &item_dir,
-                item.offset,
-            )?);
+fn output_single_item(item: &HistoryItem, mode: OutputMode) -> Result<bool> {
+    match mode {
+        OutputMode::Text => {
+            let is_interactive = io::stdout().is_terminal();
+            let terminal_width = if is_interactive {
+                crossterm::terminal::size()
+                    .map(|(width, _)| width as usize)
+                    .unwrap_or(80)
+            } else {
+                usize::MAX
+            };
+
+            let timestamp = format_history_timestamp(item.metadata.last_seen);
+            let copies = item.metadata.copy_count;
+            let summary = if is_interactive {
+                clip_summary_to_width(
+                    &item.summary,
+                    terminal_width,
+                    item.offset,
+                    &timestamp,
+                    copies,
+                )
+            } else {
+                clean_summary(&item.summary)
+            };
+            let line = format!("{} [{} x{}]   {}", item.offset, timestamp, copies, summary);
+            write_line(&line)
         }
-        let output = to_string_pretty(&json_items)?;
-        if !write_line(&output)? {
+        _ => Ok(true),
+    }
+}
+
+fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
+    match mode {
+        OutputMode::JsonFull => {
+            let config = load_config()?;
+            let data_dir = ensure_data_dir(&config)?;
+            let mut json_items = Vec::new();
+            for item in items {
+                let item_dir = data_dir.join(&item.metadata.relative_path);
+                json_items.push(plugins::build_full_json_item(
+                    &item.metadata,
+                    &item_dir,
+                    Some(item.offset),
+                )?);
+            }
+            let output = to_string_pretty(&json_items)?;
+            if !write_line(&output)? {
+                return Ok(());
+            }
             return Ok(());
         }
-        return Ok(());
-    }
+        OutputMode::JsonSimple => {
+            let config = load_config()?;
+            let data_dir = ensure_data_dir(&config)?;
+            let mut json_items = Vec::new();
+            for item in items {
+                let item_dir = data_dir.join(&item.metadata.relative_path);
+                json_items.push(plugins::build_json_item(
+                    &item.metadata,
+                    &item_dir,
+                    item.offset,
+                )?);
+            }
+            let output = to_string_pretty(&json_items)?;
+            if !write_line(&output)? {
+                return Ok(());
+            }
+            return Ok(());
+        }
+        OutputMode::Text => {
+            let is_interactive = io::stdout().is_terminal();
+            let terminal_width = if is_interactive {
+                crossterm::terminal::size()
+                    .map(|(width, _)| width as usize)
+                    .unwrap_or(80)
+            } else {
+                usize::MAX
+            };
 
-    let is_interactive = io::stdout().is_terminal();
-    let terminal_width = if is_interactive {
-        crossterm::terminal::size()
-            .map(|(width, _)| width as usize)
-            .unwrap_or(80)
-    } else {
-        usize::MAX
-    };
-
-    for item in items {
-        let timestamp = format_history_timestamp(item.metadata.last_seen);
-        let copies = item.metadata.copy_count;
-        let summary = if is_interactive {
-            clip_summary_to_width(
-                &item.summary,
-                terminal_width,
-                item.offset,
-                &timestamp,
-                copies,
-            )
-        } else {
-            clean_summary(&item.summary)
-        };
-        let line = format!("{} [{} x{}]   {}", item.offset, timestamp, copies, summary);
-        if !write_line(&line)? {
-            break;
+            for item in items {
+                let timestamp = format_history_timestamp(item.metadata.last_seen);
+                let copies = item.metadata.copy_count;
+                let summary = if is_interactive {
+                    clip_summary_to_width(
+                        &item.summary,
+                        terminal_width,
+                        item.offset,
+                        &timestamp,
+                        copies,
+                    )
+                } else {
+                    clean_summary(&item.summary)
+                };
+                let line = format!("{} [{} x{}]   {}", item.offset, timestamp, copies, summary);
+                if !write_line(&line)? {
+                    break;
+                }
+            }
         }
     }
 
