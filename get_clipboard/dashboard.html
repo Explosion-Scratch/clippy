@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clipboard Manager</title>
+    <script src="https://unpkg.com/@phosphor-icons/web@2.0.3"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+        }
+
+        body {
+            background: #fafafa;
+            color: #1a1a1a;
+        }
+
+        .panel {
+            background: #ffffff;
+            border: 1px solid #e5e5e5;
+        }
+
+        .item-row {
+            transition: all 0.1s ease;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+        }
+
+        .item-row:hover {
+            background: #fafafa;
+        }
+
+        .item-row.selected {
+            background: #f0f7ff;
+            border-left: 2px solid #2563eb;
+        }
+
+        .btn {
+            transition: all 0.12s ease;
+            border: 1px solid #e5e5e5;
+            background: #ffffff;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: #f5f5f5;
+            border-color: #d4d4d4;
+        }
+
+        .btn:active:not(:disabled) {
+            background: #e5e5e5;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+        }
+
+        .search-input {
+            transition: all 0.15s ease;
+            border: 1px solid #e5e5e5;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .format-tab {
+            transition: all 0.12s ease;
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+
+        .format-tab:hover {
+            background: #f5f5f5;
+        }
+
+        .format-tab.active {
+            background: #f0f7ff;
+            border-color: #2563eb;
+            color: #2563eb;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #d4d4d4;
+            border-radius: 4px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #a3a3a3;
+        }
+
+        .loading-spinner {
+            border: 2px solid #f0f0f0;
+            border-top-color: #2563eb;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .kbd {
+            background: #f5f5f5;
+            border: 1px solid #d4d4d4;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+        }
+
+        .stat-badge {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: #f5f5f5;
+        }
+
+        .empty-state {
+            color: #a3a3a3;
+        }
+
+        pre {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+        }
+
+        .highlight {
+            background: #fef08a;
+            padding: 0 2px;
+        }
+
+        .filter-chip {
+            transition: all 0.12s ease;
+            cursor: pointer;
+            border: 1px solid #e5e5e5;
+            background: white;
+        }
+
+        .filter-chip:hover {
+            background: #f5f5f5;
+        }
+
+        .filter-chip.active {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: white;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        #itemsListLoading {
+            backdrop-filter: blur(2px);
+        }
+
+        .image-preview {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            border: 1px solid #e5e5e5;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+    <header class="border-b border-gray-200 bg-white px-6 py-3 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-3">
+            <i class="ph ph-clipboard-text text-xl"></i>
+            <h1 class="text-lg font-semibold">Clipboard Manager</h1>
+            <div id="itemCount" class="stat-badge"></div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="showStats()" class="btn px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                <i class="ph ph-chart-bar text-sm"></i>
+                <span>Stats</span>
+                <span class="kbd">S</span>
+            </button>
+            <button onclick="exportSelected()" class="btn px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                <i class="ph ph-download text-sm"></i>
+                <span>Export</span>
+                <span class="kbd">E</span>
+            </button>
+            <button onclick="importItems()" class="btn px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                <i class="ph ph-upload text-sm"></i>
+                <span>Import</span>
+                <span class="kbd">I</span>
+            </button>
+            <button onclick="showHelp()" class="btn px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                <i class="ph ph-question text-sm"></i>
+                <span class="kbd">?</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        <div class="w-1/2 flex flex-col border-r border-gray-200 bg-white">
+            <div class="p-4 border-b border-gray-200 space-y-3 flex-shrink-0">
+                <div class="relative">
+                    <input
+                        type="text"
+                        id="searchInput"
+                        placeholder="Search clipboard... (Press / to focus)"
+                        class="search-input w-full px-3 py-2 pl-9 pr-9 rounded text-sm"
+                        oninput="handleSearch()"
+                    />
+                    <i class="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <div id="searchSpinner" class="loading-spinner absolute right-3 top-1/2 -translate-y-1/2 hidden"></div>
+                </div>
+                <div class="flex items-center gap-2 text-xs flex-wrap">
+                    <span class="text-gray-500">Filter:</span>
+                    <button onclick="toggleFilter('')" class="filter-chip px-2 py-1 rounded active" data-filter="">
+                        All
+                    </button>
+                    <button onclick="toggleFilter('text')" class="filter-chip px-2 py-1 rounded" data-filter="text">
+                        Text
+                    </button>
+                    <button onclick="toggleFilter('image')" class="filter-chip px-2 py-1 rounded" data-filter="image">
+                        Image
+                    </button>
+                    <button onclick="toggleFilter('file')" class="filter-chip px-2 py-1 rounded" data-filter="file">
+                        File
+                    </button>
+                    <button onclick="toggleFilter('other')" class="filter-chip px-2 py-1 rounded" data-filter="other">
+                        Other
+                    </button>
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2">
+                        <button onclick="selectAll()" class="btn px-2 py-1 rounded flex items-center gap-1">
+                            <i class="ph ph-check-square text-xs"></i>
+                            Select All
+                        </button>
+                        <button onclick="clearSelection()" class="btn px-2 py-1 rounded flex items-center gap-1" id="clearBtn" style="display:none">
+                            <i class="ph ph-x text-xs"></i>
+                            Clear
+                        </button>
+                        <span id="selectedInfo" class="text-gray-500" style="display:none"></span>
+                    </div>
+                    <button onclick="deleteSelected()" class="btn px-2 py-1 rounded flex items-center gap-1 text-red-600" id="deleteBtn" style="display:none">
+                        <i class="ph ph-trash text-xs"></i>
+                        Delete
+                    </button>
+                </div>
+            </div>
+
+            <div id="itemsList" class="flex-1 overflow-y-auto scrollbar-thin relative">
+                <div id="itemsListLoading" class="absolute inset-0 bg-white bg-opacity-80 flex items-center justify-center z-10 hidden">
+                    <div class="flex items-center gap-2 text-sm text-gray-500">
+                        <div class="loading-spinner"></div>
+                        <span id="itemsListLoadingText">Loading...</span>
+                    </div>
+                </div>
+                <div id="itemsListContent" class="flex items-center justify-center py-12 text-gray-400">
+                    <div class="loading-spinner"></div>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-200 p-3 flex items-center justify-between text-xs flex-shrink-0">
+                <div class="flex items-center gap-2">
+                    <button onclick="prevPage()" class="btn px-2 py-1 rounded" id="prevBtn" disabled>
+                        <i class="ph ph-caret-left"></i>
+                    </button>
+                    <span id="pageInfo" class="text-gray-600">Page 1</span>
+                    <button onclick="nextPage()" class="btn px-2 py-1 rounded" id="nextBtn" disabled>
+                        <i class="ph ph-caret-right"></i>
+                    </button>
+                </div>
+                <select id="pageSizeSelect" onchange="changePageSize()" class="btn px-2 py-1 rounded text-xs">
+                    <option value="25">25 / page</option>
+                    <option value="50" selected>50 / page</option>
+                    <option value="100">100 / page</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="w-1/2 flex flex-col bg-white">
+            <div id="detailsPanel" class="flex-1 overflow-y-auto scrollbar-thin">
+                <div class="flex flex-col items-center justify-center h-full empty-state">
+                    <i class="ph ph-cursor-click text-6xl mb-3"></i>
+                    <p class="text-sm">Select an item to view details</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-40 hidden items-center justify-center z-50 p-6" onclick="closeModal(event)">
+        <div class="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden" onclick="event.stopPropagation()">
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="handleImportFile(event)" />
+    
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="bg-white rounded-lg px-6 py-4 shadow-lg flex items-center gap-3">
+            <div class="loading-spinner"></div>
+            <span id="loadingText" class="text-sm">Loading...</span>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const PAGE_SIZE = 50;
+        
+        let currentPage = 0;
+        let pageSize = 50;
+        let totalItems = 0;
+        let items = [];
+        let selectedId = null;
+        let selectedItems = new Set();
+        let searchQuery = '';
+        let typeFilter = '';
+        let isSearching = false;
+        let searchTimeout;
+        let allStats = null;
+        let isLoadingItems = false;
+
+        function showItemsLoading(text = 'Loading...') {
+            isLoadingItems = true;
+            document.getElementById('itemsListLoadingText').textContent = text;
+            document.getElementById('itemsListLoading').classList.remove('hidden');
+        }
+
+        function hideItemsLoading() {
+            isLoadingItems = false;
+            document.getElementById('itemsListLoading').classList.add('hidden');
+        }
+
+        async function fetchItems() {
+            if (isLoadingItems) return;
+            
+            showItemsLoading();
+            try {
+                const offset = currentPage * pageSize;
+                const url = searchQuery 
+                    ? `${API_BASE}/search?query=${encodeURIComponent(searchQuery)}&offset=${offset}&count=${pageSize}`
+                    : `${API_BASE}/items?offset=${offset}&count=${pageSize}`;
+                
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to fetch items');
+                let fetchedItems = await response.json();
+                
+                if (typeFilter) {
+                    fetchedItems = fetchedItems.filter(item => {
+                        const type = (item.type || '').toLowerCase();
+                        return type.includes(typeFilter);
+                    });
+                }
+                
+                items = fetchedItems;
+                
+                renderItems();
+                updatePagination();
+                updateItemCount();
+            } catch (error) {
+                console.error('Error fetching items:', error);
+                showToast('Failed to load items', 'error');
+            } finally {
+                hideItemsLoading();
+            }
+        }
+
+        async function fetchStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                if (!response.ok) return;
+                const stats = await response.json();
+                
+                totalItems = stats.total_items || 0;
+                allStats = {
+                    total: stats.total_items || 0,
+                    totalSize: stats.total_size || 0,
+                    typeCounts: stats.type_counts || {}
+                };
+                
+                updateItemCount();
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+            }
+        }
+
+        function updateItemCount() {
+            const el = document.getElementById('itemCount');
+            el.textContent = `${totalItems} items`;
+        }
+
+        function renderItems() {
+            const container = document.getElementById('itemsListContent');
+            
+            if (items.length === 0) {
+                container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12 empty-state">
+                        <i class="ph ph-clipboard text-6xl mb-3"></i>
+                        <p class="text-sm">No items found</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = items.map((item, idx) => {
+                const summary = item.summary || (typeof item.data === 'string' ? item.data : JSON.stringify(item.data)) || '';
+                const truncated = summary.length > 80 ? summary.substring(0, 80) + '...' : summary;
+                const highlighted = searchQuery ? highlightText(truncated, searchQuery) : escapeHtml(truncated);
+                const date = new Date(item.date).toLocaleString('en-US', { 
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+                });
+                const sizeKB = (item.size || 0).toFixed(0);
+                const isSelected = item.id === selectedId;
+                const isChecked = selectedItems.has(item.id);
+
+                return `
+                    <div class="item-row ${isSelected ? 'selected' : ''} p-3 flex items-start gap-3" onclick="selectItem('${item.id}')">
+                        <input type="checkbox" 
+                               class="mt-1 flex-shrink-0" 
+                               ${isChecked ? 'checked' : ''} 
+                               onclick="event.stopPropagation(); toggleCheck('${item.id}')" />
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-start justify-between gap-2 mb-1">
+                                <div class="flex items-center gap-2 text-xs text-gray-500">
+                                    <span>#${currentPage * pageSize + idx}</span>
+                                    <span class="text-gray-400">·</span>
+                                    <span>${item.type || 'text'}</span>
+                                </div>
+                                <div class="flex items-center gap-2 text-xs text-gray-400">
+                                    <span>${sizeKB} KB</span>
+                                    <span>·</span>
+                                    <span>${date}</span>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-700 truncate">${highlighted}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function highlightText(text, query) {
+            const escaped = escapeHtml(text);
+            const escapedQuery = escapeRegex(query);
+            const regex = new RegExp(`(${escapedQuery})`, 'gi');
+            return escaped.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        function escapeRegex(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function updatePagination() {
+            const hasNext = items.length === pageSize;
+            const hasPrev = currentPage > 0;
+            
+            document.getElementById('prevBtn').disabled = !hasPrev;
+            document.getElementById('nextBtn').disabled = !hasNext;
+            document.getElementById('pageInfo').textContent = `Page ${currentPage + 1}`;
+        }
+
+        async function selectItem(id) {
+            selectedId = id;
+            renderItems();
+            await loadItemDetails(id);
+        }
+
+        function showLoading(text = 'Loading...') {
+            document.getElementById('loadingText').textContent = text;
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        async function loadItemDetails(id) {
+            const panel = document.getElementById('detailsPanel');
+            panel.innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="flex items-center gap-2 text-sm text-gray-500">
+                        <div class="loading-spinner"></div>
+                        <span>Loading details...</span>
+                    </div>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`${API_BASE}/item/${id}/data`);
+                if (!response.ok) throw new Error('Failed to load item');
+                const item = await response.json();
+                renderDetails(item);
+            } catch (error) {
+                console.error('Error loading item:', error);
+                panel.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full empty-state">
+                        <i class="ph ph-warning text-6xl mb-3"></i>
+                        <p class="text-sm">Failed to load item details</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderDetails(item) {
+            const panel = document.getElementById('detailsPanel');
+            const formats = item.formats || [];
+            const date = new Date(item.date || item.lastSeen).toLocaleString();
+            const sizeKB = ((item.size || 0) / 1024).toFixed(2);
+            const id = item.id || item.hash;
+
+            panel.innerHTML = `
+                <div class="p-6">
+                    <div class="mb-6">
+                        <div class="flex items-start justify-between mb-3">
+                            <h2 class="text-base font-semibold">Item Details</h2>
+                            <div class="flex items-center gap-2">
+                                <button onclick="copyItemToClipboard('${id}')" class="btn px-3 py-1.5 rounded text-xs flex items-center gap-1.5">
+                                    <i class="ph ph-copy text-sm"></i>
+                                    Copy
+                                </button>
+                                <button onclick="deleteItemById('${id}')" class="btn px-3 py-1.5 rounded text-xs flex items-center gap-1.5 text-red-600">
+                                    <i class="ph ph-trash text-sm"></i>
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <div class="text-gray-500">ID</div>
+                                <div class="font-mono">${id.substring(0, 12)}...</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Date</div>
+                                <div>${date}</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Size</div>
+                                <div>${sizeKB} KB</div>
+                            </div>
+                            <div>
+                                <div class="text-gray-500">Copied</div>
+                                <div>${item.copy_count || item.copyCount || 0}x</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${formats.length > 0 ? `
+                        <div>
+                            <div class="flex items-center gap-2 mb-3 border-b border-gray-200">
+                                ${formats.map((fmt, idx) => `
+                                    <button class="format-tab px-3 py-2 text-xs ${idx === 0 ? 'active' : ''}" 
+                                            onclick="switchFormat(${idx})"
+                                            data-tab="${idx}">
+                                        ${fmt.plugin_id || fmt.pluginId || fmt.id}
+                                    </button>
+                                `).join('')}
+                            </div>
+                            ${formats.map((fmt, idx) => renderFormatContent(fmt, idx, item)).join('')}
+                        </div>
+                    ` : '<div class="text-sm text-gray-500">No format data available</div>'}
+                </div>
+            `;
+
+            window.currentItemFormats = formats;
+            window.currentItemId = id;
+        }
+
+        function renderFormatContent(fmt, idx, item) {
+            const pluginId = fmt.plugin_id || fmt.pluginId || fmt.id;
+            const isImage = pluginId === 'image';
+            const data = fmt.data;
+
+            if (isImage) {
+                let imgSrc = '';
+                if (typeof data === 'string') {
+                    imgSrc = `data:image/png;base64,${data}`;
+                } else if (data && data.path) {
+                    const itemPath = item.data_path || item.dataPath;
+                    if (itemPath) {
+                        const dir = itemPath.replace(/\\/g, '/');
+                        imgSrc = `file://${dir}/${data.path}`;
+                    }
+                }
+
+                return `
+                    <div class="format-content ${idx === 0 ? '' : 'hidden'}" data-content="${idx}">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-xs text-gray-500">${fmt.kind || 'image'} ${data.width && data.height ? `· ${data.width}×${data.height}` : ''}</div>
+                            <button onclick="copyImageToClipboard(${idx})" class="btn px-2 py-1 rounded text-xs flex items-center gap-1">
+                                <i class="ph ph-copy text-xs"></i>
+                                Copy image
+                            </button>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200 flex items-center justify-center" style="min-height: 200px;">
+                            ${imgSrc ? `<img src="${imgSrc}" class="image-preview" />` : '<div class="text-gray-400 text-sm">Image not available</div>'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="format-content ${idx === 0 ? '' : 'hidden'}" data-content="${idx}">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-xs text-gray-500">${fmt.kind || 'unknown'}</div>
+                        <button onclick="copyFormatData(${idx})" class="btn px-2 py-1 rounded text-xs flex items-center gap-1">
+                            <i class="ph ph-copy text-xs"></i>
+                            Copy as text
+                        </button>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded text-xs overflow-x-auto border border-gray-200">
+                        <pre class="whitespace-pre-wrap break-words">${escapeHtml(formatData(data))}</pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        function switchFormat(index) {
+            document.querySelectorAll('.format-tab').forEach((tab, idx) => {
+                tab.classList.toggle('active', idx === index);
+            });
+            document.querySelectorAll('.format-content').forEach((content, idx) => {
+                content.classList.toggle('hidden', idx !== index);
+            });
+        }
+
+        function copyFormatData(index) {
+            const formats = window.currentItemFormats || [];
+            if (!formats[index]) return;
+            
+            const data = formats[index].data;
+            const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Copied to clipboard', 'success');
+            }).catch(() => {
+                showToast('Failed to copy', 'error');
+            });
+        }
+
+        async function copyImageToClipboard(index) {
+            const formats = window.currentItemFormats || [];
+            if (!formats[index]) return;
+            
+            const id = window.currentItemId;
+            showLoading('Copying image...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/item/${id}/copy`, { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to copy');
+                showToast('Image copied to clipboard', 'success');
+                fetchItems();
+            } catch (error) {
+                showToast('Failed to copy image', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function formatData(data) {
+            if (typeof data === 'string') {
+                return data.length > 2000 ? data.substring(0, 2000) + '\n\n... [truncated]' : data;
+            }
+            const str = JSON.stringify(data, null, 2);
+            return str.length > 2000 ? str.substring(0, 2000) + '\n\n... [truncated]' : str;
+        }
+
+        function toggleCheck(id) {
+            if (selectedItems.has(id)) {
+                selectedItems.delete(id);
+            } else {
+                selectedItems.add(id);
+            }
+            updateSelectionUI();
+        }
+
+        function selectAll() {
+            items.forEach(item => selectedItems.add(item.id));
+            updateSelectionUI();
+            renderItems();
+        }
+
+        function clearSelection() {
+            selectedItems.clear();
+            updateSelectionUI();
+            renderItems();
+        }
+
+        function updateSelectionUI() {
+            const hasSelection = selectedItems.size > 0;
+            document.getElementById('clearBtn').style.display = hasSelection ? 'block' : 'none';
+            document.getElementById('deleteBtn').style.display = hasSelection ? 'block' : 'none';
+            document.getElementById('selectedInfo').style.display = hasSelection ? 'block' : 'none';
+            document.getElementById('selectedInfo').textContent = `${selectedItems.size} selected`;
+            renderItems();
+        }
+
+        async function copyItemToClipboard(id) {
+            showLoading('Copying to clipboard...');
+            try {
+                const response = await fetch(`${API_BASE}/item/${id}/copy`, { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to copy');
+                showToast('Copied to clipboard', 'success');
+                fetchItems();
+            } catch (error) {
+                showToast('Failed to copy item', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteItemById(id) {
+            if (!confirm('Delete this item?')) return;
+            
+            showLoading('Deleting...');
+            try {
+                const response = await fetch(`${API_BASE}/item/${id}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error('Failed to delete');
+                showToast('Item deleted', 'success');
+                selectedId = null;
+                document.getElementById('detailsPanel').innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full empty-state">
+                        <i class="ph ph-cursor-click text-6xl mb-3"></i>
+                        <p class="text-sm">Select an item to view details</p>
+                    </div>
+                `;
+                fetchItems();
+                fetchStats();
+            } catch (error) {
+                showToast('Failed to delete item', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function deleteSelected() {
+            if (selectedItems.size === 0) return;
+            if (!confirm(`Delete ${selectedItems.size} selected item(s)?`)) return;
+
+            showLoading(`Deleting ${selectedItems.size} item(s)...`);
+            try {
+                await Promise.all(Array.from(selectedItems).map(id =>
+                    fetch(`${API_BASE}/item/${id}`, { method: 'DELETE' })
+                ));
+                showToast(`Deleted ${selectedItems.size} item(s)`, 'success');
+                selectedItems.clear();
+                updateSelectionUI();
+                fetchItems();
+                fetchStats();
+            } catch (error) {
+                showToast('Failed to delete some items', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function toggleFilter(type) {
+            typeFilter = typeFilter === type ? '' : type;
+            
+            document.querySelectorAll('.filter-chip').forEach(chip => {
+                const chipType = chip.dataset.filter;
+                chip.classList.toggle('active', chipType === typeFilter);
+            });
+            
+            currentPage = 0;
+            showItemsLoading('Filtering...');
+            fetchItems();
+        }
+
+        function handleSearch() {
+            clearTimeout(searchTimeout);
+            const input = document.getElementById('searchInput');
+            const query = input.value.trim();
+            
+            if (query !== searchQuery) {
+                document.getElementById('searchSpinner').classList.remove('hidden');
+            }
+            
+            searchTimeout = setTimeout(() => {
+                searchQuery = query;
+                currentPage = 0;
+                fetchItems().finally(() => {
+                    document.getElementById('searchSpinner').classList.add('hidden');
+                });
+            }, 300);
+        }
+
+        function prevPage() {
+            if (currentPage > 0) {
+                currentPage--;
+                showItemsLoading('Loading page...');
+                fetchItems();
+            }
+        }
+
+        function nextPage() {
+            currentPage++;
+            showItemsLoading('Loading page...');
+            fetchItems();
+        }
+
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+            currentPage = 0;
+            showItemsLoading('Loading...');
+            fetchItems();
+        }
+
+        async function exportSelected() {
+            const toExport = selectedItems.size > 0 
+                ? items.filter(item => selectedItems.has(item.id))
+                : items;
+
+            if (toExport.length === 0) {
+                showToast('No items to export', 'error');
+                return;
+            }
+
+            showLoading(`Exporting ${toExport.length} item(s)...`);
+            try {
+                const promises = toExport.map(item =>
+                    fetch(`${API_BASE}/item/${item.id}/data`).then(r => r.json())
+                );
+                const fullItems = await Promise.all(promises);
+
+                const blob = new Blob([JSON.stringify(fullItems, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `clipboard-${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                showToast(`Exported ${fullItems.length} item(s)`, 'success');
+            } catch (error) {
+                showToast('Export failed', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function importItems() {
+            document.getElementById('importFileInput').click();
+        }
+
+        async function handleImportFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showLoading('Importing items...');
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                const items = Array.isArray(data) ? data : [data];
+
+                await Promise.all(items.map(item =>
+                    fetch(`${API_BASE}/save`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    })
+                ));
+
+                showToast(`Imported ${items.length} item(s)`, 'success');
+                fetchItems();
+                fetchStats();
+            } catch (error) {
+                showToast('Import failed', 'error');
+            } finally {
+                hideLoading();
+            }
+
+            event.target.value = '';
+        }
+
+        async function showStats() {
+            showLoading('Loading statistics...');
+            
+            try {
+                const dirResponse = await fetch(`${API_BASE}/dir`);
+                const dirData = await dirResponse.json();
+                const dataDir = dirData.path;
+
+                const stats = allStats || { total: 0, totalSize: 0, typeCounts: {} };
+                const totalSizeFormatted = formatBytes(stats.totalSize);
+                
+                const typePercentages = Object.entries(stats.typeCounts)
+                    .map(([type, count]) => ({
+                        type,
+                        count,
+                        percentage: ((count / stats.total) * 100).toFixed(1)
+                    }))
+                    .sort((a, b) => b.count - a.count);
+
+                hideLoading();
+                
+                showModal(`
+                    <div class="p-6">
+                        <div class="flex items-start justify-between mb-6">
+                            <h2 class="text-lg font-semibold">Statistics</h2>
+                            <button onclick="closeModal()" class="btn p-2 rounded">
+                                <i class="ph ph-x"></i>
+                            </button>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="p-4 bg-gray-50 rounded">
+                                    <div class="text-2xl font-bold">${stats.total}</div>
+                                    <div class="text-xs text-gray-500">Total Items</div>
+                                </div>
+                                <div class="p-4 bg-gray-50 rounded">
+                                    <div class="text-2xl font-bold">${totalSizeFormatted}</div>
+                                    <div class="text-xs text-gray-500">Total Storage</div>
+                                </div>
+                            </div>
+                            
+                            <div class="border-t pt-4">
+                                <div class="text-sm font-semibold mb-2">Data Directory</div>
+                                <div class="text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded break-all">${dataDir}</div>
+                            </div>
+
+                            ${typePercentages.length > 0 ? `
+                                <div class="border-t pt-4">
+                                    <div class="text-sm font-semibold mb-3">Types Breakdown</div>
+                                    <div class="space-y-2">
+                                        ${typePercentages.map(({ type, count, percentage }) => `
+                                            <div class="flex items-center justify-between text-xs">
+                                                <div class="flex items-center gap-2 flex-1">
+                                                    <span class="capitalize">${type}</span>
+                                                    <div class="flex-1 bg-gray-200 h-2 rounded-full overflow-hidden">
+                                                        <div class="bg-blue-500 h-full" style="width: ${percentage}%"></div>
+                                                    </div>
+                                                </div>
+                                                <div class="text-gray-500 ml-3">${count} (${percentage}%)</div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `);
+            } catch (error) {
+                hideLoading();
+                showToast('Failed to load statistics', 'error');
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+        }
+
+        function showHelp() {
+            showModal(`
+                <div class="p-6">
+                    <div class="flex items-start justify-between mb-6">
+                        <h2 class="text-lg font-semibold">Keyboard Shortcuts</h2>
+                        <button onclick="closeModal()" class="btn p-2 rounded">
+                            <i class="ph ph-x"></i>
+                        </button>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center justify-between py-2 border-b">
+                            <span>Focus search</span>
+                            <span class="kbd">/</span>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-b">
+                            <span>Show statistics</span>
+                            <span class="kbd">S</span>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-b">
+                            <span>Export items</span>
+                            <span class="kbd">E</span>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-b">
+                            <span>Import items</span>
+                            <span class="kbd">I</span>
+                        </div>
+                        <div class="flex items-center justify-between py-2 border-b">
+                            <span>Refresh</span>
+                            <span class="kbd">R</span>
+                        </div>
+                        <div class="flex items-center justify-between py-2">
+                            <span>Show help</span>
+                            <span class="kbd">?</span>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+
+        function showModal(content) {
+            document.getElementById('modalContent').innerHTML = content;
+            document.getElementById('modal').classList.remove('hidden');
+            document.getElementById('modal').classList.add('flex');
+        }
+
+        function closeModal(event) {
+            if (event && event.target !== document.getElementById('modal')) return;
+            document.getElementById('modal').classList.add('hidden');
+            document.getElementById('modal').classList.remove('flex');
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-6 right-6 px-4 py-3 rounded-lg bg-white border shadow-lg z-50 flex items-center gap-2 text-sm ${
+                type === 'error' ? 'text-red-600 border-red-200' : 'text-green-600 border-green-200'
+            }`;
+            toast.innerHTML = `
+                <i class="ph ${type === 'error' ? 'ph-warning-circle' : 'ph-check-circle'}"></i>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.2s';
+                setTimeout(() => toast.remove(), 200);
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                return;
+            }
+
+            if (e.target.tagName === 'INPUT') return;
+
+            if (e.key === '/') {
+                e.preventDefault();
+                document.getElementById('searchInput').focus();
+            } else if (e.key === '?') {
+                e.preventDefault();
+                showHelp();
+            } else if (e.key === 's' || e.key === 'S') {
+                e.preventDefault();
+                showStats();
+            } else if (e.key === 'e' || e.key === 'E') {
+                e.preventDefault();
+                exportSelected();
+            } else if (e.key === 'i' || e.key === 'I') {
+                e.preventDefault();
+                importItems();
+            } else if (e.key === 'r' || e.key === 'R') {
+                e.preventDefault();
+                showItemsLoading('Refreshing...');
+                fetchItems();
+                fetchStats();
+            }
+        });
+
+        showItemsLoading('Loading items...');
+        fetchItems();
+        fetchStats();
+    </script>
+</body>
+</html>

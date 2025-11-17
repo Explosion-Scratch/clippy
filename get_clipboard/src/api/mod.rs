@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Response, Html},
     routing::{delete as axum_delete, get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -30,11 +30,13 @@ use crate::util::time::format_iso;
 use tokio::net::TcpListener;
 
 const API_DOCS: &str = include_str!("../../API.md");
+const DASHBOARD_HTML: &str = include_str!("../../dashboard.html");
 
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("API listening on http://{}", addr);
+    println!("Dashboard available at http://{}/dashboard", addr);
     let app = router();
     let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
@@ -44,6 +46,7 @@ pub async fn serve(port: u16) -> Result<()> {
 fn router() -> Router {
     Router::new()
         .route("/", get(get_docs))
+        .route("/dashboard", get(get_dashboard))
         .route("/items", get(get_items))
         .route("/item/:selector/data", get(get_item_data))
         .route(
@@ -52,6 +55,7 @@ fn router() -> Router {
         )
         .route("/item/:selector/copy", post(copy_item))
         .route("/search", get(search_items))
+        .route("/stats", get(get_stats))
         .route("/mtime", get(get_mtime))
         .route("/dir", get(get_dir).post(update_dir))
         .route("/copy", post(copy_payload))
@@ -89,6 +93,14 @@ struct DirResponse {
 struct MtimeResponse {
     last_modified: Option<String>,
     id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatsResponse {
+    total_items: usize,
+    total_size: u64,
+    type_counts: HashMap<String, usize>,
 }
 
 #[derive(Clone)]
@@ -156,6 +168,10 @@ async fn get_docs() -> impl IntoResponse {
         [("Content-Type", "text/plain; charset=utf-8")],
         API_DOCS,
     )
+}
+
+async fn get_dashboard() -> Html<&'static str> {
+    Html(DASHBOARD_HTML)
 }
 
 async fn get_items(
@@ -267,6 +283,30 @@ async fn search_items(
         );
     }
     Ok(Json(response))
+}
+
+async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
+    let index = load_fresh_index()?;
+    
+    let total_items = index.len();
+    let total_size = index.values().map(|r| r.byte_size).sum();
+    
+    let mut type_counts = HashMap::new();
+    for record in index.values() {
+        let kind_str = match record.kind {
+            crate::data::model::EntryKind::Text => "text",
+            crate::data::model::EntryKind::Image => "image",
+            crate::data::model::EntryKind::File => "file",
+            crate::data::model::EntryKind::Other => "other",
+        };
+        *type_counts.entry(kind_str.to_string()).or_insert(0) += 1;
+    }
+    
+    Ok(Json(StatsResponse {
+        total_items,
+        total_size,
+        type_counts,
+    }))
 }
 
 async fn get_mtime() -> Result<Json<MtimeResponse>, ApiError> {

@@ -138,6 +138,12 @@ pub struct ClipboardJsonItem {
     pub size: u64,
     pub dataPath: String,
     pub data: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copyCount: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detectedFormats: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,6 +340,9 @@ fn json_with_plugin(
         size: bytes_to_kb(metadata.byte_size),
         dataPath: item_path.to_string_lossy().to_string(),
         data,
+        summary: metadata.summary.clone(),
+        copyCount: Some(metadata.copy_count),
+        detectedFormats: Some(metadata.detected_formats.clone()),
     }))
 }
 
