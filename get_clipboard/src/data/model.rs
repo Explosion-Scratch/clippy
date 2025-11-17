@@ -74,6 +74,7 @@ pub struct SearchIndexRecord {
     pub search_text: Option<String>,
     pub detected_formats: Vec<String>,
     pub byte_size: u64,
+    pub relative_path: String,
 }
 
 pub type SearchIndex = HashMap<String, SearchIndexRecord>;

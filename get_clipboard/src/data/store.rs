@@ -99,6 +99,7 @@ fn load_index_from_disk(data_dir: &Path) -> Result<SearchIndex> {
                                 search_text: meta.search_text.clone(),
                                 detected_formats: meta.detected_formats.clone(),
                                 byte_size: meta.byte_size,
+                                relative_path: meta.relative_path.clone(),
                             },
                         );
                     }
@@ -448,10 +449,12 @@ fn update_index(metadata: EntryMetadata) {
             search_text: metadata.search_text,
             detected_formats: metadata.detected_formats,
             byte_size: metadata.byte_size,
+            relative_path: metadata.relative_path,
         },
     );
 }
 
+#[derive(Clone)]
 pub struct HistoryItem {
     pub summary: String,
     pub kind: String,
@@ -564,6 +567,18 @@ pub fn history_stream(
 }
 
 pub fn load_metadata(hash: &str) -> Result<EntryMetadata> {
+    let index = index_cell().read();
+    if let Some(record) = index.get(hash) {
+        let config = load_config()?;
+        let data_dir = ensure_data_dir(&config)?;
+        let metadata_path = data_dir.join(&record.relative_path).join("metadata.json");
+        if metadata_path.exists() {
+            let meta: EntryMetadata = serde_json::from_slice(&fs::read(&metadata_path)?)
+                .with_context(|| format!("Failed to parse metadata at {}", metadata_path.display()))?;
+            return Ok(meta);
+        }
+    }
+    
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
     let mut target_meta = None;

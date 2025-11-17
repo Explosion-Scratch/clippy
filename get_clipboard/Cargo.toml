@@ -2,6 +2,7 @@
 name = "get_clipboard"
 version = "0.1.0"
 edition = "2024"
+default-run = "get_clipboard"
 
 [dependencies]
 anyhow = "1.0"

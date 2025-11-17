@@ -96,9 +96,7 @@ fn ensure_filters_unsupported(filters: &FilterFlags, json: bool, command: &str) 
 }
 
 fn run_interactive(query: Option<String>) -> Result<()> {
-    refresh_index()?;
-    let index = load_index()?;
-    tui::start(index, query)
+    tui::start(query)
 }
 
 fn copy_entry(selector: &str, filters: &FilterFlags) -> Result<()> {

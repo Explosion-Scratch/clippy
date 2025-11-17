@@ -1,7 +1,7 @@
 use crate::data::SearchIndex;
 use crate::data::store::{
     HistoryItem, copy_by_selector, delete_entry, load_history_items, load_index, load_item_preview,
-    preview_snippet,
+    preview_snippet, refresh_index, stream_history_items,
 };
 use crate::search::SearchOptions;
 use crate::tui::state::{AppState, PreviewState};
@@ -16,7 +16,7 @@ use std::time::Duration;
 const PAGE_SIZE: usize = 100;
 const SEARCH_DEBOUNCE_MS: u64 = 160;
 
-pub fn start(mut index: SearchIndex, query: Option<String>) -> Result<()> {
+pub fn start(query: Option<String>) -> Result<()> {
     let mut stdout = stdout();
     let mut terminal = setup_terminal(&mut stdout)?;
     let mut state = AppState::new(Vec::new());
@@ -24,7 +24,11 @@ pub fn start(mut index: SearchIndex, query: Option<String>) -> Result<()> {
         state.filter = q.clone();
         state.sticky_query = Some(q);
     }
-    rebuild_items(&mut state, &mut index)?;
+    state.loading = true;
+    terminal.draw(|frame| draw_frame(frame, &state))?;
+    refresh_index()?;
+    let mut index = load_index()?;
+    let _ = rebuild_items_streaming(&mut terminal, &mut state, &mut index)?;
     ensure_preview(&mut state)?;
     terminal.draw(|frame| draw_frame(frame, &state))?;
     event_loop(&mut terminal, &mut state, &mut index)?;
@@ -55,6 +59,86 @@ fn rebuild_items(state: &mut AppState, index: &mut SearchIndex) -> Result<()> {
     Ok(())
 }
 
+fn rebuild_items_streaming(
+    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<&mut Stdout>>,
+    state: &mut AppState,
+    index: &SearchIndex,
+) -> Result<bool> {
+    state.items.clear();
+    state.selected = 0;
+    state.invalidate_preview();
+    
+    let mut options = SearchOptions::default();
+    options.limit = Some(PAGE_SIZE);
+    if !state.filter.is_empty() {
+        options.query = Some(state.filter.clone());
+    }
+    
+    let mut count = 0;
+    let mut interrupted = false;
+    
+    stream_history_items(index, &options, |item| {
+        state.items.push(item.clone());
+        count += 1;
+        
+        if count == 1 || count % 5 == 0 {
+            terminal.draw(|frame| draw_frame(frame, state))?;
+        }
+        
+        if event::poll(Duration::from_millis(0))? {
+            match event::read()? {
+                Event::Key(KeyEvent { code, modifiers, .. }) => match code {
+                    KeyCode::Char(ch) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                        state.handle_char(ch);
+                        interrupted = true;
+                        return Ok(false);
+                    }
+                    KeyCode::Backspace => {
+                        state.backspace();
+                        interrupted = true;
+                        return Ok(false);
+                    }
+                    KeyCode::Down => {
+                        state.next();
+                        terminal.draw(|frame| draw_frame(frame, state))?;
+                    }
+                    KeyCode::Up => {
+                        state.previous();
+                        terminal.draw(|frame| draw_frame(frame, state))?;
+                    }
+                    KeyCode::Esc => {
+                        if let Some(original) = &state.sticky_query {
+                            state.filter = original.clone();
+                        } else {
+                            state.filter.clear();
+                        }
+                        state.selected = 0;
+                        state.invalidate_preview();
+                        state.query = state.filter.clone();
+                        state.mark_filter_dirty();
+                        interrupted = true;
+                        return Ok(false);
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        
+        Ok(true)
+    })?;
+    
+    state.has_more = count >= PAGE_SIZE;
+    state.loading = false;
+    if !interrupted {
+        state.pending_reload = false;
+        state.last_filter_change = None;
+    }
+    state.query = state.filter.clone();
+    
+    Ok(interrupted)
+}
+
 fn fetch_page(
     index: &SearchIndex,
     state: &AppState,
@@ -69,23 +153,88 @@ fn fetch_page(
     load_history_items(index, &options)
 }
 
-fn maybe_load_more(state: &mut AppState, index: &SearchIndex) -> Result<()> {
+fn maybe_load_more(
+    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<&mut Stdout>>,
+    state: &mut AppState,
+    index: &SearchIndex,
+) -> Result<bool> {
     if !state.has_more {
-        return Ok(());
+        return Ok(false);
     }
     let offset = state.items.len();
     if offset == 0 {
-        return Ok(());
+        return Ok(false);
     }
     state.loading = true;
-    let (items, has_more) = fetch_page(index, state, offset)?;
-    if items.is_empty() {
-        state.has_more = has_more;
-        state.loading = false;
-        return Ok(());
+    
+    let mut options = SearchOptions::default();
+    options.limit = Some(PAGE_SIZE);
+    options.offset = offset;
+    if !state.filter.is_empty() {
+        options.query = Some(state.filter.clone());
     }
-    state.append_items(items, has_more);
-    Ok(())
+    
+    let mut count = 0;
+    let mut interrupted = false;
+    
+    stream_history_items(index, &options, |item| {
+        let exists = state.items.iter().any(|existing| existing.metadata.hash == item.metadata.hash);
+        if !exists {
+            state.items.push(item.clone());
+        }
+        count += 1;
+        
+        if count % 5 == 0 {
+            terminal.draw(|frame| draw_frame(frame, state))?;
+        }
+        
+        if event::poll(Duration::from_millis(0))? {
+            match event::read()? {
+                Event::Key(KeyEvent { code, modifiers, .. }) => match code {
+                    KeyCode::Char(ch) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                        state.handle_char(ch);
+                        interrupted = true;
+                        return Ok(false);
+                    }
+                    KeyCode::Backspace => {
+                        state.backspace();
+                        interrupted = true;
+                        return Ok(false);
+                    }
+                    KeyCode::Down => {
+                        state.next();
+                        terminal.draw(|frame| draw_frame(frame, state))?;
+                    }
+                    KeyCode::Up => {
+                        state.previous();
+                        terminal.draw(|frame| draw_frame(frame, state))?;
+                    }
+                    KeyCode::Esc => {
+                        if let Some(original) = &state.sticky_query {
+                            state.filter = original.clone();
+                        } else {
+                            state.filter.clear();
+                        }
+                        state.selected = 0;
+                        state.invalidate_preview();
+                        state.query = state.filter.clone();
+                        state.mark_filter_dirty();
+                        interrupted = true;
+                        return Ok(false);
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+        
+        Ok(true)
+    })?;
+    
+    state.has_more = count >= PAGE_SIZE;
+    state.loading = false;
+    
+    Ok(interrupted)
 }
 
 fn ensure_preview(state: &mut AppState) -> Result<()> {
@@ -142,10 +291,14 @@ fn event_loop(
                 state.loading = true;
                 terminal.draw(|frame| draw_frame(frame, state))?;
             }
-            rebuild_items(state, index)?;
-            ensure_preview(state)?;
+            let interrupted = rebuild_items_streaming(terminal, state, index)?;
+            if !interrupted {
+                ensure_preview(state)?;
+            }
             terminal.draw(|frame| draw_frame(frame, state))?;
-            continue;
+            if interrupted {
+                continue;
+            }
         }
         if event::poll(Duration::from_millis(200))? {
             match event::read()? {
@@ -184,7 +337,10 @@ fn event_loop(
                     }
                     KeyCode::Down => {
                         if state.selected + 1 >= state.items.len() {
-                            maybe_load_more(state, index)?;
+                            let interrupted = maybe_load_more(terminal, state, index)?;
+                            if interrupted {
+                                continue;
+                            }
                         }
                         state.next();
                     }
