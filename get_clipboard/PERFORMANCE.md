@@ -55,3 +55,4 @@ The benchmark tests:
 
 The TUI and CLI are now extremely responsive when browsing history, with near-instantaneous page loads even with hundreds of entries in the database.
 
+
