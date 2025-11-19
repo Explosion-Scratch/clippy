@@ -464,8 +464,12 @@ fn build_selection_filter(filters: &FilterFlags, kind: Option<CliEntryKind>) -> 
     if matches!(kind, Some(CliEntryKind::Other)) {
         selection.include_other = true;
     }
-    selection.require_html = filters.html;
-    selection.require_rtf = filters.rtf;
+    if filters.html {
+        selection.include_formats.push("html".to_string());
+    }
+    if filters.rtf {
+        selection.include_formats.push("rtf".to_string());
+    }
     selection
 }
 

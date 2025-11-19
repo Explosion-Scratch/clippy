@@ -337,7 +337,7 @@ fn json_with_plugin(
         id: metadata.hash.clone(),
         date: crate::util::time::format_iso(metadata.last_seen),
         item_type: plugin.kind().to_string(),
-        size: bytes_to_kb(metadata.byte_size),
+        size: metadata.byte_size,
         dataPath: item_path.to_string_lossy().to_string(),
         data,
         summary: metadata.summary.clone(),
@@ -565,12 +565,4 @@ fn load_plugin_files(item_dir: &Path, plugin_meta: &Value) -> Result<Vec<StoredF
         _ => Vec::new(),
     };
     Ok(stored_files)
-}
-
-fn bytes_to_kb(bytes: u64) -> u64 {
-    if bytes == 0 {
-        0
-    } else {
-        ((bytes as f64) / 1024.0).ceil() as u64
-    }
 }

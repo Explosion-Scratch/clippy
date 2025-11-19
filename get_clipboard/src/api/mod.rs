@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query},
     http::StatusCode,
-    response::{IntoResponse, Response, Html},
+    response::{IntoResponse, Response},
     routing::{delete as axum_delete, get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use tower_http::services::ServeDir;
 
 use anyhow::Result;
 
@@ -30,7 +31,6 @@ use crate::util::time::format_iso;
 use tokio::net::TcpListener;
 
 const API_DOCS: &str = include_str!("../../API.md");
-const DASHBOARD_HTML: &str = include_str!("../../dashboard.html");
 
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
@@ -44,9 +44,13 @@ pub async fn serve(port: u16) -> Result<()> {
 }
 
 fn router() -> Router {
+    let frontend_dist = std::env::current_dir()
+        .unwrap()
+        .join("frontend-dist");
+    
     Router::new()
         .route("/", get(get_docs))
-        .route("/dashboard", get(get_dashboard))
+        .nest_service("/dashboard", ServeDir::new(frontend_dist))
         .route("/items", get(get_items))
         .route("/item/:selector/data", get(get_item_data))
         .route(
@@ -71,9 +75,10 @@ struct ItemsQuery {
 
 #[derive(Debug, Deserialize)]
 struct SearchQuery {
-    query: String,
+    query: Option<String>,
     offset: Option<usize>,
     count: Option<usize>,
+    formats: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,10 +102,18 @@ struct MtimeResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct StatsHistoryEntry {
+    count: usize,
+    ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct StatsResponse {
     total_items: usize,
     total_size: u64,
     type_counts: HashMap<String, usize>,
+    history: HashMap<String, HashMap<String, StatsHistoryEntry>>,
 }
 
 #[derive(Clone)]
@@ -168,10 +181,6 @@ async fn get_docs() -> impl IntoResponse {
         [("Content-Type", "text/plain; charset=utf-8")],
         API_DOCS,
     )
-}
-
-async fn get_dashboard() -> Html<&'static str> {
-    Html(DASHBOARD_HTML)
 }
 
 async fn get_items(
@@ -266,15 +275,33 @@ async fn put_item(
 async fn search_items(
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<plugins::ClipboardJsonItem>>, ApiError> {
-    if params.query.trim().is_empty() {
-        return Err(ApiError::bad_request("query parameter cannot be empty"));
+    let query = params.query.as_deref().unwrap_or("").trim();
+    if query.is_empty() && params.formats.is_none() {
+        return Err(ApiError::bad_request(
+            "query or formats parameter must be provided",
+        ));
     }
     let index = load_fresh_index()?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
     let mut options = SearchOptions::default();
-    options.query = Some(params.query.clone());
+    if !query.is_empty() {
+        options.query = Some(query.to_string());
+    }
     options.offset = params.offset.unwrap_or(0);
     options.limit = Some(params.count.unwrap_or(50));
+
+    if let Some(formats) = params.formats {
+        for fmt in formats.split(',') {
+            let fmt = fmt.trim().to_lowercase();
+            match fmt.as_str() {
+                "text" => options.filter.include_text = true,
+                "image" => options.filter.include_image = true,
+                "file" | "files" => options.filter.include_file = true,
+                other => options.filter.include_formats.push(other.to_string()),
+            }
+        }
+    }
+
     let (items, _) = load_history_items(&index, &options).map_err(ApiError::from)?;
     let mut response = Vec::new();
     for item in items {
@@ -292,6 +319,8 @@ async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
     let total_size = index.values().map(|r| r.byte_size).sum();
     
     let mut type_counts = HashMap::new();
+    let mut history: HashMap<String, HashMap<String, StatsHistoryEntry>> = HashMap::new();
+
     for record in index.values() {
         let kind_str = match record.kind {
             crate::data::model::EntryKind::Text => "text",
@@ -300,12 +329,28 @@ async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
             crate::data::model::EntryKind::Other => "other",
         };
         *type_counts.entry(kind_str.to_string()).or_insert(0) += 1;
+
+        // History grouping
+        let date = format_iso(record.last_seen)
+            .split('T')
+            .next()
+            .unwrap_or("unknown")
+            .to_string();
+
+        let day_entry = history.entry(date).or_default();
+        let type_entry = day_entry.entry(kind_str.to_string()).or_insert(StatsHistoryEntry {
+            count: 0,
+            ids: Vec::new(),
+        });
+        type_entry.count += 1;
+        type_entry.ids.push(record.hash.clone());
     }
     
     Ok(Json(StatsResponse {
         total_items,
         total_size,
         type_counts,
+        history,
     }))
 }
 

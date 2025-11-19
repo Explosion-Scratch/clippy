@@ -21,6 +21,7 @@ The Clipboard Manager API is a RESTful HTTP API that provides programmatic acces
    - [Search](#search)
    - [Configuration](#configuration)
    - [Clipboard Operations](#clipboard-operations)
+   - [Statistics](#statistics)
 4. [Error Handling](#error-handling)
 5. [Examples](#examples)
 6. [Plugin System](#plugin-system)
@@ -151,7 +152,20 @@ Full representation including all content data:
 
 Returns this API documentation as plain text.
 
-**Response:** Plain text markdown documentation
+### GET /dashboard/
+
+Serves the static Vue.js dashboard application. This is a full-featured web interface for browsing, searching, and managing clipboard items.
+
+**Features:**
+- Interactive item browsing with infinite scroll
+- Real-time search with live results
+- Multi-select and bulk operations
+- Format tabs for different data types
+- Statistics with interactive charts
+- Import/export functionality
+- Settings management
+
+**Response:** HTML application with embedded JavaScript and CSS
 
 **Example:**
 ```bash
@@ -402,6 +416,44 @@ curl "http://127.0.0.1:3000/search?query=meeting&offset=0&count=10"
 
 **Error Responses:**
 - `400 Bad Request`: Empty or missing query parameter
+
+---
+
+### Statistics
+
+#### GET /stats
+
+Retrieve library statistics including total items, size, and historical breakdown.
+
+**Response:**
+```json
+{
+  "totalItems": 150,
+  "totalSize": 1048576,
+  "typeCounts": {
+    "text": 100,
+    "image": 40,
+    "file": 10
+  },
+  "history": {
+    "2025-11-01": {
+      "text": {
+        "count": 15,
+        "ids": ["hash1", "hash2", ...]
+      },
+      "image": {
+        "count": 5,
+        "ids": ["hash3", ...]
+      }
+    }
+  }
+}
+```
+
+**Example:**
+```bash
+curl http://127.0.0.1:3000/stats
+```
 
 ---
 
@@ -935,189 +987,3 @@ The clipboard manager uses a plugin architecture to handle different data format
    - HTML: Stripped text preview
    - Image: Dimensions and format
    - Files: File names and sizes
-
----
-
-## Integration Examples
-
-### Python
-
-```python
-import requests
-import json
-
-BASE_URL = "http://127.0.0.1:3000"
-
-# Get recent items
-response = requests.get(f"{BASE_URL}/items", params={"count": 10})
-items = response.json()
-
-# Search
-response = requests.get(f"{BASE_URL}/search", params={"query": "important"})
-results = response.json()
-
-# Copy item to clipboard
-item_hash = items[0]["hash"]
-response = requests.post(f"{BASE_URL}/item/{item_hash}/copy")
-
-# Save new item
-new_item = {
-    "hash": "temp",
-    "offset": 0,
-    "timestamp": "2025-11-02T10:30:00Z",
-    "lastSeen": "2025-11-02T10:30:00Z",
-    "copyCount": 0,
-    "kind": "text",
-    "summary": "New item",
-    "byteSize": 8,
-    "sources": ["api"],
-    "plugins": [
-        {
-            "id": "text",
-            "data": "New item"
-        }
-    ]
-}
-response = requests.post(f"{BASE_URL}/save", json=new_item)
-saved_item = response.json()
-```
-
-### JavaScript/Node.js
-
-```javascript
-const BASE_URL = "http://127.0.0.1:3000";
-
-// Get recent items
-const response = await fetch(`${BASE_URL}/items?count=10`);
-const items = await response.json();
-
-// Search
-const searchResponse = await fetch(
-  `${BASE_URL}/search?query=${encodeURIComponent("important")}`
-);
-const results = await searchResponse.json();
-
-// Copy item to clipboard
-const itemHash = items[0].hash;
-await fetch(`${BASE_URL}/item/${itemHash}/copy`, { method: "POST" });
-
-// Save new item
-const newItem = {
-  hash: "temp",
-  offset: 0,
-  timestamp: new Date().toISOString(),
-  lastSeen: new Date().toISOString(),
-  copyCount: 0,
-  kind: "text",
-  summary: "New item",
-  byteSize: 8,
-  sources: ["api"],
-  plugins: [
-    {
-      id: "text",
-      data: "New item"
-    }
-  ]
-};
-const saveResponse = await fetch(`${BASE_URL}/save`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(newItem)
-});
-const savedItem = await saveResponse.json();
-```
-
-### Shell Script
-
-```bash
-#!/bin/bash
-
-BASE_URL="http://127.0.0.1:3000"
-
-# Get recent items
-curl -s "$BASE_URL/items?count=10" | jq '.'
-
-# Search
-curl -s "$BASE_URL/search?query=important" | jq '.'
-
-# Copy most recent item
-HASH=$(curl -s "$BASE_URL/items?count=1" | jq -r '.[0].hash')
-curl -X POST "$BASE_URL/item/$HASH/copy"
-
-# Monitor for changes
-while true; do
-  MTIME=$(curl -s "$BASE_URL/mtime" | jq -r '.lastModified')
-  echo "Last modified: $MTIME"
-  sleep 5
-done
-```
-
----
-
-## Advanced Topics
-
-### Content Hashing
-
-Items are uniquely identified by SHA-256 hash of their content:
-
-- Hash computation includes all plugin data
-- Identical content produces identical hashes (deduplication)
-- Hash is computed server-side on save
-- Client-provided hashes are ignored
-
-### Chronological Ordering
-
-Items are always ordered by `lastSeen` timestamp (most recent first):
-
-- Offset 0 = most recent item
-- Offsets change as new items are added
-- Use hashes for stable references
-- Re-seeing identical content updates `lastSeen`
-
-### Index Refresh
-
-The index is automatically refreshed on API operations:
-
-- Scans data directory for changes
-- Updates timestamp and copy count
-- Adds new items discovered externally
-- Removes deleted items
-
-### Data Directory Structure
-
-```
-data_dir/
-├── index.json                 # Search index
-└── items/
-    ├── abc123.../             # Item directory (hash prefix)
-    │   ├── metadata.json      # Item metadata
-    │   ├── text__content.txt  # Text plugin data
-    │   ├── html__content.html # HTML plugin data
-    │   └── image__data.png    # Image plugin data
-    └── def456.../
-        └── ...
-```
-
-Each item has:
-- Directory named with hash prefix
-- `metadata.json` with item metadata
-- Plugin files named `{plugin_id}__{name}.{ext}`
-
-### Concurrency
-
-The API handles concurrent requests safely:
-
-- Index locks prevent race conditions
-- File operations are atomic where possible
-- Refresh operations are serialized
-- Multiple readers can access simultaneously
-
----
-
-## Version Information
-
-**API Version:** 1.0  
-**Last Updated:** November 2, 2025  
-**Compatibility:** macOS (primary), Linux/Windows (limited)
-
-For issues, feature requests, or contributions, please visit the project repository.

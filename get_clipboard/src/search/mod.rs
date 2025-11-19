@@ -7,35 +7,39 @@ pub struct SelectionFilter {
     pub include_image: bool,
     pub include_file: bool,
     pub include_other: bool,
-    pub require_html: bool,
-    pub require_rtf: bool,
+    pub include_formats: Vec<String>,
 }
 
 impl SelectionFilter {
     pub fn matches(&self, record: &SearchIndexRecord) -> bool {
-        let matches_kind =
-            if self.include_text || self.include_image || self.include_file || self.include_other {
-                (self.include_text && record.kind == EntryKind::Text)
-                    || (self.include_image && record.kind == EntryKind::Image)
-                    || (self.include_file && record.kind == EntryKind::File)
-                    || (self.include_other && record.kind == EntryKind::Other)
-            } else {
-                true
-            };
+        let kind_filter_active = self.include_text
+            || self.include_image
+            || self.include_file
+            || self.include_other;
+        let format_filter_active = !self.include_formats.is_empty();
 
-        let matches_html = if self.require_html {
-            contains_format(&record.detected_formats, "html")
+        if !kind_filter_active && !format_filter_active {
+            return true;
+        }
+
+        let matches_kind = if kind_filter_active {
+            (self.include_text && record.kind == EntryKind::Text)
+                || (self.include_image && record.kind == EntryKind::Image)
+                || (self.include_file && record.kind == EntryKind::File)
+                || (self.include_other && record.kind == EntryKind::Other)
         } else {
-            true
+            false
         };
 
-        let matches_rtf = if self.require_rtf {
-            contains_format(&record.detected_formats, "rtf")
+        let matches_format = if format_filter_active {
+            self.include_formats
+                .iter()
+                .any(|f| contains_format(&record.detected_formats, f))
         } else {
-            true
+            false
         };
 
-        matches_kind && matches_html && matches_rtf
+        matches_kind || matches_format
     }
 }
 

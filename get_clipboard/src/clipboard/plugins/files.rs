@@ -98,10 +98,8 @@ impl ClipboardPlugin for FilesPlugin {
     }
 
     fn export_json(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
-        let paths = collect_paths(ctx)?;
-        Ok(serde_json::Value::Array(
-            paths.into_iter().map(serde_json::Value::String).collect(),
-        ))
+        let entries = collect_entries(ctx)?;
+        Ok(serde_json::Value::Array(entries))
     }
 
     fn import_json(&self, format: &ClipboardJsonFormat) -> Result<PluginImport> {
