@@ -145,6 +145,7 @@ pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
         sources,
         CopyCountMode::Increment,
         None,
+        None,
     )
 }
 
@@ -153,6 +154,10 @@ pub fn store_json_item(item: &plugins::ClipboardJsonFullItem) -> Result<EntryMet
     let timestamp = match item.date.as_ref() {
         Some(raw) => crate::util::time::parse_date(raw).unwrap_or_else(|_| time::now()),
         None => time::now(),
+    };
+    let first_seen = match item.first_date.as_ref() {
+        Some(raw) => crate::util::time::parse_date(raw).ok(),
+        None => None,
     };
     let hash = if let Some(existing) = item
         .id
@@ -183,6 +188,7 @@ pub fn store_json_item(item: &plugins::ClipboardJsonFullItem) -> Result<EntryMet
         sources,
         CopyCountMode::Override(copy_count),
         search_override,
+        first_seen,
     )
 }
 
@@ -294,6 +300,7 @@ fn persist_entry(
     base_sources: Vec<String>,
     copy_mode: CopyCountMode,
     search_override: Option<String>,
+    first_seen_override: Option<OffsetDateTime>,
 ) -> Result<EntryMetadata> {
     anyhow::ensure!(!plugin_captures.is_empty(), "No plugin captures available");
 
@@ -397,7 +404,7 @@ fn persist_entry(
             kind: entry_kind.clone(),
             detected_formats: detected_formats.clone(),
             copy_count,
-            first_seen: timestamp,
+            first_seen: first_seen_override.unwrap_or(timestamp),
             last_seen: timestamp,
             byte_size: total_byte_size,
             sources: combined_sources.clone(),

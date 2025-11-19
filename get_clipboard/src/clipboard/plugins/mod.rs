@@ -135,6 +135,8 @@ pub struct ClipboardJsonItem {
     pub _index: Option<usize>,
     pub id: String,
     pub date: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub firstDate: Option<String>,
     #[serde(rename = "type")]
     pub item_type: String,
     pub size: u64,
@@ -175,6 +177,8 @@ pub struct ClipboardJsonFullItem {
     pub id: Option<String>,
     #[serde(default)]
     pub date: Option<String>,
+    #[serde(default)]
+    pub first_date: Option<String>,
     #[serde(default)]
     pub summary: Option<String>,
     #[serde(rename = "type", default)]
@@ -342,6 +346,7 @@ fn json_with_plugin(
         _index: real_index,
         id: metadata.hash.clone(),
         date: crate::util::time::format_iso(metadata.last_seen),
+        firstDate: Some(crate::util::time::format_iso(metadata.first_seen)),
         item_type: plugin.kind().to_string(),
         size: metadata.byte_size,
         dataPath: item_path.to_string_lossy().to_string(),
@@ -450,6 +455,7 @@ pub fn build_full_json_item(
         _index: real_index,
         id: Some(metadata.hash.clone()),
         date: Some(crate::util::time::format_iso(metadata.last_seen)),
+        first_date: Some(crate::util::time::format_iso(metadata.first_seen)),
         summary: metadata.summary.clone(),
         item_type: Some(format!("{:?}", metadata.kind)),
         size: Some(metadata.byte_size),
