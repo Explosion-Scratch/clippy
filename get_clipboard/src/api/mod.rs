@@ -213,28 +213,63 @@ async fn get_items(
     Ok(Json(response))
 }
 
+#[derive(Debug, Deserialize)]
+struct ItemQuery {
+    formats: Option<String>,
+}
+
 async fn get_item(
     Path(selector): Path<String>,
+    Query(params): Query<ItemQuery>,
 ) -> Result<Json<plugins::ClipboardJsonItem>, ApiError> {
     let index = load_fresh_index()?;
-    let (ordered, offsets) = ordered_index(&index);
-    let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
-    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
-    let item = json_from_metadata(&metadata, offset, &data_dir).map_err(ApiError::from)?;
+    
+    let mut filter = crate::search::SelectionFilter::default();
+    if let Some(formats) = params.formats {
+        for fmt in formats.split(',') {
+            let fmt = fmt.trim().to_lowercase();
+            match fmt.as_str() {
+                "text" => filter.include_text = true,
+                "image" => filter.include_image = true,
+                "file" | "files" => filter.include_file = true,
+                other => filter.include_formats.push(other.to_string()),
+            }
+        }
+    }
+    
+    let (ordered, offsets) = ordered_index_filtered(&index, &filter);
+    let (hash, offset, real_index) = resolve_selector_filtered(&ordered, &offsets, &selector)?;
+    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
+    let item = json_from_metadata_with_index(&metadata, offset, real_index, &data_dir).map_err(ApiError::from)?;
     Ok(Json(item))
 }
 
 async fn get_item_data(
     Path(selector): Path<String>,
+    Query(params): Query<ItemQuery>,
 ) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
     let index = load_fresh_index()?;
-    let (ordered, offsets) = ordered_index(&index);
-    let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
-    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
+    
+    let mut filter = crate::search::SelectionFilter::default();
+    if let Some(formats) = params.formats {
+        for fmt in formats.split(',') {
+            let fmt = fmt.trim().to_lowercase();
+            match fmt.as_str() {
+                "text" => filter.include_text = true,
+                "image" => filter.include_image = true,
+                "file" | "files" => filter.include_file = true,
+                other => filter.include_formats.push(other.to_string()),
+            }
+        }
+    }
+    
+    let (ordered, offsets) = ordered_index_filtered(&index, &filter);
+    let (hash, offset, real_index) = resolve_selector_filtered(&ordered, &offsets, &selector)?;
+    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
     let item_dir = data_dir.join(&metadata.relative_path);
-    let item = plugins::build_full_json_item(&metadata, &item_dir, Some(offset))
+    let item = plugins::build_full_json_item(&metadata, &item_dir, Some(offset), Some(real_index))
         .map_err(ApiError::from)?;
     Ok(Json(item))
 }
@@ -306,7 +341,7 @@ async fn search_items(
     let mut response = Vec::new();
     for item in items {
         response.push(
-            json_from_metadata(&item.metadata, item.offset, &data_dir).map_err(ApiError::from)?,
+            json_from_metadata_with_index(&item.metadata, item.offset, item.global_offset, &data_dir).map_err(ApiError::from)?,
         );
     }
     Ok(Json(response))
@@ -329,6 +364,13 @@ async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
             crate::data::model::EntryKind::Other => "other",
         };
         *type_counts.entry(kind_str.to_string()).or_insert(0) += 1;
+
+        if record.detected_formats.iter().any(|f| {
+            let f = f.to_lowercase();
+            f == "html" || f.contains("public.html") || f.contains("text/html")
+        }) {
+            *type_counts.entry("html".to_string()).or_insert(0) += 1;
+        }
 
         // History grouping
         let date = format_iso(record.last_seen)
@@ -412,7 +454,7 @@ async fn save_payload(
     let (_, offsets) = ordered_index(&index);
     let offset = offsets.get(&metadata.hash).copied();
     let item =
-        plugins::build_full_json_item(&metadata, &item_dir, offset).map_err(ApiError::from)?;
+        plugins::build_full_json_item(&metadata, &item_dir, offset, None).map_err(ApiError::from)?;
     Ok(Json(item))
 }
 
@@ -456,6 +498,25 @@ fn ordered_index(index: &SearchIndex) -> (Vec<&SearchIndexRecord>, HashMap<Strin
     (ordered, offsets)
 }
 
+fn ordered_index_filtered<'a>(index: &'a SearchIndex, filter: &crate::search::SelectionFilter) -> (Vec<(usize, &'a SearchIndexRecord)>, HashMap<String, usize>) {
+    let mut all_ordered: Vec<_> = index.values().collect();
+    all_ordered.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+    
+    let filtered: Vec<_> = all_ordered
+        .iter()
+        .enumerate()
+        .filter(|(_, record)| filter.matches(record))
+        .map(|(idx, record)| (idx, *record))
+        .collect();
+    
+    let offsets = filtered
+        .iter()
+        .enumerate()
+        .map(|(filtered_idx, (_, record))| (record.hash.clone(), filtered_idx))
+        .collect();
+    (filtered, offsets)
+}
+
 fn resolve_selector(
     ordered: &[&SearchIndexRecord],
     offsets: &HashMap<String, usize>,
@@ -478,6 +539,30 @@ fn resolve_selector(
     }
 }
 
+fn resolve_selector_filtered(
+    ordered: &[(usize, &SearchIndexRecord)],
+    offsets: &HashMap<String, usize>,
+    selector: &str,
+) -> Result<(String, usize, usize), ApiError> {
+    match Selector::parse(selector) {
+        Selector::Hash(hash) => {
+            let offset = offsets
+                .get(&hash)
+                .copied()
+                .ok_or_else(|| ApiError::not_found(format!("Unknown item {hash}")))?;
+            let (real_index, _) = ordered.get(offset)
+                .ok_or_else(|| ApiError::not_found(format!("Unknown item {hash}")))?;
+            Ok((hash, offset, *real_index))
+        }
+        Selector::Offset(index) => {
+            let (real_index, record) = ordered
+                .get(index)
+                .ok_or_else(|| ApiError::not_found(format!("No item at offset {index}")))?;
+            Ok((record.hash.clone(), index, *real_index))
+        }
+    }
+}
+
 fn data_dir_path() -> Result<PathBuf> {
     let config = load_config()?;
     ensure_data_dir(&config)
@@ -494,5 +579,15 @@ fn json_from_metadata(
     data_dir: &std::path::Path,
 ) -> Result<plugins::ClipboardJsonItem> {
     let item_dir = data_dir.join(&metadata.relative_path);
-    plugins::build_json_item_with_preference(metadata, &item_dir, offset, None)
+    plugins::build_json_item_with_preference(metadata, &item_dir, offset, None, None)
+}
+
+fn json_from_metadata_with_index(
+    metadata: &EntryMetadata,
+    offset: usize,
+    real_index: usize,
+    data_dir: &std::path::Path,
+) -> Result<plugins::ClipboardJsonItem> {
+    let item_dir = data_dir.join(&metadata.relative_path);
+    plugins::build_json_item_with_preference(metadata, &item_dir, offset, None, Some(real_index))
 }

@@ -145,6 +145,7 @@ fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<
                 &metadata,
                 &item_dir,
                 selector_index,
+                None,
             )?;
             let output = to_string_pretty(&json_item)?;
             if !write_line(&output)? {
@@ -157,6 +158,7 @@ fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<
                 &item_dir,
                 selector_index.unwrap_or(0),
                 preferred_plugin,
+                None,
             )?;
             let output = to_string_pretty(&json_item)?;
             if !write_line(&output)? {
@@ -311,11 +313,12 @@ fn output_single_item(item: &HistoryItem, mode: OutputMode) -> Result<bool> {
                     item.offset,
                     &timestamp,
                     copies,
+                    item.global_offset,
                 )
             } else {
                 clean_summary(&item.summary)
             };
-            let line = format!("{} [{} x{}]   {}", item.offset, timestamp, copies, summary);
+            let line = format!("{} ({}) [{} x{}]   {}", item.offset, item.global_offset, timestamp, copies, summary);
             write_line(&line)
         }
         _ => Ok(true),
@@ -334,6 +337,7 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
                     &item.metadata,
                     &item_dir,
                     Some(item.offset),
+                    None,
                 )?);
             }
             let output = to_string_pretty(&json_items)?;
@@ -380,11 +384,12 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
                         item.offset,
                         &timestamp,
                         copies,
+                        item.global_offset,
                     )
                 } else {
                     clean_summary(&item.summary)
                 };
-                let line = format!("{} [{} x{}]   {}", item.offset, timestamp, copies, summary);
+                let line = format!("{} ({}) [{} x{}]   {}", item.offset, item.global_offset, timestamp, copies, summary);
                 if !write_line(&line)? {
                     break;
                 }
@@ -560,9 +565,10 @@ fn clip_summary_to_width(
     index: usize,
     timestamp: &str,
     copies: u64,
+    global_index: usize,
 ) -> String {
     let clean = clean_summary(input);
-    let prefix = format!("{} [{} x{}]   ", index, timestamp, copies);
+    let prefix = format!("{} ({}) [{} x{}]   ", index, global_index, timestamp, copies);
     let prefix_len = prefix.chars().count();
 
     if terminal_width <= prefix_len {

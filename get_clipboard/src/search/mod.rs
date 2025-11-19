@@ -60,6 +60,7 @@ pub struct SearchHit {
     pub kind: EntryKind,
     pub byte_size: u64,
     pub offset: usize,
+    pub global_offset: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -82,13 +83,15 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
     let from = options.from.as_ref();
     let to = options.to.as_ref();
 
-    let mut records: Vec<_> = index
-        .values()
-        .filter(|record| in_range(record, from, to))
-        .filter(|record| options.filter.matches(record))
-        .collect();
+    let mut all_records: Vec<_> = index.values().collect();
+    all_records.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
 
-    records.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+    let mut records: Vec<_> = all_records
+        .iter()
+        .enumerate()
+        .filter(|(_, record)| in_range(record, from, to))
+        .filter(|(_, record)| options.filter.matches(record))
+        .collect();
 
     let limit = options.limit.unwrap_or(usize::MAX);
     let mut hits = Vec::new();
@@ -96,7 +99,7 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
     let mut collected = 0;
     let mut has_more = false;
 
-    for (position, record) in records.iter().enumerate() {
+    for (global_position, record) in records {
         if let Some(query) = normalized_query.as_ref() {
             if !query_matches(record, query) {
                 continue;
@@ -119,7 +122,8 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
             summary: record.summary.clone(),
             kind: record.kind.clone(),
             byte_size: record.byte_size,
-            offset: position,
+            offset: total_matches - 1,
+            global_offset: global_position,
         });
     }
 

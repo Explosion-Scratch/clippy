@@ -90,7 +90,7 @@ const filters = computed(() => [
     id: 'html', 
     label: 'HTML', 
     icon: PhCode,
-    count: undefined // Stats API doesn't provide HTML count separately yet
+    count: props.stats?.typeCounts?.html || 0
   },
   { 
     id: 'image', 

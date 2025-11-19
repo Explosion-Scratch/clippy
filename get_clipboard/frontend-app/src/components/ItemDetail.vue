@@ -23,6 +23,8 @@
                 <span>{{ new Date(item.date).toLocaleString() }}</span>
                 <span>•</span>
                 <span>{{ formatBytes(item.size) }}</span>
+                <span v-if="item.copyCount">•</span>
+                <span v-if="item.copyCount">{{ item.copyCount }} {{ item.copyCount === 1 ? 'copy' : 'copies' }}</span>
               </div>
             </div>
           </div>
@@ -75,19 +77,17 @@
               class="flex flex-col items-center justify-center min-h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEwIDBoMTB2MTBIMTB6TTAgMTBoMTB2MTBIMHoiIGZpbGw9IiNmYWZhZmEiIGZpbGwtb3BhY2l0eT0iMSIvPjwvc3ZnPg==')]"
             >
               <img 
-                :src="getImageSrc(currentFormat)" 
-                class="max-w-full max-h-full object-contain shadow-lg rounded"
+                :src="imageBlobUrl || getImageSrc(currentFormat)" 
+                class="max-w-full max-h-full object-contain shadow-lg rounded cursor-pointer"
                 alt="Clipboard image"
+                @click="openImageInNewTab"
               />
-              <div v-if="currentFormat.metadata?.width" class="mt-2 px-2 py-1 bg-black/50 text-white text-xs rounded backdrop-blur-sm">
-                {{ currentFormat.metadata.width }} x {{ currentFormat.metadata.height }}
-              </div>
             </div>
             
             <!-- HTML -->
             <div v-else-if="currentFormat.pluginId === 'html'" class="h-full flex flex-col relative group">
                <button 
-                  @click="copyText(currentFormat.data)" 
+                  @click="copyTextWithToast(currentFormat.data)" 
                   class="absolute right-4 top-4 z-10 bg-white/90 border border-gray-200 shadow-sm px-2 py-1 rounded text-xs hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
                 >
                   <PhCopy :size="12" /> Copy
@@ -104,7 +104,7 @@
                <ul class="space-y-2">
                  <li v-for="(file, i) in getFiles(currentFormat)" :key="i">
                    <button 
-                    @click="copyText(file.path)"
+                    @click="copyTextWithToast(file.path)"
                     class="w-full text-left group flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
                     :title="file.path"
                    >
@@ -130,7 +130,7 @@
             <!-- Text/Code -->
             <div v-else class="relative group min-h-full">
               <button 
-                @click="copyText(getFormatText(currentFormat))" 
+                @click="copyTextWithToast(getFormatText(currentFormat))" 
                 class="absolute right-4 top-4 bg-white/90 border border-gray-200 shadow-sm px-2 py-1 rounded text-xs hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
               >
                 <PhCopy :size="12" /> Copy
@@ -142,6 +142,9 @@
           <div class="bg-gray-50 border-t border-gray-100 px-4 py-2 text-[10px] text-gray-500 flex gap-4 font-mono flex-shrink-0">
             <div>KIND: {{ currentFormat.kind || 'unknown' }}</div>
             <div>PRIORITY: {{ currentFormat.priority || 0 }}</div>
+            <div v-if="currentFormat.pluginId === 'image' && currentFormat.metadata?.width">
+              DIMENSIONS: {{ currentFormat.metadata.width }} x {{ currentFormat.metadata.height }}
+            </div>
           </div>
         </div>
       </div>
@@ -150,7 +153,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch, onUnmounted, ref } from 'vue'
 import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash } from '@phosphor-icons/vue'
 
 const props = defineProps({
@@ -160,9 +163,38 @@ const props = defineProps({
   activeFormatIndex: Number
 })
 
-defineEmits(['format-change', 'copy', 'delete'])
+const emit = defineEmits(['format-change', 'copy', 'delete', 'toast'])
+
+const imageBlobUrl = ref(null)
 
 const currentFormat = computed(() => props.fullData?.formats?.[props.activeFormatIndex])
+
+watch(currentFormat, (newFormat, oldFormat) => {
+  if (oldFormat?.pluginId === 'image' && imageBlobUrl.value) {
+    URL.revokeObjectURL(imageBlobUrl.value)
+    imageBlobUrl.value = null
+  }
+  
+  if (newFormat?.pluginId === 'image') {
+    const dataUrl = getImageSrc(newFormat)
+    if (dataUrl) {
+      fetch(dataUrl)
+        .then(res => res.blob())
+        .then(blob => {
+          imageBlobUrl.value = URL.createObjectURL(blob)
+        })
+        .catch(() => {
+          imageBlobUrl.value = null
+        })
+    }
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (imageBlobUrl.value) {
+    URL.revokeObjectURL(imageBlobUrl.value)
+  }
+})
 
 const formatBytes = (bytes) => {
   if (!bytes && bytes !== 0) return ''
@@ -200,8 +232,8 @@ const getFiles = (fmt) => {
         return { path: item, name: item.split('/').pop() || item }
       }
       return {
-          path: item.source_path || item.path,
-          name: item.name || (item.source_path || item.path).split('/').pop(),
+          path: item.source_path || item.sourcePath || item.path,
+          name: item.name || (item.source_path || item.sourcePath || item.path).split('/').pop(),
           size: item.size,
           mime: item.mime
       }
@@ -210,8 +242,16 @@ const getFiles = (fmt) => {
   return []
 }
 
-const copyText = (text) => {
-  navigator.clipboard.writeText(text)
+const copyTextWithToast = (text) => {
+  navigator.clipboard.writeText(text).then(() => {
+    emit('toast', { title: 'Copied', message: 'Content copied to clipboard', type: 'success' })
+  })
+}
+
+const openImageInNewTab = () => {
+  if (imageBlobUrl.value) {
+    window.open(imageBlobUrl.value, '_blank')
+  }
 }
 </script>
 

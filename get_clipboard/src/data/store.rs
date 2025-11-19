@@ -460,6 +460,7 @@ pub struct HistoryItem {
     pub kind: String,
     pub metadata: EntryMetadata,
     pub offset: usize,
+    pub global_offset: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -496,6 +497,7 @@ pub fn load_history_items(
                     kind: format!("{:?}", hit.kind),
                     metadata,
                     offset: hit.offset,
+                    global_offset: hit.global_offset,
                 });
             }
             Err(error) => {
@@ -531,6 +533,7 @@ where
                     kind: format!("{:?}", hit.kind),
                     metadata,
                     offset: hit.offset,
+                    global_offset: hit.global_offset,
                 };
                 if !callback(&item)? {
                     break;

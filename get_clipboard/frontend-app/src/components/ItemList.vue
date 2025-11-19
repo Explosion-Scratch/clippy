@@ -15,7 +15,14 @@
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto scrollbar-thin" @scroll="$emit('scroll', $event)">
+    <div 
+      class="flex-1 overflow-y-auto scrollbar-thin" 
+      @scroll="$emit('scroll', $event)"
+      @mousedown="handleMouseDown"
+      @mousemove="handleMouseMove"
+      @mouseup="handleMouseUp"
+      @mouseleave="handleMouseUp"
+    >
       <div v-if="items.length === 0 && !loading" class="flex flex-col items-center justify-center h-64 text-gray-400">
         <PhGhost :size="48" class="mb-3 opacity-50" />
         <p class="text-sm">No items found</p>
@@ -25,11 +32,12 @@
         v-for="(item, index) in items" 
         :key="item.id"
         :id="'item-' + item.id"
+        :data-item-id="item.id"
         @click="$emit('select', item, $event)"
-        class="group flex items-center gap-3 px-4 py-2 cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition-all relative"
+        class="group flex items-center gap-3 px-4 py-2 cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition-all relative select-none"
         :class="{
-          'bg-blue-50': selectedItem?.id === item.id,
-          'bg-blue-50/30': selectedIds.has(item.id) && selectedItem?.id !== item.id
+          'bg-stone-100': selectedItem?.id === item.id,
+          'bg-stone-100/50': selectedIds.has(item.id) && selectedItem?.id !== item.id
         }"
       >
         <div 
@@ -39,10 +47,10 @@
 
         <div 
           class="text-[10px] font-mono text-gray-400 w-8 text-right hover:text-blue-500 hover:underline cursor-copy"
-          @click.stop="$emit('copy-index', item.index)"
+          @click.stop="copyIndexWithToast(item)"
           title="Click to copy index"
         >
-          #{{ item.index }}
+          #{{ item._index !== undefined ? item._index : item.index }}
         </div>
 
         <div class="w-5 h-5 rounded flex items-center justify-center bg-gray-100 text-gray-500 text-xs flex-shrink-0">
@@ -71,7 +79,7 @@
 </template>
 
 <script setup>
-import { watch, nextTick } from 'vue'
+import { watch, nextTick, ref } from 'vue'
 import { PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhGhost } from '@phosphor-icons/vue'
 
 const props = defineProps({
@@ -82,7 +90,12 @@ const props = defineProps({
   loading: Boolean
 })
 
-defineEmits(['select', 'copy-index', 'toggle-select', 'scroll', 'delete-selected', 'clear-selection'])
+const emit = defineEmits(['select', 'copy-index', 'toggle-select', 'scroll', 'delete-selected', 'clear-selection', 'toast', 'multi-select'])
+
+const isDragging = ref(false)
+const dragStartId = ref(null)
+const dragStartPos = ref(null)
+const DRAG_THRESHOLD = 10
 
 watch(() => props.selectedItem, (newItem) => {
   if (newItem) {
@@ -94,6 +107,60 @@ watch(() => props.selectedItem, (newItem) => {
     })
   }
 })
+
+const handleMouseDown = (e) => {
+  const itemEl = e.target.closest('[data-item-id]')
+  if (itemEl && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    dragStartId.value = itemEl.dataset.itemId
+    dragStartPos.value = { x: e.clientX, y: e.clientY }
+  }
+}
+
+const handleMouseMove = (e) => {
+  if (!dragStartId.value) return
+  
+  if (!isDragging.value && dragStartPos.value) {
+    const dx = Math.abs(e.clientX - dragStartPos.value.x)
+    const dy = Math.abs(e.clientY - dragStartPos.value.y)
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    
+    if (distance >= DRAG_THRESHOLD) {
+      isDragging.value = true
+    } else {
+      return
+    }
+  }
+  
+  const itemEl = e.target.closest('[data-item-id]')
+  if (itemEl) {
+    const currentId = itemEl.dataset.itemId
+    if (currentId && dragStartId.value) {
+      const startIdx = props.items.findIndex(i => i.id === dragStartId.value)
+      const currentIdx = props.items.findIndex(i => i.id === currentId)
+      
+      if (startIdx !== -1 && currentIdx !== -1) {
+        const start = Math.min(startIdx, currentIdx)
+        const end = Math.max(startIdx, currentIdx)
+        
+        const idsToSelect = props.items.slice(start, end + 1).map(i => i.id)
+        emit('multi-select', idsToSelect)
+      }
+    }
+  }
+}
+
+const handleMouseUp = () => {
+  isDragging.value = false
+  dragStartId.value = null
+  dragStartPos.value = null
+}
+
+const copyIndexWithToast = (item) => {
+  const index = item._index !== undefined ? item._index : item.index
+  navigator.clipboard.writeText(String(index)).then(() => {
+    emit('toast', { title: 'Copied', message: `Index ${index} copied`, type: 'success' })
+  })
+}
 
 const formatBytes = (bytes) => {
   if (bytes === 0) return '0 B'
@@ -116,4 +183,3 @@ const formatBytes = (bytes) => {
   to { transform: rotate(360deg); }
 }
 </style>
-

@@ -131,6 +131,8 @@ pub enum DisplayContent {
 #[derive(Debug, Serialize)]
 pub struct ClipboardJsonItem {
     pub index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _index: Option<usize>,
     pub id: String,
     pub date: String,
     #[serde(rename = "type")]
@@ -167,6 +169,8 @@ pub struct ClipboardJsonFormat {
 pub struct ClipboardJsonFullItem {
     #[serde(default)]
     pub index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub _index: Option<usize>,
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
@@ -321,6 +325,7 @@ fn json_with_plugin(
     map: &Map<String, Value>,
     plugin_id: &str,
     index: usize,
+    real_index: Option<usize>,
 ) -> Result<Option<ClipboardJsonItem>> {
     let plugin_meta = match map.get(plugin_id) {
         Some(value) => value,
@@ -334,6 +339,7 @@ fn json_with_plugin(
     let data = plugin.export_json(&instance.context())?;
     Ok(Some(ClipboardJsonItem {
         index,
+        _index: real_index,
         id: metadata.hash.clone(),
         date: crate::util::time::format_iso(metadata.last_seen),
         item_type: plugin.kind().to_string(),
@@ -369,7 +375,7 @@ pub fn build_json_item(
     item_dir: &Path,
     index: usize,
 ) -> Result<ClipboardJsonItem> {
-    build_json_item_with_preference(metadata, item_dir, index, None)
+    build_json_item_with_preference(metadata, item_dir, index, None, None)
 }
 
 pub fn build_json_item_with_preference(
@@ -377,6 +383,7 @@ pub fn build_json_item_with_preference(
     item_dir: &Path,
     index: usize,
     preferred: Option<&str>,
+    real_index: Option<usize>,
 ) -> Result<ClipboardJsonItem> {
     let item_path = item_dir
         .canonicalize()
@@ -386,14 +393,14 @@ pub fn build_json_item_with_preference(
 
     if let Some(plugin_id) = preferred {
         if let Some(item) =
-            json_with_plugin(metadata, item_dir, &item_path, &map, plugin_id, index)?
+            json_with_plugin(metadata, item_dir, &item_path, &map, plugin_id, index, real_index)?
         {
             return Ok(item);
         }
     }
     for plugin_id in order {
         if let Some(item) =
-            json_with_plugin(metadata, item_dir, &item_path, &map, &plugin_id, index)?
+            json_with_plugin(metadata, item_dir, &item_path, &map, &plugin_id, index, real_index)?
         {
             return Ok(item);
         }
@@ -409,6 +416,7 @@ pub fn build_full_json_item(
     metadata: &EntryMetadata,
     item_dir: &Path,
     index: Option<usize>,
+    real_index: Option<usize>,
 ) -> Result<ClipboardJsonFullItem> {
     let item_path = item_dir
         .canonicalize()
@@ -439,6 +447,7 @@ pub fn build_full_json_item(
 
     Ok(ClipboardJsonFullItem {
         index,
+        _index: real_index,
         id: Some(metadata.hash.clone()),
         date: Some(crate::util::time::format_iso(metadata.last_seen)),
         summary: metadata.summary.clone(),

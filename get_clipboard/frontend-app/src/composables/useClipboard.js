@@ -221,6 +221,14 @@ export function useClipboard() {
       : selectedIds.value.add(id)
   }
 
+  const multiSelect = (ids) => {
+    ids.forEach(id => {
+      if (!selectedIds.value.has(id)) {
+        selectedIds.value.add(id)
+      }
+    })
+  }
+
   const handleScroll = (e) => {
     if (e.target.scrollTop + e.target.clientHeight >= e.target.scrollHeight - 50) {
       loadItems()
@@ -343,6 +351,7 @@ export function useClipboard() {
     deleteSelected,
     clearSelection,
     toggleSelect,
+    multiSelect,
     handleScroll,
     setFilter,
     refreshAll,
@@ -351,6 +360,7 @@ export function useClipboard() {
     handleImport,
     updateDataDir,
     handleAction,
+    showToast,
   }
 }
 

@@ -28,6 +28,9 @@
           @scroll="handleScroll"
           @delete-selected="deleteSelected"
           @clear-selection="clearSelection"
+          @toast="(payload) => typeof payload === 'object' ? showToast(payload.title, payload.message, payload.type) : showToast(payload)"
+          @toggle-select="toggleSelect"
+          @multi-select="multiSelect"
         />
         
         <ItemDetail 
@@ -38,6 +41,7 @@
           @format-change="activeFormatIndex = $event"
           @copy="copyItem"
           @delete="deleteItem"
+          @toast="(payload) => typeof payload === 'object' ? showToast(payload.title, payload.message, payload.type) : showToast(payload)"
         />
       </div>
     </main>
@@ -111,6 +115,9 @@ const {
   handleImport,
   updateDataDir,
   handleAction,
+  showToast,
+  toggleSelect,
+  multiSelect,
 } = useClipboard()
 
 onMounted(() => {
