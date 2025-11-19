@@ -11,12 +11,8 @@ pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // Use CGEvent for the most reliable and fastest keyboard simulation
-        // CGEvent provides direct access to Core Graphics event system
-        use objc2_core_graphics::CGEvent;
-        use objc2_core_graphics::CGEventSource;
-        use objc2_core_graphics::CGEventSourceStateID;
-        use objc2_core_graphics::CGEventFlags;
-        use objc2_core_graphics::CGEventTapLocation;
+        use objc2_core_graphics::{CGEvent, CGEventSource, CGEventSourceStateID, CGEventFlags, CGEventTapLocation};
+
         unsafe {
             // Create an event source for keyboard events using HID system state
             let event_source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
@@ -56,8 +52,6 @@ pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
             CGEvent::set_flags(Some(&v_down_event), cmd_flags);
             CGEvent::set_flags(Some(&v_up_event), cmd_flags);
             CGEvent::set_flags(Some(&cmd_up_event), cmd_flags);
-
-            println!("Sending paste key events with proper sequence");
 
             // Post events to HID event tap with proper timing
             CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_down_event));

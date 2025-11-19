@@ -1,4 +1,4 @@
-use tauri::{Listener, Manager};
+use tauri::{Manager, Listener};
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 use tauri::{menu::{MenuBuilder, MenuItemBuilder}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
@@ -7,6 +7,8 @@ mod sidecar;
 mod visibility;
 mod accessibility;
 mod paste;
+// mod db;       // Removed: SQLite no longer used
+// mod clipboard; // Removed: Listener handled by sidecar
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -49,7 +51,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     // Check if settings window already exists
     if let Some(settings_window) = app_handle.get_webview_window("settings") {
         // Settings window already exists, just show it and hide main
-        if let Some(main_window) = app_handle.get_webview_window("main") {
+        if let Some(_main_window) = app_handle.get_webview_window("main") {
             visibility::hide(&app_handle).ok();
         }
         settings_window.set_focus()?;
@@ -58,7 +60,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     }
 
     // Hide main window first
-    if let Some(main_window) = app_handle.get_webview_window("main") {
+    if let Some(_main_window) = app_handle.get_webview_window("main") {
          visibility::hide(&app_handle).ok();
     }
 
@@ -87,8 +89,6 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
 
 // Function to hide settings window and restore dock state
 fn close_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::Manager;
-
     if let Some(settings_window) = app_handle.get_webview_window("settings") {
         settings_window.close()?;
     }
@@ -117,6 +117,7 @@ pub fn run() {
             sidecar::stop_service,
             sidecar::get_service_status,
             sidecar::get_history,
+            sidecar::get_mtime,
             sidecar::copy_item,
             sidecar::paste_item,
             sidecar::delete_item,
@@ -137,7 +138,7 @@ pub fn run() {
             accessibility::request_permissions,
         ])
       .setup(|app| {
-            use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+            use tauri_plugin_global_shortcut::{Code, ShortcutState};
 
             let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
             let settings_shortcut = Shortcut::new(Some(Modifiers::META), Code::Comma);
@@ -160,7 +161,7 @@ pub fn run() {
                 .items(&[&stats_item, &show_item, &settings_item, &quit_item])
                 .build()?;
 
-            // Spawn stats updater
+            // Spawn stats updater for Tray
             let stats_item_handle = stats_item.clone();
             tauri::async_runtime::spawn(async move {
                 let client = reqwest::Client::new();
@@ -194,8 +195,7 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                   "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            // Use visibility module
+                        if let Some(_window) = app.get_webview_window("main") {
                             let _ = visibility::show(app.clone());
                         }
                     }
@@ -227,7 +227,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
-/* Shorcut */
+            /* Shortcut */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
                 let _app_handle = app_handle.clone();
                 let settings_shortcut_clone = settings_shortcut.clone();
@@ -280,11 +280,9 @@ pub fn run() {
                 });
             }
 
-            // Configure sidecar and start watch
+            // Configure sidecar and start service
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                // configure_data_dir call removed to allow frontend to handle it
-                
                 println!("Initializing clipboard service...");
                 if let Err(e) = sidecar::init_service(app_handle_clone.clone()).await {
                     eprintln!("Failed to initialize service: {}", e);

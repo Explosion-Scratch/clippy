@@ -1,0 +1,14 @@
+{
+  "selectedFiles": [
+    "src/components/ClipboardManager.vue",
+    "src/components/ClipboardItem.vue",
+    "src/components/Settings.vue",
+    "src/router.js",
+    "src/main.js",
+    "src/App.vue",
+    "get_clipboard/API.md"
+  ],
+  "timestamp": "2025-11-19T20:02:08.629Z",
+  "cwd": "/Users/tjs/Documents/.coding/clippith",
+  "prompt": "Make sure images preview correctly - currently they just display as the summary"
+}

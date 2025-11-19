@@ -10,11 +10,15 @@ struct DirResponse {
     path: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct MtimeResponse {
+    #[serde(rename = "lastModified")]
+    last_modified: Option<String>,
+    id: Option<String>,
+}
+
 #[tauri::command]
 pub async fn init_service(app: AppHandle) -> Result<String, String> {
-    // Removed configure_data_dir to allow manual configuration on startup
-    // configure_data_dir(app.clone()).await?;
-
     println!("Installing clipboard service...");
     let install_output = app
         .shell()
@@ -151,6 +155,20 @@ pub async fn get_history(
 }
 
 #[tauri::command]
+pub async fn get_mtime(_app: AppHandle) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/mtime", API_BASE);
+    let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    
+    if response.status().is_success() {
+        // Just pass the JSON string through to frontend
+        Ok(response.text().await.map_err(|e| e.to_string())?)
+    } else {
+        Err(format!("API error: {}", response.status()))
+    }
+}
+
+#[tauri::command]
 pub async fn copy_item(_app: AppHandle, selector: String) -> Result<(), String> {
     let client = reqwest::Client::new();
     let url = format!("{}/item/{}/copy", API_BASE, selector);
@@ -262,8 +280,7 @@ pub async fn db_get_size(_app: AppHandle) -> Result<u64, String> {
 #[tauri::command]
 pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
-    
-    // 1. Get all items (summary) to get IDs
+    // Get all items (summary) to get IDs
     let items_url = format!("{}/items?count=1000000", API_BASE);
     let resp = client.get(&items_url).send().await.map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
@@ -271,10 +288,10 @@ pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     }
     let items: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
     
-    // 2. Fetch full data for each item to ensure complete export
+    // Fetch full data for each item to ensure complete export
     let mut full_items = Vec::new();
     for item in items {
-        if let Some(id) = item["id"].as_str() {
+        if let Some(id) = item["hash"].as_str().or(item["id"].as_str()) {
             let data_url = format!("{}/item/{}/data", API_BASE, id);
             if let Ok(resp) = client.get(&data_url).send().await {
                 if resp.status().is_success() {
@@ -293,18 +310,12 @@ pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
 pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String, String> {
     let client = reqwest::Client::new();
     let items: Vec<serde_json::Value> = serde_json::from_str(&json_data).map_err(|e| e.to_string())?;
-    let total = items.len();
     let mut success = 0;
     let mut failed = 0;
 
     let save_url = format!("{}/save", API_BASE);
 
     for item in items {
-        // We send each item to the /save endpoint.
-        // The backend expects ClipboardJsonFullItem.
-        // If the export contains full items, this works directly.
-        // If importing from legacy/summary format, backend validation might fail unless
-        // the JSON matches the structure.
         let resp = client.post(&save_url).json(&item).send().await;
         match resp {
             Ok(r) if r.status().is_success() => success += 1,
@@ -325,14 +336,13 @@ pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String,
 #[tauri::command]
 pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
-    // Get all items first
     let items_url = format!("{}/items?count=1000000", API_BASE);
     let resp = client.get(&items_url).send().await.map_err(|e| e.to_string())?;
     let items: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
     
     let mut count = 0;
     for item in items {
-        if let Some(id) = item["id"].as_str() {
+        if let Some(id) = item["hash"].as_str().or(item["id"].as_str()) {
              let del_url = format!("{}/item/{}", API_BASE, id);
              if let Ok(resp) = client.delete(&del_url).send().await {
                  if resp.status().is_success() {
