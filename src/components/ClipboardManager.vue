@@ -136,6 +136,8 @@ async function searchItems(query) {
         startLoading();
         if (!query.trim()) {
             await loadRecentItems();
+            
+            // We don't need to unregister here, focus handler manages it
             return;
         }
         const jsonStr = await invoke("get_history", { query, limit: itemsPerPage, offset: 0 });
@@ -225,9 +227,15 @@ async function loadRecentItems(offset = 0) {
 watch(
     searchQuery,
     (newQuery) => {
-        selectedIndex.value = -1;
-        currentPageOffset.value = 0;
-        searchItems(newQuery);
+        if (!newQuery && selectedIndex.value === -1) {
+            // If clearing query and nothing selected, reset offset
+            currentPageOffset.value = 0;
+            loadRecentItems();
+        } else {
+            selectedIndex.value = -1;
+            currentPageOffset.value = 0;
+            searchItems(newQuery);
+        }
     },
     { debounce: 300 },
 );
@@ -286,8 +294,8 @@ document.addEventListener("keyup", (e) => {
             resizeWindowToFitContent();
             return;
         }
-        let win = getCurrentWindow();
-        win.hide();
+        // Hide window via Rust to be consistent
+        invoke("hide_app");
     }
 });
 
@@ -335,7 +343,9 @@ async function pasteItemToSystem(item) {
         await invoke("hide_app");
         // Then invoke the paste command which copies to clipboard and simulates paste
         await invoke("paste_item", { selector: item.id.toString() });
-        await loadRecentItems(currentPageOffset.value);
+        
+        // Reload items in background to update copy count/order
+        loadRecentItems(currentPageOffset.value);
     } catch (error) {
         console.error("Failed to inject item:", error);
     }
@@ -393,9 +403,26 @@ async function resizeWindowToFitContent() {
     }
 }
 
+async function unregisterGlobalShortcut() {
+    try {
+        await invoke("unregister_main_shortcut");
+    } catch (error) {
+        console.error("Failed to unregister global shortcut:", error);
+    }
+}
+
+async function registerGlobalShortcut() {
+    try {
+        await invoke("register_main_shortcut");
+    } catch (error) {
+        console.error("Failed to register global shortcut:", error);
+    }
+}
+
 function startCyclingMode() {
+    if (clipboardItems.value.length === 0) return;
     isCycling.value = true;
-    if (clipboardItems.value.length > 0) selectedIndex.value = 0;
+    selectedIndex.value = 0;
 }
 
 function cycleToNext() {
@@ -434,12 +461,19 @@ onMounted(async () => {
                 isCycling.value = false;
                 isCtrlPressed.value = false;
             }
+            registerGlobalShortcut();
             resetSelection();
-            loadRecentItems();
         } else {
+            unregisterGlobalShortcut();
+            
+            // Reset selection and refresh items on focus
             if (!isCycling.value) {
                 resetSelection();
-                document.querySelector(".search-input")?.focus();
+                loadTotalItems();
+                loadRecentItems().then(() => {
+                     // Focus input after loading to be sure (and small delay)
+                     setTimeout(() => document.querySelector(".search-input")?.focus(), 20);
+                });
             }
             isCtrlPressed.value = true;
             if (!showDirModal.value) resizeWindowToFitContent();

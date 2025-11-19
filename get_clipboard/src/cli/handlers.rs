@@ -108,6 +108,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
     }
 }
 
+// ... rest of the file remains the same as previously outputted ...
 fn ensure_filters_unsupported(filters: &FilterFlags, json: bool, command: &str) -> Result<()> {
     if json {
         bail!("--json is not supported for {command} command");

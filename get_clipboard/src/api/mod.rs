@@ -1,16 +1,17 @@
 use axum::{
-    Json, Router,
-    extract::{Path, Query},
-    http::StatusCode,
+    body::Body,
+    extract::{Path, Path as AxumPath, Query},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete as axum_delete, get, post},
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use tower_http::services::ServeDir;
+use include_dir::{include_dir, Dir};
 
 use anyhow::Result;
 
@@ -34,6 +35,8 @@ use tokio::net::TcpListener;
 
 const API_DOCS: &str = include_str!("../../API.md");
 
+static FRONTEND_DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/frontend-dist");
+
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -55,13 +58,10 @@ pub async fn serve(port: u16) -> Result<()> {
 }
 
 fn router() -> Router {
-    let frontend_dist = std::env::current_dir()
-        .unwrap()
-        .join("frontend-dist");
-    
     Router::new()
         .route("/", get(get_docs))
-        .nest_service("/dashboard", ServeDir::new(frontend_dist))
+        .route("/dashboard", get(serve_dashboard_index))
+        .route("/dashboard/*path", get(serve_dashboard))
         .route("/items", get(get_items))
         .route("/item/:selector/data", get(get_item_data))
         .route(
@@ -195,6 +195,51 @@ async fn get_docs() -> impl IntoResponse {
         [("Content-Type", "text/plain; charset=utf-8")],
         API_DOCS,
     )
+}
+
+async fn serve_dashboard_index() -> impl IntoResponse {
+    serve_dashboard_file("index.html".to_string()).await
+}
+
+async fn serve_dashboard(AxumPath(path): AxumPath<String>) -> impl IntoResponse {
+    serve_dashboard_file(path).await
+}
+
+async fn serve_dashboard_file(path: String) -> impl IntoResponse + use<> {
+    let file_path = if path.is_empty() || path == "/" {
+        "index.html"
+    } else {
+        path.strip_prefix('/').unwrap_or(path.as_str())
+    };
+
+    if let Some(file) = FRONTEND_DIST.get_file(file_path) {
+        let content = file.contents();
+        let mime_type = mime_guess::from_path(file_path)
+            .first_or_octet_stream()
+            .to_string();
+        
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, mime_type)
+            .body(Body::from(content.to_vec()))
+            .unwrap();
+    }
+
+    if file_path == "index.html" || file_path.ends_with(".html") {
+        if let Some(index_file) = FRONTEND_DIST.get_file("index.html") {
+            let content = index_file.contents();
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "text/html")
+                .body(Body::from(content.to_vec()))
+                .unwrap();
+        }
+    }
+
+    Response::builder()
+        .status(StatusCode::NOT_FOUND)
+        .body(Body::from("File not found"))
+        .unwrap()
 }
 
 async fn get_items(

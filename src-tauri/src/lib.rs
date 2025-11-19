@@ -50,7 +50,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     if let Some(settings_window) = app_handle.get_webview_window("settings") {
         // Settings window already exists, just show it and hide main
         if let Some(main_window) = app_handle.get_webview_window("main") {
-            main_window.hide()?;
+            visibility::hide(&app_handle).ok();
         }
         settings_window.set_focus()?;
         settings_window.show()?;
@@ -59,7 +59,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
 
     // Hide main window first
     if let Some(main_window) = app_handle.get_webview_window("main") {
-        main_window.hide()?;
+         visibility::hide(&app_handle).ok();
     }
 
     // Create new settings window using config from tauri.conf.json
@@ -196,9 +196,8 @@ pub fn run() {
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                   "show" => {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            // Use visibility module
+                            let _ = visibility::show(app.clone());
                         }
                     }
                     "settings" => {
@@ -220,11 +219,9 @@ pub fn run() {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
+                                let _ = visibility::hide(app);
                             } else {
-                                let _ = window.unminimize();
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                                let _ = visibility::show(app.clone());
                             }
                         }
                     }

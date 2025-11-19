@@ -7,6 +7,12 @@ set -e
 TARGET_TRIPLE=$(rustc -vV | grep host | cut -d ' ' -f 2)
 echo "Detected target triple: $TARGET_TRIPLE"
 
+# Build the frontend first (required for embedding)
+echo "Building frontend dashboard..."
+cd get_clipboard
+./build-frontend.sh
+cd ..
+
 # Build the get_clipboard binary
 echo "Building get_clipboard..."
 cd get_clipboard
