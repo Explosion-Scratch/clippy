@@ -49,6 +49,18 @@ pub fn start_agent() -> Result<()> {
     if !plist_path.exists() {
         bail!("Service is not installed. Run `get_clipboard service install` first.");
     }
+    
+    let is_running = Command::new("launchctl")
+        .args(["list", LABEL])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+    
+    if is_running {
+        println!("Launch agent {} is already running", LABEL);
+        return Ok(());
+    }
+    
     println!("Starting launch agent {}", LABEL);
     run_launchctl(["load", "-w", plist_path.to_string_lossy().as_ref()])
 }
@@ -59,6 +71,7 @@ pub fn stop_agent() -> Result<()> {
         bail!("Service is not installed");
     }
     println!("Stopping launch agent {}", LABEL);
+    let _ = run_launchctl(["stop", LABEL]);
     run_launchctl(["unload", plist_path.to_string_lossy().as_ref()])
 }
 

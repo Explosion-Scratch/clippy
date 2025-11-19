@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 export function useClipboard() {
   const API_BASE = window.location.origin
@@ -13,7 +13,7 @@ export function useClipboard() {
   const loadingDetails = ref(false)
   const searchQuery = ref('')
   const isSearching = ref(false)
-  const currentFilter = ref('all')
+  const selectedTypes = ref(new Set())
   const sortBy = ref('date')
   const sortDirection = ref('desc')
   const connected = ref(true)
@@ -78,7 +78,7 @@ export function useClipboard() {
     }
 
     try {
-      const hasFilter = currentFilter.value !== 'all'
+      const hasFilter = selectedTypes.value.size > 0
       const hasSearch = !!searchQuery.value
       const hasSort = sortBy.value !== 'date' || sortDirection.value !== 'desc'
       
@@ -93,7 +93,7 @@ export function useClipboard() {
         }
         
         if (hasFilter) {
-            params.append('formats', currentFilter.value)
+            params.append('formats', Array.from(selectedTypes.value).join(','))
         }
         
         params.append('sort', sortBy.value)
@@ -252,8 +252,28 @@ export function useClipboard() {
     }
   }
 
+  const toggleType = (type) => {
+    if (selectedTypes.value.has(type)) {
+      selectedTypes.value.delete(type)
+    } else {
+      selectedTypes.value.add(type)
+    }
+    loadItems(true)
+  }
+
+  const currentFilter = computed(() => {
+    if (selectedTypes.value.size === 0) return 'all'
+    if (selectedTypes.value.size === 1) return Array.from(selectedTypes.value)[0]
+    return 'multiple'
+  })
+
   const setFilter = (filter) => {
-    currentFilter.value = filter
+    if (filter === 'all') {
+      selectedTypes.value.clear()
+    } else {
+      selectedTypes.value.clear()
+      selectedTypes.value.add(filter)
+    }
     loadItems(true)
   }
 
@@ -362,7 +382,7 @@ export function useClipboard() {
     loadingDetails,
     searchQuery,
     isSearching,
-    currentFilter,
+    selectedTypes,
     sortBy,
     sortDirection,
     connected,
@@ -382,6 +402,7 @@ export function useClipboard() {
     toggleSelect,
     multiSelect,
     handleScroll,
+    toggleType,
     setFilter,
     setSortBy,
     refreshAll,

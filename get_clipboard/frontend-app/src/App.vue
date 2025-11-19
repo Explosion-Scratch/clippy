@@ -15,8 +15,10 @@
         :is-searching="isSearching"
         :sort-by="sortBy"
         :sort-direction="sortDirection"
+        :selected-types="selectedTypes"
         @refresh="refreshAll"
         @sort="setSortBy"
+        @toggle-type="toggleType"
       />
       
       <div class="flex-1 flex overflow-hidden">
@@ -96,6 +98,7 @@ const {
   searchQuery,
   isSearching,
   currentFilter,
+  selectedTypes,
   sortBy,
   sortDirection,
   connected,
@@ -114,6 +117,7 @@ const {
   clearSelection,
   handleScroll,
   setFilter,
+  toggleType,
   setSortBy,
   refreshAll,
   copyToClipboard,

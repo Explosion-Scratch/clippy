@@ -157,6 +157,9 @@ function mapApiItem(item) {
     // Map API response fields to component expected format
     const id = item.hash || item.id;
     const idx = item.offset !== undefined ? item.offset : item.index;
+    // The API returns 'type', but we also check 'kind' for compatibility
+    const itemType = item.type;
+
     return {
         id: id,
         index: idx,
@@ -167,8 +170,8 @@ function mapApiItem(item) {
         firstCopied: item.timestamp ? new Date(item.timestamp).getTime() / 1000 : (new Date(item.date).getTime() / 1000),
         data: item.data,
         formats: {
-            imageData: item.kind === "image",
-            files: item.kind === "file" ? [item.summary] : [],
+            imageData: itemType === "image",
+            files: (itemType === "file" || itemType === "files") ? [item.summary] : [],
         }
     };
 }
@@ -333,7 +336,7 @@ async function registerGlobalShortcut() { await invoke("register_main_shortcut")
 function startCyclingMode() {
     if (clipboardItems.value.length === 0) return;
     isCycling.value = true;
-    selectedIndex.value = 0;
+    selectedIndex.value = clipboardItems.value.length > 1 ? 1 : 0;
 }
 
 function cycleToNext() {
