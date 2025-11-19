@@ -9,6 +9,7 @@ import { emit } from '@tauri-apps/api/event';
 const appVersion = ref('0.1.0');
 const itemCount = ref(0);
 const databaseSize = ref(0);
+const currentDataDir = ref('');
 const isDeleting = ref(false);
 const isExporting = ref(false);
 const isImporting = ref(false);
@@ -17,8 +18,39 @@ async function loadStats() {
   try {
     itemCount.value = await invoke('db_get_count');
     databaseSize.value = await invoke('db_get_size');
+    currentDataDir.value = await invoke('get_sidecar_dir');
   } catch (error) {
-    console.error('Failed to get database stats:', error);
+    console.error('Failed to get stats:', error);
+  }
+}
+
+async function changeDataDirectory() {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: 'Select Data Directory',
+    });
+
+    if (selected) {
+      const shouldMove = await ask(
+        `Do you want to move your existing data to "${selected}"?\n\nSelect 'Yes' to move existing data.\nSelect 'No' to start fresh or use existing data in that folder.`,
+        {
+          title: 'Move Data?',
+          kind: 'info',
+          okLabel: 'Yes, Move Data',
+          cancelLabel: 'No, Start Fresh'
+        }
+      );
+
+      const mode = shouldMove ? 'move' : 'update';
+      await invoke('set_sidecar_dir', { mode, path: selected });
+      
+      await loadStats();
+    }
+  } catch (error) {
+    console.error('Failed to change directory:', error);
+    alert('Failed to change directory: ' + error);
   }
 }
 
@@ -143,6 +175,15 @@ onMounted(() => {
 
     <div class="settings-content">
       <div class="section">
+        <h2>Storage</h2>
+        <div class="path-container">
+          <p class="path-label">Current Data Directory:</p>
+          <p class="path-value">{{ currentDataDir || 'Loading...' }}</p>
+        </div>
+        <button @click="changeDataDirectory" class="action-button">Change Directory...</button>
+      </div>
+
+      <div class="section">
         <h2>Database Management</h2>
         <div class="stats">
           <p>Total clipboard items: <strong>{{ itemCount }}</strong></p>
@@ -205,6 +246,7 @@ onMounted(() => {
     justify-content: space-between;
     align-items: center;
     box-shadow: var(--settings-shadow-light);
+    flex-shrink: 0;
     
     .app-info {
       display: flex;
@@ -257,6 +299,7 @@ onMounted(() => {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    overflow-y: auto;
     
     .section {
       background: var(--settings-bg-input);
@@ -264,12 +307,34 @@ onMounted(() => {
       border-radius: 5px;
       padding: 10px 12px;
       box-shadow: var(--settings-shadow-light);
+      flex-shrink: 0;
       
       h2 {
         margin: 0 0 8px 0;
         font-size: 12px;
         font-weight: 600;
         color: var(--text-primary);
+      }
+      
+      .path-container {
+        margin-bottom: 8px;
+        
+        .path-label {
+          margin: 0 0 2px 0;
+          font-size: 11px;
+          color: var(--text-secondary);
+        }
+        
+        .path-value {
+          margin: 0;
+          font-size: 10px;
+          font-family: monospace;
+          background: rgba(0,0,0,0.05);
+          padding: 4px 6px;
+          border-radius: 3px;
+          word-break: break-all;
+          color: var(--text-primary);
+        }
       }
       
       .stats {
@@ -290,49 +355,59 @@ onMounted(() => {
         display: flex;
         flex-direction: column;
         gap: 6px;
+      }
+      
+      .action-button {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: var(--settings-shadow-light);
+        background: var(--settings-bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--settings-border-color);
         
-        .action-button {
-          padding: 6px 12px;
+        &:hover {
+          filter: brightness(0.95);
+        }
+        
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        
+        &.export {
+          background: var(--accent);
+          color: var(--accent-text);
           border: none;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: 500;
-          cursor: pointer;
-          box-shadow: var(--settings-shadow-light);
           
-          &:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+          &:hover:not(:disabled) {
+            filter: brightness(1.1);
+            box-shadow: var(--settings-shadow-medium);
           }
+        }
+        
+        &.import {
+          background: #34C759;
+          color: white;
+          border: none;
           
-          &.export {
-            background: var(--accent);
-            color: var(--accent-text);
-            
-            &:hover:not(:disabled) {
-              filter: brightness(1.1);
-              box-shadow: var(--settings-shadow-medium);
-            }
+          &:hover:not(:disabled) {
+            background: #28A745;
+            box-shadow: var(--settings-shadow-medium);
           }
+        }
+        
+        &.delete {
+          background: #FF3B30;
+          color: white;
+          border: none;
           
-          &.import {
-            background: #34C759;
-            color: white;
-            
-            &:hover:not(:disabled) {
-              background: #28A745;
-              box-shadow: var(--settings-shadow-medium);
-            }
-          }
-          
-          &.delete {
-            background: #FF3B30;
-            color: white;
-            
-            &:hover:not(:disabled) {
-              background: #D70015;
-              box-shadow: var(--settings-shadow-medium);
-            }
+          &:hover:not(:disabled) {
+            background: #D70015;
+            box-shadow: var(--settings-shadow-medium);
           }
         }
       }

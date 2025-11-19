@@ -48,6 +48,11 @@ const searchPlaceholder = computed(() => {
 // Check directory mismatch
 async function checkDataDirectory() {
     try {
+        // Check if user previously ignored this
+        if (localStorage.getItem('ignoreDirMismatch') === 'true') {
+            return;
+        }
+
         // Wait a bit for the service to be ready
         await new Promise(resolve => setTimeout(resolve, 1000));
         
@@ -70,6 +75,15 @@ async function checkDataDirectory() {
 
 async function handleDirChoice(choice) {
     try {
+        // Option C: Continue (do nothing)
+        if (choice === 'continue') {
+            localStorage.setItem('ignoreDirMismatch', 'true');
+            showDirModal.value = false;
+            loadRecentItems();
+            resizeWindowToFitContent();
+            return;
+        }
+
         const path = mismatchDirs.value.expected;
         if (choice === 'create') {
             // Option A: Create new directory (Update path)
@@ -78,7 +92,6 @@ async function handleDirChoice(choice) {
             // Option B: Import old directory (Move data)
             await invoke('set_sidecar_dir', { mode: 'move', path });
         }
-        // Option C: Continue (do nothing)
         
         showDirModal.value = false;
         // Refresh list as directory might have changed
@@ -123,9 +136,6 @@ async function searchItems(query) {
         startLoading();
         if (!query.trim()) {
             await loadRecentItems();
-
-            // Unregister global shortcut when component mounts (window opens)
-            await unregisterGlobalShortcut();
             return;
         }
         const jsonStr = await invoke("get_history", { query, limit: itemsPerPage, offset: 0 });
@@ -198,9 +208,6 @@ async function loadRecentItems(offset = 0) {
         clipboardItems.value = items;
         currentPageOffset.value = offset;
         
-        // If we just loaded a new page, select the first item if moving down, or last if moving up?
-        // Actually, handleArrowDown/Up manages selection index.
-        // If we are just refreshing (offset 0), deselect.
         if (offset === 0 && selectedIndex.value === -1) {
              // Keep it -1
         }
@@ -273,6 +280,7 @@ document.addEventListener("keyup", (e) => {
     if (e.key === "Escape") {
         if (showDirModal.value) {
             // Treat escape as "Continue"
+            localStorage.setItem('ignoreDirMismatch', 'true');
             showDirModal.value = false;
             loadRecentItems();
             resizeWindowToFitContent();
@@ -280,7 +288,6 @@ document.addEventListener("keyup", (e) => {
         }
         let win = getCurrentWindow();
         win.hide();
-        registerGlobalShortcut();
     }
 });
 
@@ -288,21 +295,12 @@ async function handleArrowDown() {
     if (clipboardItems.value.length === 0) return;
     
     if (selectedIndex.value === clipboardItems.value.length - 1) {
-        // We are at the bottom of the current list.
-        // Load next page.
         const newOffset = currentPageOffset.value + 1;
         await loadRecentItems(newOffset);
         
         if (clipboardItems.value.length > 0) {
-             // Select the last item of the new list (which is effectively the same visual position if we shifted)
-             // Wait, if we shift by 1, the item at index 9 becomes index 8.
-             // The user said "Only load the next item and discard the last item".
-             // If we use offset += 1, we effectively scroll down by 1 item.
-             // The list content shifts up. The item at index 9 is now the item that was at index 10 (globally).
-             // So we should keep selectedIndex at the bottom (9).
              selectedIndex.value = clipboardItems.value.length - 1;
         } else {
-             // End of list, revert
              await loadRecentItems(currentPageOffset.value - 1);
              selectedIndex.value = clipboardItems.value.length - 1;
         }
@@ -316,10 +314,8 @@ async function handleArrowUp() {
     
     if (selectedIndex.value === 0) {
         if (currentPageOffset.value > 0) {
-            // Load previous page (shift up by 1)
             const newOffset = Math.max(0, currentPageOffset.value - 1);
             await loadRecentItems(newOffset);
-            // Keep selection at top
             selectedIndex.value = 0;
         }
     } else {
@@ -335,6 +331,9 @@ function handleEnter() {
 
 async function pasteItemToSystem(item) {
     try {
+        // Hide the app window first to return focus to the previous application
+        await invoke("hide_app");
+        // Then invoke the paste command which copies to clipboard and simulates paste
         await invoke("paste_item", { selector: item.id.toString() });
         await loadRecentItems(currentPageOffset.value);
     } catch (error) {
@@ -394,22 +393,6 @@ async function resizeWindowToFitContent() {
     }
 }
 
-async function unregisterGlobalShortcut() {
-    try {
-        await invoke("unregister_main_shortcut");
-    } catch (error) {
-        console.error("Failed to unregister global shortcut:", error);
-    }
-}
-
-async function registerGlobalShortcut() {
-    try {
-        await invoke("register_main_shortcut");
-    } catch (error) {
-        console.error("Failed to register global shortcut:", error);
-    }
-}
-
 function startCyclingMode() {
     isCycling.value = true;
     if (clipboardItems.value.length > 0) selectedIndex.value = 0;
@@ -426,9 +409,6 @@ async function endCycling() {
     if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
         await pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
     }
-    await registerGlobalShortcut();
-    const window = getCurrentWindow();
-    window.hide();
 }
 
 function handleKeyDown(e) {
@@ -454,11 +434,9 @@ onMounted(async () => {
                 isCycling.value = false;
                 isCtrlPressed.value = false;
             }
-            registerGlobalShortcut();
             resetSelection();
             loadRecentItems();
         } else {
-            unregisterGlobalShortcut();
             if (!isCycling.value) {
                 resetSelection();
                 document.querySelector(".search-input")?.focus();
@@ -479,14 +457,9 @@ onMounted(async () => {
         resizeObserver.observe(clipboardManager.value);
     }
 
-    // Removed polling as per user request
-    // startPolling();
-
     return () => {
-        // stopPolling();
         unlistenFocus();
         if (resizeObserver && clipboardManager.value) resizeObserver.disconnect();
-        registerGlobalShortcut();
     };
 });
 </script>

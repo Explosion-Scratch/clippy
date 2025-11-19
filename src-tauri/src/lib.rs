@@ -160,6 +160,35 @@ pub fn run() {
             let menu = MenuBuilder::new(app)
                 .items(&[&stats_item, &show_item, &settings_item, &quit_item])
                 .build()?;
+
+            // Spawn stats updater
+            let stats_item_handle = stats_item.clone();
+            tauri::async_runtime::spawn(async move {
+                let client = reqwest::Client::new();
+                let url = "http://localhost:3016/stats";
+                
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    
+                    if let Ok(response) = client.get(url).send().await {
+                        if let Ok(json) = response.json::<serde_json::Value>().await {
+                            let count = json["totalItems"].as_u64().unwrap_or(0);
+                            let size = json["totalSize"].as_u64().unwrap_or(0);
+                            
+                            let size_str = if size < 1024 {
+                                format!("{}b", size)
+                            } else if size < 1024 * 1024 {
+                                format!("{:.0}kb", size as f64 / 1024.0)
+                            } else {
+                                format!("{:.1}mb", size as f64 / (1024.0 * 1024.0))
+                            };
+                            
+                            let text = format!("clippy v0.1.0 - {} items {}", count, size_str);
+                            let _ = stats_item_handle.set_text(text);
+                        }
+                    }
+                }
+            });
             
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())

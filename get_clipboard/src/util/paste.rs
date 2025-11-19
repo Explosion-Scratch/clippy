@@ -37,6 +37,9 @@ pub fn simulate_paste() -> Result<()> {
         CGEvent::set_flags(Some(&cmd_up_event), cmd_flags);
 
         // Post events to HID event tap with proper timing
+        // Note: We assume the calling application has yielded focus or hidden its window
+        // before calling this, otherwise we might paste into ourselves.
+        
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_down_event));
         thread::sleep(Duration::from_micros(15000));
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_down_event));
@@ -54,4 +57,3 @@ pub fn simulate_paste() -> Result<()> {
     println!("Paste simulation not implemented for this platform");
     Ok(())
 }
-

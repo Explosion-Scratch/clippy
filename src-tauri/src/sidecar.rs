@@ -108,7 +108,17 @@ pub async fn get_history(
     query: Option<String>,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let mut url = format!("{}/items", API_BASE);
+    
+    // Determine base URL based on whether a query is present
+    let (base_url, is_search) = if let Some(ref q) = query {
+        if !q.trim().is_empty() {
+            (format!("{}/search", API_BASE), true)
+        } else {
+            (format!("{}/items", API_BASE), false)
+        }
+    } else {
+        (format!("{}/items", API_BASE), false)
+    };
 
     let mut params = vec![];
     if let Some(count) = limit {
@@ -117,10 +127,14 @@ pub async fn get_history(
     if let Some(off) = offset {
         params.push(format!("offset={}", off));
     }
-    if let Some(q) = query {
-        params.push(format!("query={}", urlencoding::encode(&q)));
+    
+    if is_search {
+        if let Some(q) = query {
+            params.push(format!("query={}", urlencoding::encode(&q)));
+        }
     }
 
+    let mut url = base_url;
     if !params.is_empty() {
         url.push('?');
         url.push_str(&params.join("&"));

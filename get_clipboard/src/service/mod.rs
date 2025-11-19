@@ -1,4 +1,5 @@
 pub mod watch;
+pub mod permissions;
 
 #[cfg(target_os = "linux")]
 mod linux;

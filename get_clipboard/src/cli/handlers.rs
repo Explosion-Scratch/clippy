@@ -1,7 +1,7 @@
 use crate::api;
 use crate::cli::args::{
     ApiArgs, Cli, Command, DirCommand, EntryKind as CliEntryKind, FilterFlags, HistoryArgs,
-    SearchArgs, ServiceAction,
+    SearchArgs, ServiceAction, PermissionsCmd,
 };
 use crate::clipboard::plugins::{self, DisplayContent, ImageDisplay};
 use crate::config::{self, ensure_data_dir, load_config};
@@ -11,7 +11,7 @@ use crate::data::store::{
     load_index, load_metadata, refresh_index, resolve_selector, stream_history_items,
 };
 use crate::search::SearchOptions;
-use crate::service::{self, ServiceStatus, watch};
+use crate::service::{self, ServiceStatus, watch, permissions};
 use crate::tui;
 use crate::util::time::{OffsetDateTime, format_iso, parse_date};
 use crate::util::paste;
@@ -87,6 +87,23 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             copy_entry(&selector, &filters)?;
             paste::simulate_paste()?;
             Ok(())
+        }
+        Command::Permissions { subcommand } => {
+            match subcommand {
+                PermissionsCmd::Check => {
+                    if permissions::check_accessibility() {
+                        println!("Accessibility permissions granted");
+                        Ok(())
+                    } else {
+                        bail!("Accessibility permissions NOT granted");
+                    }
+                }
+                PermissionsCmd::Request => {
+                    permissions::request_accessibility();
+                    println!("Opened System Settings to request permissions");
+                    Ok(())
+                }
+            }
         }
     }
 }

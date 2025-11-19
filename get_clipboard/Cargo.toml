@@ -34,3 +34,11 @@ axum = { version = "0.7", features = ["json"] }
 tower-http = { version = "0.6", features = ["fs"] }
 tempfile = "3.10"
 objc2-core-graphics = { version = "0.3.2", features = ["CGEvent", "CGEventSource", "CGEventTypes"] }
+
+[[bin]]
+name = "test_paste"
+path = "src/bin/test_paste.rs"
+
+[[bin]]
+name = "get_clipboard"
+path = "src/main.rs"

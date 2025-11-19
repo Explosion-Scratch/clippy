@@ -60,6 +60,16 @@ pub enum Command {
         #[arg(default_value = "0")]
         selector: String,
     },
+    Permissions {
+        #[command(subcommand)]
+        subcommand: PermissionsCmd,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum PermissionsCmd {
+    Check,
+    Request,
 }
 
 #[derive(Parser, Debug, Clone)]
