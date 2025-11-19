@@ -241,6 +241,7 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
         kind,
         from: from_str,
         to: to_str,
+        sort,
         ..
     } = args;
 
@@ -249,11 +250,24 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
     let selection_filter = build_selection_filter(filters, kind.clone());
 
     let mut options = SearchOptions::default();
-    options.limit = Some(limit);
+    let is_interactive = io::stdout().is_terminal();
+    options.limit = limit.or_else(|| {
+        if is_interactive {
+            Some(100)
+        } else {
+            None
+        }
+    });
     options.query = query;
     options.filter = selection_filter;
     options.from = from;
     options.to = to;
+    options.sort = match sort {
+        Some(crate::cli::args::HistorySort::Date) => crate::search::SortOrder::Date,
+        Some(crate::cli::args::HistorySort::Copies) => crate::search::SortOrder::Copies,
+        Some(crate::cli::args::HistorySort::Type) => crate::search::SortOrder::Type,
+        None => crate::search::SortOrder::Date,
+    };
 
     match mode {
         OutputMode::Text => {
@@ -271,13 +285,20 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
 fn run_search(args: SearchArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
-    let SearchArgs { query, limit, .. } = args;
+    let SearchArgs { query, limit, sort, .. } = args;
     let selection_filter = build_selection_filter(filters, None);
 
     let mut options = SearchOptions::default();
     options.limit = limit;
     options.query = Some(query);
     options.filter = selection_filter;
+    options.sort = match sort {
+        Some(crate::cli::args::SearchSort::Date) => crate::search::SortOrder::Date,
+        Some(crate::cli::args::SearchSort::Copies) => crate::search::SortOrder::Copies,
+        Some(crate::cli::args::SearchSort::Type) => crate::search::SortOrder::Type,
+        Some(crate::cli::args::SearchSort::Relevance) => crate::search::SortOrder::Relevance,
+        None => crate::search::SortOrder::Date,
+    };
 
     match mode {
         OutputMode::Text => {

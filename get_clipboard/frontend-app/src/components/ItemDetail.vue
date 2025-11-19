@@ -25,6 +25,14 @@
                 <span>{{ formatBytes(item.size) }}</span>
                 <span v-if="item.copyCount">•</span>
                 <span v-if="item.copyCount">{{ item.copyCount }} {{ item.copyCount === 1 ? 'copy' : 'copies' }}</span>
+                <span>•</span>
+                <span 
+                  class="font-mono cursor-pointer hover:text-blue-500 hover:underline" 
+                  @click.stop="copyTextWithToast(item.id)"
+                  title="Click to copy hash"
+                >
+                  {{ item.id.substring(0, 8) }}
+                </span>
               </div>
             </div>
           </div>

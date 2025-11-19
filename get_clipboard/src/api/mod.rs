@@ -71,6 +71,7 @@ struct ItemsQuery {
     offset: Option<usize>,
     count: Option<usize>,
     ids: Option<String>,
+    sort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +80,7 @@ struct SearchQuery {
     offset: Option<usize>,
     count: Option<usize>,
     formats: Option<String>,
+    sort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,6 +205,15 @@ async fn get_items(
     options.offset = params.offset.unwrap_or(0);
     options.limit = params.count;
 
+    if let Some(sort) = params.sort {
+        options.sort = match sort.to_lowercase().as_str() {
+            "date" => crate::search::SortOrder::Date,
+            "copies" => crate::search::SortOrder::Copies,
+            "type" => crate::search::SortOrder::Type,
+            _ => crate::search::SortOrder::Date,
+        };
+    }
+
     let (items, _) = load_history_items(&index, &options).map_err(ApiError::from)?;
     let mut response = Vec::new();
     for item in items {
@@ -324,6 +335,16 @@ async fn search_items(
     }
     options.offset = params.offset.unwrap_or(0);
     options.limit = Some(params.count.unwrap_or(50));
+
+    if let Some(sort) = params.sort {
+        options.sort = match sort.to_lowercase().as_str() {
+            "date" => crate::search::SortOrder::Date,
+            "copies" => crate::search::SortOrder::Copies,
+            "type" => crate::search::SortOrder::Type,
+            "relevance" => crate::search::SortOrder::Relevance,
+            _ => crate::search::SortOrder::Date,
+        };
+    }
 
     if let Some(formats) = params.formats {
         for fmt in formats.split(',') {

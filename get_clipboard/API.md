@@ -184,6 +184,7 @@ Retrieve a list of clipboard items with optional filtering.
 - `offset` (number, optional): Skip N most recent items (default: 0)
 - `count` (number, optional): Maximum items to return (default: all)
 - `ids` (string, optional): Comma-separated list of selectors to retrieve specific items
+- `sort` (string, optional): Sort order (`date`, `copies`, `type`). Default: `date`
 
 **Response:** Array of `ClipboardJsonItem` objects
 
@@ -393,6 +394,7 @@ Search clipboard history using full-text search.
 - `query` (string, required): Search query text
 - `offset` (number, optional): Skip N results (default: 0)
 - `count` (number, optional): Maximum results to return (default: 50)
+- `sort` (string, optional): Sort order (`date`, `copies`, `type`, `relevance`). Default: `relevance`
 
 **Response:** Array of matching `ClipboardJsonItem` objects
 

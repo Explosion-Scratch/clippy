@@ -43,6 +43,15 @@ impl SelectionFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortOrder {
+    #[default]
+    Date,
+    Copies,
+    Type,
+    Relevance,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SearchOptions {
     pub query: Option<String>,
@@ -51,6 +60,7 @@ pub struct SearchOptions {
     pub filter: SelectionFilter,
     pub from: Option<OffsetDateTime>,
     pub to: Option<OffsetDateTime>,
+    pub sort: SortOrder,
 }
 
 #[derive(Debug, Clone)]
@@ -84,11 +94,35 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
     let to = options.to.as_ref();
 
     let mut all_records: Vec<_> = index.values().collect();
+    // Sort by Date first to establish "stable indices"
     all_records.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
 
-    let mut records: Vec<_> = all_records
+    let mut indexed_records: Vec<(usize, &SearchIndexRecord)> =
+        all_records.into_iter().enumerate().collect();
+
+    match options.sort {
+        SortOrder::Date => { /* already sorted */ }
+        SortOrder::Copies => {
+            indexed_records.sort_by(|(_, a), (_, b)| b.copy_count.cmp(&a.copy_count))
+        }
+        SortOrder::Type => indexed_records.sort_by(|(_, a), (_, b)| {
+            let kind_a = format!("{:?}", a.kind);
+            let kind_b = format!("{:?}", b.kind);
+            kind_a.cmp(&kind_b)
+        }),
+        SortOrder::Relevance => {
+            if let Some(query) = &normalized_query {
+                indexed_records.sort_by(|(_, a), (_, b)| {
+                    let score_a = calculate_relevance(a, query);
+                    let score_b = calculate_relevance(b, query);
+                    score_b.cmp(&score_a)
+                });
+            }
+        }
+    }
+
+    let records: Vec<_> = indexed_records
         .iter()
-        .enumerate()
         .filter(|(_, record)| in_range(record, from, to))
         .filter(|(_, record)| options.filter.matches(record))
         .collect();
@@ -100,6 +134,7 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
     let mut has_more = false;
 
     for (global_position, record) in records {
+        let record = *record;
         if let Some(query) = normalized_query.as_ref() {
             if !query_matches(record, query) {
                 continue;
@@ -123,7 +158,7 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
             kind: record.kind.clone(),
             byte_size: record.byte_size,
             offset: total_matches - 1,
-            global_offset: global_position,
+            global_offset: *global_position,
         });
     }
 
@@ -172,4 +207,36 @@ fn contains_format(formats: &[String], needle: &str) -> bool {
     formats
         .iter()
         .any(|format| format.to_ascii_lowercase().contains(needle))
+}
+
+fn calculate_relevance(record: &SearchIndexRecord, query: &str) -> u32 {
+    let hash = record.hash.to_lowercase();
+    if hash == query {
+        return 100;
+    }
+    if hash.contains(query) {
+        return 80;
+    }
+
+    if let Some(summary) = &record.summary {
+        let summary = summary.to_lowercase();
+        if summary == query {
+            return 90;
+        }
+        if summary.starts_with(query) {
+            return 70;
+        }
+        if summary.contains(query) {
+            return 60;
+        }
+    }
+
+    if let Some(text) = &record.search_text {
+        let text = text.to_lowercase();
+        if text.contains(query) {
+            return 40;
+        }
+    }
+
+    0
 }
