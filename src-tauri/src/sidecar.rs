@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
+use crate::paste::simulate_system_paste_internal;
 
 const API_BASE: &str = "http://localhost:3016";
 
@@ -164,17 +165,27 @@ pub async fn copy_item(_app: AppHandle, selector: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub async fn paste_item(_app: AppHandle, selector: String) -> Result<(), String> {
+pub async fn paste_item(app: AppHandle, selector: String) -> Result<(), String> {
+    // 1. Copy to system clipboard via API (incrementing copy count)
     let client = reqwest::Client::new();
-    let url = format!("{}/item/{}/paste", API_BASE, selector);
-
+    let url = format!("{}/item/{}/copy", API_BASE, selector);
     let response = client.post(&url).send().await.map_err(|e| e.to_string())?;
 
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        Err(format!("API error: {}", response.status()))
+    if !response.status().is_success() {
+        return Err(format!("API error during copy: {}", response.status()));
     }
+
+    // 2. Simulate system paste using the main app process which has permissions
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Small delay to allow window hiding/focus switching to complete
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Err(e) = simulate_system_paste_internal(&app_clone) {
+            eprintln!("Failed to simulate paste: {}", e);
+        }
+    });
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -249,18 +260,88 @@ pub async fn db_get_size(_app: AppHandle) -> Result<u64, String> {
 }
 
 #[tauri::command]
-pub async fn db_export_all(app: AppHandle) -> Result<String, String> {
-    get_history(app, Some(999999), None, None).await
+pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    
+    // 1. Get all items (summary) to get IDs
+    let items_url = format!("{}/items?count=1000000", API_BASE);
+    let resp = client.get(&items_url).send().await.map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+         return Err(format!("Failed to list items: {}", resp.status()));
+    }
+    let items: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    
+    // 2. Fetch full data for each item to ensure complete export
+    let mut full_items = Vec::new();
+    for item in items {
+        if let Some(id) = item["id"].as_str() {
+            let data_url = format!("{}/item/{}/data", API_BASE, id);
+            if let Ok(resp) = client.get(&data_url).send().await {
+                if resp.status().is_success() {
+                    if let Ok(full_item) = resp.json::<serde_json::Value>().await {
+                        full_items.push(full_item);
+                    }
+                }
+            }
+        }
+    }
+    
+    serde_json::to_string_pretty(&full_items).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn db_import_all(_app: AppHandle, _json_data: String) -> Result<String, String> {
-    Err("Import not supported yet".to_string())
+pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let items: Vec<serde_json::Value> = serde_json::from_str(&json_data).map_err(|e| e.to_string())?;
+    let total = items.len();
+    let mut success = 0;
+    let mut failed = 0;
+
+    let save_url = format!("{}/save", API_BASE);
+
+    for item in items {
+        // We send each item to the /save endpoint.
+        // The backend expects ClipboardJsonFullItem.
+        // If the export contains full items, this works directly.
+        // If importing from legacy/summary format, backend validation might fail unless
+        // the JSON matches the structure.
+        let resp = client.post(&save_url).json(&item).send().await;
+        match resp {
+            Ok(r) if r.status().is_success() => success += 1,
+            Ok(r) => {
+                println!("Failed to import item: {}", r.status());
+                failed += 1;
+            },
+            Err(e) => {
+                println!("Request failed: {}", e);
+                failed += 1;
+            }
+        }
+    }
+    
+    Ok(format!("Imported {} items. Failed: {}", success, failed))
 }
 
 #[tauri::command]
 pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
-    Err("Delete all not supported yet".to_string())
+    let client = reqwest::Client::new();
+    // Get all items first
+    let items_url = format!("{}/items?count=1000000", API_BASE);
+    let resp = client.get(&items_url).send().await.map_err(|e| e.to_string())?;
+    let items: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    
+    let mut count = 0;
+    for item in items {
+        if let Some(id) = item["id"].as_str() {
+             let del_url = format!("{}/item/{}", API_BASE, id);
+             if let Ok(resp) = client.delete(&del_url).send().await {
+                 if resp.status().is_success() {
+                    count += 1;
+                 }
+             }
+        }
+    }
+    Ok(format!("Deleted {} items", count))
 }
 
 #[tauri::command]
