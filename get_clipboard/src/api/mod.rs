@@ -27,6 +27,8 @@ use crate::data::store::{
 };
 use crate::search::SearchOptions;
 use crate::util::time::format_iso;
+use crate::util::paste;
+use crate::service::watch;
 
 use tokio::net::TcpListener;
 
@@ -37,6 +39,15 @@ pub async fn serve(port: u16) -> Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("API listening on http://{}", addr);
     println!("Dashboard available at http://{}/dashboard", addr);
+    
+    // Spawn clipboard watcher in background
+    std::thread::spawn(|| {
+        println!("Starting clipboard watcher...");
+        if let Err(e) = watch::run_watch(None) {
+            eprintln!("Clipboard watcher error: {:?}", e);
+        }
+    });
+    
     let app = router();
     let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
@@ -58,6 +69,7 @@ fn router() -> Router {
             get(get_item).delete(axum_delete(delete_item)).put(put_item),
         )
         .route("/item/:selector/copy", post(copy_item))
+        .route("/item/:selector/paste", post(paste_item))
         .route("/search", get(search_items))
         .route("/stats", get(get_stats))
         .route("/mtime", get(get_mtime))
@@ -292,6 +304,20 @@ async fn copy_item(
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     copy_by_selector(&hash).map_err(ApiError::from)?;
+    let metadata = increment_copy_count(&hash).map_err(ApiError::from)?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let item = json_from_metadata(&metadata, offset, &data_dir).map_err(ApiError::from)?;
+    Ok((StatusCode::OK, Json(item)))
+}
+
+async fn paste_item(
+    Path(selector): Path<String>,
+) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
+    let index = load_fresh_index()?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
+    copy_by_selector(&hash).map_err(ApiError::from)?;
+    paste::simulate_paste().map_err(ApiError::from)?;
     let metadata = increment_copy_count(&hash).map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
     let item = json_from_metadata(&metadata, offset, &data_dir).map_err(ApiError::from)?;

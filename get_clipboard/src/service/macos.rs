@@ -15,6 +15,12 @@ pub fn install_agent() -> Result<()> {
     if let Some(dir) = plist_path.parent() {
         fs::create_dir_all(dir)?;
     }
+    
+    // Try to unload first to ensure we can update
+    if plist_path.exists() {
+        let _ = run_launchctl(["unload", plist_path.to_string_lossy().as_ref()]);
+    }
+
     fs::write(&plist_path, content)?;
     run_launchctl(["load", "-w", plist_path.to_string_lossy().as_ref()])?;
     println!(
@@ -122,7 +128,7 @@ fn build_plist() -> Result<String> {
     let log_path = paths.config_dir.join("service.log");
     let now = time::format_human(time::now());
     Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>Label</key>\n    <string>{LABEL}</string>\n    <key>ProgramArguments</key>\n    <array>\n        <string>{}</string>\n        <string>watch</string>\n    </array>\n    <key>RunAtLoad</key>\n    <true/>\n    <key>KeepAlive</key>\n    <true/>\n    <key>StandardErrorPath</key>\n    <string>{}</string>\n    <key>StandardOutPath</key>\n    <string>{}</string>\n    <key>EnvironmentVariables</key>\n    <dict>\n        <key>GET_CLIPBOARD_STARTED</key>\n        <string>{}</string>\n    </dict>\n</dict>\n</plist>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>Label</key>\n    <string>{LABEL}</string>\n    <key>ProgramArguments</key>\n    <array>\n        <string>{}</string>\n        <string>api</string>\n        <string>--port</string>\n        <string>3016</string>\n    </array>\n    <key>RunAtLoad</key>\n    <true/>\n    <key>KeepAlive</key>\n    <true/>\n    <key>StandardErrorPath</key>\n    <string>{}</string>\n    <key>StandardOutPath</key>\n    <string>{}</string>\n    <key>EnvironmentVariables</key>\n    <dict>\n        <key>GET_CLIPBOARD_STARTED</key>\n        <string>{}</string>\n    </dict>\n</dict>\n</plist>\n",
         exe.to_string_lossy(),
         log_path.to_string_lossy(),
         log_path.to_string_lossy(),

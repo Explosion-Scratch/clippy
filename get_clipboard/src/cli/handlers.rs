@@ -14,6 +14,7 @@ use crate::search::SearchOptions;
 use crate::service::{self, ServiceStatus, watch};
 use crate::tui;
 use crate::util::time::{OffsetDateTime, format_iso, parse_date};
+use crate::util::paste;
 use anyhow::{Context, Result, bail};
 use serde_json::to_string_pretty;
 use std::{
@@ -81,6 +82,11 @@ pub fn dispatch(cli: Cli) -> Result<()> {
                 OutputMode::Text
             };
             print_history(args, &filters, mode)
+        }
+        Command::Paste { selector } => {
+            copy_entry(&selector, &filters)?;
+            paste::simulate_paste()?;
+            Ok(())
         }
     }
 }

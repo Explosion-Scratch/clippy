@@ -56,6 +56,10 @@ pub enum Command {
     Search(SearchArgs),
     Api(ApiArgs),
     History(HistoryArgs),
+    Paste {
+        #[arg(default_value = "0")]
+        selector: String,
+    },
 }
 
 #[derive(Parser, Debug, Clone)]
