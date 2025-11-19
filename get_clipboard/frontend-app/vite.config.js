@@ -7,17 +7,20 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/items': 'http://127.0.0.1:3000',
-      '/item': 'http://127.0.0.1:3000',
-      '/search': 'http://127.0.0.1:3000',
-      '/stats': 'http://127.0.0.1:3000',
-      '/mtime': 'http://127.0.0.1:3000',
-      '/dir': 'http://127.0.0.1:3000',
-      '/copy': 'http://127.0.0.1:3000',
-      '/save': 'http://127.0.0.1:3000',
+      '/items': 'http://127.0.0.1:3016',
+      '/item': 'http://127.0.0.1:3016',
+      '/search': 'http://127.0.0.1:3016',
+      '/stats': 'http://127.0.0.1:3016',
+      '/mtime': 'http://127.0.0.1:3016',
+      '/dir': 'http://127.0.0.1:3016',
+      '/copy': 'http://127.0.0.1:3016',
+      '/save': 'http://127.0.0.1:3016',
     }
   },
   build: {
+    rollupOptions: {
+      input: 'src/main.js',
+    },
     outDir: '../frontend-dist',
     emptyOutDir: true,
     assetsDir: 'assets',

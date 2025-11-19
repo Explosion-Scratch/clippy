@@ -211,32 +211,50 @@ fn contains_format(formats: &[String], needle: &str) -> bool {
 
 fn calculate_relevance(record: &SearchIndexRecord, query: &str) -> u32 {
     let hash = record.hash.to_lowercase();
-    if hash == query {
-        return 100;
-    }
-    if hash.contains(query) {
-        return 80;
-    }
-
-    if let Some(summary) = &record.summary {
+    let mut score = if hash == query {
+        100
+    } else if hash.contains(query) {
+        80
+    } else if let Some(summary) = &record.summary {
         let summary = summary.to_lowercase();
         if summary == query {
-            return 90;
+            90
+        } else if summary.starts_with(query) {
+            70
+        } else if summary.contains(query) {
+            60
+        } else if let Some(text) = &record.search_text {
+            if text.to_lowercase().contains(query) {
+                40
+            } else {
+                0
+            }
+        } else {
+            0
         }
-        if summary.starts_with(query) {
-            return 70;
+    } else if let Some(text) = &record.search_text {
+        if text.to_lowercase().contains(query) {
+            40
+        } else {
+            0
         }
-        if summary.contains(query) {
-            return 60;
-        }
+    } else {
+        0
+    };
+
+    if score > 0 {
+        let content_len = record.summary.as_ref().map(|s| s.len())
+            .or_else(|| record.search_text.as_ref().map(|t| t.len()))
+            .unwrap_or(0) as f64;
+        
+        let length_boost = if content_len > 0.0 {
+            (1000.0 / (content_len + 100.0)).max(0.5)
+        } else {
+            1.0
+        };
+        
+        score = (score as f64 * length_boost).round() as u32;
     }
 
-    if let Some(text) = &record.search_text {
-        let text = text.to_lowercase();
-        if text.contains(query) {
-            return 40;
-        }
-    }
-
-    0
+    score
 }

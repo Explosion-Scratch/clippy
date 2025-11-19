@@ -1,7 +1,7 @@
 <template>
   <div class="flex-[2] bg-white flex flex-col h-full overflow-hidden relative">
     <div v-if="!item" class="absolute inset-0 flex flex-col items-center justify-center text-gray-300 select-none">
-      <PhMouseSimple :size="64" class="mb-4 opacity-20" />
+      <PhMouseSimple :size="64" class="mb-4" />
       <p class="text-sm text-gray-400">Select an item to view details</p>
     </div>
 
@@ -39,7 +39,7 @@
           <div class="flex items-center gap-2">
             <button 
               @click="$emit('copy', item.id)" 
-              class="btn-icon bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white"
+              class="btn-icon bg-stone-500/10 hover:bg-stone-500/10 transition-colors duration-200 text-slate-900"
               title="Copy Item"
             >
               <PhCopy :size="18" />
@@ -270,7 +270,6 @@ const openImageInNewTab = () => {
 
 .btn-icon:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
 .btn-icon:active {

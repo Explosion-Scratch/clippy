@@ -14,6 +14,8 @@ export function useClipboard() {
   const searchQuery = ref('')
   const isSearching = ref(false)
   const currentFilter = ref('all')
+  const sortBy = ref('date')
+  const sortDirection = ref('desc')
   const connected = ref(true)
   const dataDir = ref('')
   const offset = ref(0)
@@ -76,10 +78,11 @@ export function useClipboard() {
     }
 
     try {
-      let url = `${API_BASE}/items?offset=${offset.value}&count=${LIMIT}`
       const hasFilter = currentFilter.value !== 'all'
       const hasSearch = !!searchQuery.value
-
+      const hasSort = sortBy.value !== 'date' || sortDirection.value !== 'desc'
+      
+      let url
       if (hasSearch || hasFilter) {
         const params = new URLSearchParams()
         params.append('offset', offset.value)
@@ -93,12 +96,26 @@ export function useClipboard() {
             params.append('formats', currentFilter.value)
         }
         
+        params.append('sort', sortBy.value)
+        
         url = `${API_BASE}/search?${params.toString()}`
+      } else {
+        const params = new URLSearchParams()
+        params.append('offset', offset.value)
+        params.append('count', LIMIT)
+        if (hasSort) {
+          params.append('sort', sortBy.value)
+        }
+        url = `${API_BASE}/items?${params.toString()}`
       }
       
       const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch')
       let newItems = await res.json()
+      
+      if (sortDirection.value === 'asc' && hasSort) {
+        newItems = newItems.reverse()
+      }
       
       if (newItems.length < LIMIT) endReached.value = true
       
@@ -240,6 +257,16 @@ export function useClipboard() {
     loadItems(true)
   }
 
+  const setSortBy = (sort) => {
+    if (sortBy.value === sort) {
+      sortDirection.value = sortDirection.value === 'desc' ? 'asc' : 'desc'
+    } else {
+      sortBy.value = sort
+      sortDirection.value = 'desc'
+    }
+    loadItems(true)
+  }
+
   const refreshAll = () => {
     loadItems(true)
     fetchStats()
@@ -336,6 +363,8 @@ export function useClipboard() {
     searchQuery,
     isSearching,
     currentFilter,
+    sortBy,
+    sortDirection,
     connected,
     dataDir,
     activeFormatIndex,
@@ -354,6 +383,7 @@ export function useClipboard() {
     multiSelect,
     handleScroll,
     setFilter,
+    setSortBy,
     refreshAll,
     copyToClipboard,
     loadItemById,

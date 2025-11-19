@@ -54,11 +54,11 @@
 <script setup>
 import { computed } from 'vue'
 import { 
-  PhSquaresFour, 
-  PhTextT, 
-  PhImage, 
+  PhGridFour, 
+  PhFileText, 
+  PhImageSquare, 
   PhFile, 
-  PhCode,
+  PhBracketsCurly,
   PhUploadSimple, 
   PhDownloadSimple, 
   PhChartBar, 
@@ -77,25 +77,25 @@ const filters = computed(() => [
   { 
     id: 'all', 
     label: 'All Items', 
-    icon: PhSquaresFour,
+    icon: PhGridFour,
     count: props.stats?.totalItems 
   },
   { 
     id: 'text', 
     label: 'Text', 
-    icon: PhTextT,
+    icon: PhFileText,
     count: props.stats?.typeCounts?.text || 0 
   },
   { 
     id: 'html', 
     label: 'HTML', 
-    icon: PhCode,
+    icon: PhBracketsCurly,
     count: props.stats?.typeCounts?.html || 0
   },
   { 
     id: 'image', 
     label: 'Images', 
-    icon: PhImage,
+    icon: PhImageSquare,
     count: props.stats?.typeCounts?.image || 0 
   },
   { 
@@ -116,7 +116,7 @@ const actions = [
 
 <style scoped>
 .sidebar-item {
-  @apply flex items-center gap-3 px-3 py-2 text-sm text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer transition-all select-none;
+  @apply flex items-center gap-3 px-3 py-2 text-sm text-gray-600 rounded-lg hover:bg-stone-400/10 cursor-pointer transition-all select-none;
 }
 
 .sidebar-item:hover {
@@ -124,7 +124,7 @@ const actions = [
 }
 
 .sidebar-item.active {
-  @apply bg-gradient-to-r from-blue-50 to-transparent text-blue-600 font-medium border-l-2 border-blue-500 pl-[10px];
+  @apply bg-slate-500/10
 }
 </style>
 

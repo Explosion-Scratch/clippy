@@ -13,7 +13,10 @@
         ref="topBar"
         v-model:search-query="searchQuery"
         :is-searching="isSearching"
+        :sort-by="sortBy"
+        :sort-direction="sortDirection"
         @refresh="refreshAll"
+        @sort="setSortBy"
       />
       
       <div class="flex-1 flex overflow-hidden">
@@ -93,6 +96,8 @@ const {
   searchQuery,
   isSearching,
   currentFilter,
+  sortBy,
+  sortDirection,
   connected,
   dataDir,
   activeFormatIndex,
@@ -109,6 +114,7 @@ const {
   clearSelection,
   handleScroll,
   setFilter,
+  setSortBy,
   refreshAll,
   copyToClipboard,
   loadItemById,

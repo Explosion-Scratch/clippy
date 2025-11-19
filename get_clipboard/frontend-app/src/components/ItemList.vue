@@ -24,7 +24,7 @@
       @mouseleave="handleMouseUp"
     >
       <div v-if="items.length === 0 && !loading" class="flex flex-col items-center justify-center h-64 text-gray-400">
-        <PhGhost :size="48" class="mb-3 opacity-50" />
+        <PhGhost :size="48" class="mb-3" />
         <p class="text-sm">No items found</p>
       </div>
 
@@ -41,7 +41,7 @@
         }"
       >
         <div 
-          class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 transform scale-y-0 transition-transform"
+          class="absolute left-0 top-0 bottom-0 w-1 bg-stone-500 transform scale-y-0 transition-transform"
           :class="{'scale-y-100': selectedItem?.id === item.id}"
         />
 

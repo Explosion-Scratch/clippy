@@ -45,13 +45,21 @@ pub fn uninstall_agent() -> Result<()> {
 }
 
 pub fn start_agent() -> Result<()> {
+    let plist_path = agent_plist_path()?;
+    if !plist_path.exists() {
+        bail!("Service is not installed. Run `get_clipboard service install` first.");
+    }
     println!("Starting launch agent {}", LABEL);
-    run_launchctl(["start", LABEL])
+    run_launchctl(["load", "-w", plist_path.to_string_lossy().as_ref()])
 }
 
 pub fn stop_agent() -> Result<()> {
+    let plist_path = agent_plist_path()?;
+    if !plist_path.exists() {
+        bail!("Service is not installed");
+    }
     println!("Stopping launch agent {}", LABEL);
-    run_launchctl(["stop", LABEL])
+    run_launchctl(["unload", plist_path.to_string_lossy().as_ref()])
 }
 
 pub fn service_status() -> Result<ServiceStatus> {
