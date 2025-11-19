@@ -1,0 +1,7 @@
+.claude
+get_clipboard/.claude
+src-tauri/Cargo.lock
+src-tauri/icons
+get_clipboard/Cargo.lock
+.*ignore
+.conductor

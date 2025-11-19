@@ -3,12 +3,10 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 use tauri::{menu::{MenuBuilder, MenuItemBuilder}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 
-mod structs;
-mod clipboard;
-mod db;
-mod paste;
+mod sidecar;
 mod visibility;
 mod accessibility;
+mod paste;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -104,26 +102,10 @@ fn close_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std
     Ok(())
 }
 
-// Function to format bytes for display
-fn format_bytes(bytes: u64) -> String {
-    if bytes == 0 {
-        return "0 B".to_string();
-    }
-    
-    const K: u64 = 1024;
-    const SIZES: &[&str] = &["B", "KB", "MB", "GB"];
-    let i = (bytes as f64).log(K as f64).floor() as usize;
-    let size = SIZES.get(i).unwrap_or(&"GB");
-    let value = bytes as f64 / (K as f64).powi(i as i32);
-    
-    format!("{:.1} {}", value, size)
-}
-
-
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_dialog::init())
@@ -132,23 +114,22 @@ pub fn run() {
             greet,
             unregister_main_shortcut,
             register_main_shortcut,
-            clipboard::start_clipboard_listener,
-            clipboard::stop_clipboard_listener,
-            clipboard::get_clipboard_status,
-            clipboard::set_clipboard_item,
-            clipboard::inject_item,
-            db::db_save_item,
-            db::db_recent_items,
-            db::db_search,
-            db::db_delete_item,
-            db::db_get_item_by_id,
-            db::db_get_count,
-            db::db_get_size,
-            db::db_flush,
-            db::db_export_all,
-            db::db_import_all,
-            db::db_delete_all,
-            db::db_increment_copies,
+            sidecar::init_service,
+            sidecar::stop_service,
+            sidecar::get_service_status,
+            sidecar::get_history,
+            sidecar::copy_item,
+            sidecar::paste_item,
+            sidecar::delete_item,
+            sidecar::configure_data_dir,
+            sidecar::db_get_count,
+            sidecar::db_get_size,
+            sidecar::db_export_all,
+            sidecar::db_import_all,
+            sidecar::db_delete_all,
+            sidecar::get_sidecar_dir,
+            sidecar::set_sidecar_dir,
+            sidecar::get_app_data_dir,
             paste::simulate_system_paste,
             visibility::is_visible,
             visibility::hide_app,
@@ -172,15 +153,15 @@ pub fn run() {
             let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             
-            // Create initial stats item (note: disabled() method not available in Tauri 2.0)
-            let stats_item = MenuItemBuilder::with_id("stats", "clippy v0.1.0 - 0 items - 0 B")
+            // Create initial stats item
+            let stats_item = MenuItemBuilder::with_id("stats", "clippy v0.1.0 - Running")
                 .build(app)?;
             
             let menu = MenuBuilder::new(app)
                 .items(&[&stats_item, &show_item, &settings_item, &quit_item])
                 .build()?;
             
-            let tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -220,84 +201,6 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-
-            // Store references for updates
-            let tray_ref = tray.clone();
-            let menu_ref = menu.clone();
-            
-            let update_tray_stats = move |app_handle: tauri::AppHandle| {
-                let tray_ref_clone = tray_ref.clone();
-                let menu_ref_clone = menu_ref.clone();
-                let app_handle_clone = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    // Get database stats with debug logging
-                    let count_result = db::db_get_count(app_handle_clone.clone());
-                    let count = match count_result {
-                        Ok(count) => {
-                            println!("DEBUG: Database count retrieved successfully: {}", count);
-                            count
-                        },
-                        Err(e) => {
-                            println!("DEBUG: Failed to get database count: {}", e);
-                            0
-                        },
-                    };
-                    
-                    let size_result = db::db_get_size(app_handle_clone.clone());
-                    let size = match size_result {
-                        Ok(size) => {
-                            println!("DEBUG: Database size retrieved successfully: {} bytes", size);
-                            size
-                        },
-                        Err(e) => {
-                            println!("DEBUG: Failed to get database size: {}", e);
-                            0
-                        },
-                    };
-                    
-                    // Update tray menu with new stats
-                    // Get version from config
-                    let version = "0.1.0";
-                    
-                    // Format the stats text
-                    let stats_text = format!("clippy v{} - {} items - {}", version, count, format_bytes(size));
-                    println!("DEBUG: Updating tray tooltip to: {}", stats_text);
-                    
-                    // Update the tray tooltip
-                    match tray_ref_clone.set_tooltip(Some(&stats_text)) {
-                        Ok(_) => println!("DEBUG: Tray tooltip updated successfully"),
-                        Err(e) => println!("DEBUG: Failed to update tray tooltip: {}", e),
-                    }
-                    
-                    // Update the menu item text
-                    if let Some(stats_item) = menu_ref_clone.get("stats") {
-                        match stats_item.as_menuitem_unchecked().set_text(&stats_text) {
-                            Ok(_) => println!("DEBUG: Menu item text updated successfully"),
-                            Err(e) => println!("DEBUG: Failed to update menu item text: {}", e),
-                        }
-                    } else {
-                        println!("DEBUG: Could not find stats menu item");
-                    }
-                });
-            };
-
-            // Trigger initial stats update
-            println!("DEBUG: Triggering initial tray stats update");
-            update_tray_stats(app_handle.clone());
-            
-    
-            
-            // Update tray stats periodically
-            let app_handle_for_stats = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                println!("DEBUG: Starting periodic tray stats updates every 5 seconds");
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-                loop {
-                    interval.tick().await;
-                    println!("DEBUG: Triggering tray stats update");
-                    update_tray_stats(app_handle_for_stats.clone());
-                }
-            });
 
 /* Shorcut */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
@@ -352,69 +255,16 @@ pub fn run() {
                 });
             }
 
-            // Automatically start clipboard listener on app load
-            if let Err(e) = clipboard::start_listen(app_handle.clone()) {
-                eprintln!("Failed to start clipboard listener on startup: {}", e);
-            } else {
-                println!("Clipboard listener started automatically on app startup");
-            }
-
-            // Listen for start-listen events from frontend
-            app.listen("start-listen", {
-                let app_handle = app_handle.clone();
-                move |_event| {
-                    println!("Received start-listen event from frontend");
-                    if let Err(e) = clipboard::start_listen(app_handle.clone()) {
-                        eprintln!("Failed to start clipboard listener: {}", e);
-                    } else {
-                        println!("Clipboard listener started via event");
-                    }
-                }
-            });
-
-            // Listen for stop-listen events from frontend
-            app.listen("stop-listen", move |_event| {
-                println!("Received stop-listen event from frontend");
-                if let Err(e) = clipboard::stop_listen() {
-                    eprintln!("Failed to stop clipboard listener: {}", e);
+            // Configure sidecar and start watch
+            let app_handle_clone = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                // configure_data_dir call removed to allow frontend to handle it
+                
+                println!("Initializing clipboard service...");
+                if let Err(e) = sidecar::init_service(app_handle_clone.clone()).await {
+                    eprintln!("Failed to initialize service: {}", e);
                 } else {
-                    println!("Clipboard listener stopped via event");
-                }
-            });
-
-            // Listen for change-clipboard events to save items to database
-            let app_handle_for_clipboard = app_handle.clone();
-            app.listen("change-clipboard", move |event| {
-                println!("Clipboard changed - saving to database");
-
-                if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                    if let Some(item) = payload.get("item") {
-                        // Parse the clipboard item from the event
-                        if let Ok(clipboard_item) = serde_json::from_value::<structs::ClipboardItem>(item.clone()) {
-                            // Save to database asynchronously
-        let app_handle_clone = app_handle_for_clipboard.clone();
-                            tauri::async_runtime::spawn(async move {
-                                match db::db_save_item(app_handle_clone, clipboard_item) {
-                                    Ok(result) => {
-                                        if result.success {
-                                            println!("Successfully saved clipboard item with ID: {:?}", result.id);
-                                        } else {
-                                            eprintln!("Failed to save clipboard item: {:?}", result.error);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Error saving clipboard item: {}", e);
-                                    }
-                                }
-                            });
-                        } else {
-                            eprintln!("Failed to parse clipboard item from event payload");
-                        }
-                    } else {
-                        println!("Clipboard changed but no item data found in payload");
-                    }
-                } else {
-                    eprintln!("Failed to parse clipboard change event payload");
+                    println!("Clipboard service initialized successfully");
                 }
             });
 
@@ -426,8 +276,6 @@ pub fn run() {
                     eprintln!("Failed to close settings window: {}", e);
                 }
             });
-
-    
 
             Ok(())
         })

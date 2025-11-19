@@ -17,6 +17,8 @@
     "core:window:allow-close",
     "core:window:allow-set-size",
     "core:menu:allow-get",
-    "core:menu:allow-items"
+    "core:menu:allow-items",
+    "shell:allow-execute",
+    "shell:allow-open"
   ]
 }

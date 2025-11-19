@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 get_clipboard/target
 target
+src-tauri/gen
+src-tauri/binaries
+get_clipboard/frontend-dist

@@ -113,7 +113,7 @@ const hasImage = computed(() => {
 });
 
 const imageDataUrl = computed(() => {
-    return props.item.formats?.imageData || null;
+    return props.item.data || null;
 });
 
 const getIndexText = (idx, isSelected) => {

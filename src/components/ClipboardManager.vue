@@ -18,16 +18,16 @@ const clipboardManager = ref(null);
 const totalItems = ref(0);
 let resizeObserver = null;
 
+// Modal state
+const showDirModal = ref(false);
+const mismatchDirs = ref({ current: "", expected: "" });
+
 // Cycling mode state
 const isCycling = ref(false);
 const isCtrlPressed = ref(true);
 
 // Get the currently selected item
 const selectedItem = computed(() => {
-    console.log({
-        selectedIndex: selectedIndex.value,
-        clipboardItems: clipboardItems.value,
-    });
     if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
         return clipboardItems.value[selectedIndex.value];
     }
@@ -44,6 +44,51 @@ const searchPlaceholder = computed(() => {
         return `Search ${totalItems.value} items`;
     }
 });
+
+// Check directory mismatch
+async function checkDataDirectory() {
+    try {
+        // Wait a bit for the service to be ready
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const currentDir = await invoke('get_sidecar_dir');
+        const expectedDir = await invoke('get_app_data_dir');
+        
+        console.log('Directory check:', { currentDir, expectedDir });
+        
+        if (currentDir && expectedDir && currentDir !== expectedDir) {
+            mismatchDirs.value = { current: currentDir, expected: expectedDir };
+            showDirModal.value = true;
+            // Adjust window size to show modal
+            const window = getCurrentWindow();
+            await window.setSize(new LogicalSize(400, 400));
+        }
+    } catch (e) {
+        console.error("Failed to check directory:", e);
+    }
+}
+
+async function handleDirChoice(choice) {
+    try {
+        const path = mismatchDirs.value.expected;
+        if (choice === 'create') {
+            // Option A: Create new directory (Update path)
+            await invoke('set_sidecar_dir', { mode: 'update', path });
+        } else if (choice === 'import') {
+            // Option B: Import old directory (Move data)
+            await invoke('set_sidecar_dir', { mode: 'move', path });
+        }
+        // Option C: Continue (do nothing)
+        
+        showDirModal.value = false;
+        // Refresh list as directory might have changed
+        loadRecentItems();
+        resizeWindowToFitContent();
+    } catch (e) {
+        console.error("Failed to set directory:", e);
+        alert("Failed to update directory: " + e);
+    }
+}
 
 // Start loading with delay for status bar
 function startLoading() {
@@ -83,7 +128,23 @@ async function searchItems(query) {
             await unregisterGlobalShortcut();
             return;
         }
-        const items = await invoke("db_search", { query, count: itemsPerPage });
+        const jsonStr = await invoke("get_history", { query, limit: itemsPerPage, offset: 0 });
+        const rawItems = JSON.parse(jsonStr);
+        
+        const items = rawItems.map(item => ({
+            id: item.index,
+            text: item.summary,
+            timestamp: new Date(item.date).getTime(),
+            byteSize: item.size,
+            copies: item.copyCount || 0,
+            firstCopied: item.firstDate ? new Date(item.firstDate).getTime() / 1000 : new Date(item.date).getTime() / 1000,
+            data: item.data,
+            formats: {
+                imageData: item.type === "image",
+                files: item.type === "file" ? [item.summary] : [],
+            }
+        }));
+
         clipboardItems.value = items;
         currentPageOffset.value = 0;
         selectedIndex.value = -1;
@@ -102,36 +163,47 @@ async function loadTotalItems() {
     try {
         const count = await invoke("db_get_count");
         totalItems.value = count;
-    } catch (error) {
-        console.error("Failed to load total item count:", error);
+    } catch (e) {
+        console.error("Failed to load total items:", e);
         totalItems.value = 0;
     }
 }
 
-// Load recent clipboard items
+// Load recent items
 async function loadRecentItems(offset = 0) {
     try {
         startLoading();
-        const items = await invoke("db_recent_items", {
-            count: itemsPerPage,
-            offset,
+        // Use offset and limit for efficient pagination
+        const jsonStr = await invoke("get_history", {
+            limit: itemsPerPage,
+            offset: offset,
         });
-        console.log("=== RECEIVED ITEMS FROM BACKEND ===");
-        console.log("Raw items:", items);
-        items.forEach((item, index) => {
-            console.log(`Item ${index}:`, {
-                id: item.id,
-                timestamp: item.timestamp,
-                timestampType: typeof item.timestamp,
-                byteSize: item.byteSize,
-                byteSizeType: typeof item.byteSize,
-                text: item.text,
-            });
-        });
-        console.log("====================================");
+        const rawItems = JSON.parse(jsonStr);
+        
+        const items = rawItems.map(item => ({
+            id: item.index,
+            text: item.summary,
+            timestamp: new Date(item.date).getTime(),
+            byteSize: item.size,
+            copies: item.copyCount || 0,
+            firstCopied: item.firstDate ? new Date(item.firstDate).getTime() / 1000 : new Date(item.date).getTime() / 1000,
+            data: item.data,
+            formats: {
+                imageData: item.type === "image",
+                files: item.type === "file" ? [item.summary] : [],
+            }
+        }));
+
+        console.log(`=== LOADED ITEMS (Offset: ${offset}) ===`);
         clipboardItems.value = items;
         currentPageOffset.value = offset;
-        selectedIndex.value = -1;
+        
+        // If we just loaded a new page, select the first item if moving down, or last if moving up?
+        // Actually, handleArrowDown/Up manages selection index.
+        // If we are just refreshing (offset 0), deselect.
+        if (offset === 0 && selectedIndex.value === -1) {
+             // Keep it -1
+        }
 
         // Resize window after content loads
         await resizeWindowToFitContent();
@@ -142,7 +214,7 @@ async function loadRecentItems(offset = 0) {
     }
 }
 
-// Watch search query and trigger search
+// Watch search query
 watch(
     searchQuery,
     (newQuery) => {
@@ -156,42 +228,32 @@ watch(
 // Delete clipboard item
 async function deleteItem(id) {
     try {
-        await invoke("db_delete_item", { id });
+        await invoke("delete_item", { selector: id.toString() });
         clipboardItems.value = clipboardItems.value.filter(
             (item) => item.id !== id,
         );
-        // Resize window after deletion
         await resizeWindowToFitContent();
     } catch (error) {
         console.error("Failed to delete item:", error);
     }
 }
 
-// Close window on Escape key
+// Event listeners
 document.addEventListener("keydown", (e) => {
-    // Handle cycling detection
     handleKeyDown(e);
 
-    // Handle Command + number keys for system paste
     if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
         const key = e.key;
         let itemIndex = null;
+        if (key >= "1" && key <= "9") itemIndex = parseInt(key) - 1;
+        else if (key === "0") itemIndex = 9;
 
-        // Map 1-9 keys to indices 0-8, and 0 key to index 9
-        if (key >= "1" && key <= "9") {
-            itemIndex = parseInt(key) - 1;
-        } else if (key === "0") {
-            itemIndex = 9;
-        }
-
-        // If we have a valid item index and the item exists
         if (itemIndex !== null && clipboardItems.value[itemIndex]) {
             e.preventDefault();
             pasteItemToSystem(clipboardItems.value[itemIndex]);
         }
     }
 
-    // Handle arrow key navigation (only when not in cycling mode)
     if (!isCycling.value) {
         if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -206,108 +268,86 @@ document.addEventListener("keydown", (e) => {
     }
 });
 
-// Handle key up events for Ctrl release detection
 document.addEventListener("keyup", (e) => {
     handleKeyUp(e);
-
-    console.log(e.key);
     if (e.key === "Escape") {
+        if (showDirModal.value) {
+            // Treat escape as "Continue"
+            showDirModal.value = false;
+            loadRecentItems();
+            resizeWindowToFitContent();
+            return;
+        }
         let win = getCurrentWindow();
         win.hide();
-
-        // Re-register global shortcut when window is hidden
         registerGlobalShortcut();
-
-        console.log({ win });
     }
 });
 
-// Handle arrow down navigation
 async function handleArrowDown() {
     if (clipboardItems.value.length === 0) return;
-
-    // If we're at the last item, shift the window down by loading the next item
+    
     if (selectedIndex.value === clipboardItems.value.length - 1) {
-        const previousOffset = currentPageOffset.value;
-        const previousItems = [...clipboardItems.value];
-        const previousSelectedIndex = selectedIndex.value;
-
-        await loadRecentItems(currentPageOffset.value + 1);
-
-        // Check if new items were loaded, if not, revert changes
-        if (clipboardItems.value.length === 0) {
-            currentPageOffset.value = previousOffset;
-            clipboardItems.value = previousItems;
-            selectedIndex.value = previousSelectedIndex;
-            return;
+        // We are at the bottom of the current list.
+        // Load next page.
+        const newOffset = currentPageOffset.value + 1;
+        await loadRecentItems(newOffset);
+        
+        if (clipboardItems.value.length > 0) {
+             // Select the last item of the new list (which is effectively the same visual position if we shifted)
+             // Wait, if we shift by 1, the item at index 9 becomes index 8.
+             // The user said "Only load the next item and discard the last item".
+             // If we use offset += 1, we effectively scroll down by 1 item.
+             // The list content shifts up. The item at index 9 is now the item that was at index 10 (globally).
+             // So we should keep selectedIndex at the bottom (9).
+             selectedIndex.value = clipboardItems.value.length - 1;
+        } else {
+             // End of list, revert
+             await loadRecentItems(currentPageOffset.value - 1);
+             selectedIndex.value = clipboardItems.value.length - 1;
         }
-
-        // Keep selection at the last valid position
-        selectedIndex.value = Math.min(9, clipboardItems.value.length - 1);
     } else {
-        // Move to next item on current window
         selectedIndex.value = selectedIndex.value + 1;
     }
 }
 
-// Handle arrow up navigation
 async function handleArrowUp() {
     if (clipboardItems.value.length === 0) return;
-
-    // If we're at the first item and not at the very beginning, shift the window up
-    if (selectedIndex.value === 0 && currentPageOffset.value > 0) {
-        const previousOffset = currentPageOffset.value;
-        const previousItems = [...clipboardItems.value];
-        const previousSelectedIndex = selectedIndex.value;
-
-        const newOffset = Math.max(0, currentPageOffset.value - 1);
-        await loadRecentItems(newOffset);
-
-        // Check if new items were loaded, if not, revert changes
-        if (clipboardItems.value.length === 0) {
-            currentPageOffset.value = previousOffset;
-            clipboardItems.value = previousItems;
-            selectedIndex.value = previousSelectedIndex;
-            return;
+    
+    if (selectedIndex.value === 0) {
+        if (currentPageOffset.value > 0) {
+            // Load previous page (shift up by 1)
+            const newOffset = Math.max(0, currentPageOffset.value - 1);
+            await loadRecentItems(newOffset);
+            // Keep selection at top
+            selectedIndex.value = 0;
         }
-
-        // Keep selection at the first valid position
-        selectedIndex.value = 0;
     } else {
-        // Move to previous item on current window
         selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
     }
 }
 
-// Handle enter key to select and inject item
 function handleEnter() {
     if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
         pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
     }
 }
 
-// System paste function
 async function pasteItemToSystem(item) {
     try {
-        console.log("Injecting item from ID:", item.id);
-        const result = await invoke("inject_item", { id: item.id });
-        console.log("Item injection result:", result);
-
-        // Reload the items to show updated copies count
+        await invoke("paste_item", { selector: item.id.toString() });
         await loadRecentItems(currentPageOffset.value);
     } catch (error) {
         console.error("Failed to inject item:", error);
     }
 }
 
-// Reset selection index
 function resetSelection() {
     selectedIndex.value = -1;
     searchQuery.value = "";
     currentPageOffset.value = 0;
 }
 
-// Format first copied timestamp for display
 function formatFirstCopied(firstCopied) {
     const date = new Date(firstCopied * 1000);
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -316,229 +356,122 @@ function formatFirstCopied(firstCopied) {
     const minutes = String(date.getMinutes()).padStart(2, "0");
     const ampm = hours >= 12 ? "PM" : "AM";
     const displayHours = hours % 12 || 12;
-
     return `${month}/${day} @ ${displayHours}:${minutes}${ampm}`;
 }
 
-// Format byte size to be more compact
 function formatByteSize(bytes) {
     if (bytes < 1024) return `${bytes}B`;
     if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}K`;
     return `${Math.round(bytes / (1024 * 1024))}M`;
 }
 
-// Count words in text
 function countWords(text) {
     if (!text) return 0;
-    return text
-        .trim()
-        .split(/\s+/)
-        .filter((word) => word.length > 0).length;
+    return text.trim().split(/\s+/).filter((word) => word.length > 0).length;
 }
 
-// Get content type and size info for selected item
 function getItemInfo(item) {
     if (!item) return null;
-
-    if (item.formats?.imageData) {
-        return {
-            type: "image",
-            size: formatByteSize(item.byteSize),
-            label: "Image",
-        };
-    }
-
-    if (item.formats?.files && item.formats.files.length > 0) {
-        return {
-            type: "files",
-            size: `${item.formats.files.length} file${item.formats.files.length > 1 ? "s" : ""}`,
-            label: "Files",
-        };
-    }
-
-    // Text content
+    if (item.formats?.imageData) return { type: "image", size: formatByteSize(item.byteSize), label: "Image" };
+    if (item.formats?.files && item.formats.files.length > 0) return { type: "files", size: `${item.formats.files.length} file${item.formats.files.length > 1 ? "s" : ""}`, label: "Files" };
     const wordCount = countWords(item.text || "");
-    return {
-        type: "text",
-        size: `${wordCount} words`,
-        label: "Text",
-    };
+    return { type: "text", size: `${wordCount} words`, label: "Text" };
 }
 
-// Resize window to fit content
 async function resizeWindowToFitContent() {
-    if (!clipboardManager.value) return;
-
+    if (!clipboardManager.value || showDirModal.value) return;
     try {
-        // Wait for next tick to ensure DOM is updated
         await nextTick();
-
-        // Get the actual height of the content
         const rect = clipboardManager.value.getBoundingClientRect();
         const contentHeight = rect.height;
-
-        // Set reasonable bounds
         const minHeight = 200;
         const maxHeight = 600;
-        const finalHeight = Math.max(
-            minHeight,
-            Math.min(maxHeight, contentHeight),
-        );
-
-        // Set a fixed width (can be adjusted based on content)
-        const width = 400;
-
-        // Resize the window
+        const finalHeight = Math.max(minHeight, Math.min(maxHeight, contentHeight));
         const window = getCurrentWindow();
-        await window.setSize(new LogicalSize(width, finalHeight));
-
-        console.log(
-            `Window resized to ${width}x${finalHeight}px (content was ${contentHeight}px)`,
-        );
+        await window.setSize(new LogicalSize(400, finalHeight));
     } catch (error) {
         console.error("Failed to resize window:", error);
     }
 }
 
-// Unregister global shortcut when window opens
 async function unregisterGlobalShortcut() {
     try {
         await invoke("unregister_main_shortcut");
-        console.log("Global shortcut unregistered");
     } catch (error) {
         console.error("Failed to unregister global shortcut:", error);
     }
 }
 
-// Register global shortcut when window closes
 async function registerGlobalShortcut() {
     try {
         await invoke("register_main_shortcut");
-        console.log("Global shortcut registered");
     } catch (error) {
         console.error("Failed to register global shortcut:", error);
     }
 }
 
-// Start cycling mode (called when Ctrl+P is held)
 function startCyclingMode() {
-    console.log("Starting cycling mode");
     isCycling.value = true;
-
-    // Start with first item selected
-    if (clipboardItems.value.length > 0) {
-        selectedIndex.value = 0;
-    }
+    if (clipboardItems.value.length > 0) selectedIndex.value = 0;
 }
 
-// Handle cycling to next item
 function cycleToNext() {
     if (!isCycling.value || clipboardItems.value.length === 0) return;
-
-    console.log("Cycling to next item");
-
-    // Move to next item, wrap around if at end
-    selectedIndex.value =
-        (selectedIndex.value + 1) % clipboardItems.value.length;
+    selectedIndex.value = (selectedIndex.value + 1) % clipboardItems.value.length;
 }
 
-// Handle end cycling (paste selected item)
 async function endCycling() {
     if (!isCycling.value) return;
-
-    console.log("Ending cycling mode");
     isCycling.value = false;
-
-    // If we have a selected item, paste it
     if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
         await pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
     }
-
-    // Re-register global shortcut before closing window
     await registerGlobalShortcut();
-
-    // Close window after pasting
     const window = getCurrentWindow();
     window.hide();
 }
 
-// Handle keyboard events for cycling detection
 function handleKeyDown(e) {
-    // Track Ctrl key state
-    if (e.key === "Control" && !isCtrlPressed.value) {
-        isCtrlPressed.value = true;
-        console.log("Ctrl key pressed");
-    }
-
-    console.log({
-        isCtrlPressed: isCtrlPressed.value,
-        key: e.key,
-        isCycling: isCycling.value,
-    });
-
-    // If Ctrl is pressed and P is pressed, cycle
+    if (e.key === "Control" && !isCtrlPressed.value) isCtrlPressed.value = true;
     if (isCtrlPressed.value && e.key === "p") {
         e.preventDefault();
-        console.log("P pressed while Ctrl held - cycling");
-
-        if (!isCycling.value) {
-            startCyclingMode();
-        } else {
-            cycleToNext();
-        }
+        if (!isCycling.value) startCyclingMode();
+        else cycleToNext();
     }
 }
 
 function handleKeyUp(e) {
-    // When Ctrl is released, end cycling if active
     if (e.key === "Control") {
-        console.log("Ctrl key released");
         isCtrlPressed.value = false;
-
-        // End cycling and paste if we were cycling
-        if (isCycling.value) {
-            endCycling();
-        }
+        if (isCycling.value) endCycling();
     }
 }
 
-// Load items on component mount
 onMounted(async () => {
-    // Set up focus/blur listeners to reset selection
-    const unlistenFocus = await getCurrentWindow().onFocusChanged(
-        ({ payload: focused }) => {
-            console.log("Focus changed, window is focused? " + focused);
-            if (!focused) {
-                // Window lost focus (blur)
-                // End cycling mode if active
-                if (isCycling.value) {
-                    isCycling.value = false;
-                    isCtrlPressed.value = false;
-                }
-                // Re-register global shortcut when window loses focus
-                registerGlobalShortcut();
-                resetSelection();
-                loadRecentItems();
-            } else {
-                // Window gained focus
-                // Unregister global shortcut so frontend can handle keyboard events
-                unregisterGlobalShortcut();
-                if (!isCycling.value) {
-                    resetSelection();
-                    // Auto focus the search input
-                    document.querySelector(".search-input")?.focus();
-                }
-                isCtrlPressed.value = true;
-                // Resize window when gaining focus
-                resizeWindowToFitContent();
+    const unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        if (!focused) {
+            if (isCycling.value) {
+                isCycling.value = false;
+                isCtrlPressed.value = false;
             }
-        },
-    );
+            registerGlobalShortcut();
+            resetSelection();
+            loadRecentItems();
+        } else {
+            unregisterGlobalShortcut();
+            if (!isCycling.value) {
+                resetSelection();
+                document.querySelector(".search-input")?.focus();
+            }
+            isCtrlPressed.value = true;
+            if (!showDirModal.value) resizeWindowToFitContent();
+        }
+    });
 
     await loadTotalItems();
     await loadRecentItems();
+    await checkDataDirectory(); // Check dir on startup
 
-    // Set up ResizeObserver to monitor content size changes
     if (clipboardManager.value) {
         resizeObserver = new ResizeObserver(() => {
             resizeWindowToFitContent();
@@ -546,20 +479,13 @@ onMounted(async () => {
         resizeObserver.observe(clipboardManager.value);
     }
 
-    // Listen for clipboard changes to refresh the list
-    await listen("change-clipboard", async () => {
-        resetSelection();
-        await loadTotalItems();
-        await loadRecentItems();
-    });
+    // Removed polling as per user request
+    // startPolling();
 
-    // Clean up focus listener on unmount
     return () => {
+        // stopPolling();
         unlistenFocus();
-        if (resizeObserver && clipboardManager.value) {
-            resizeObserver.disconnect();
-        }
-        // Re-register global shortcut when component unmounts
+        if (resizeObserver && clipboardManager.value) resizeObserver.disconnect();
         registerGlobalShortcut();
     };
 });
@@ -567,6 +493,33 @@ onMounted(async () => {
 
 <template>
     <div class="clipboard-manager" ref="clipboardManager">
+        <!-- Modal for directory mismatch -->
+        <div v-if="showDirModal" class="modal-overlay">
+            <div class="modal">
+                <h3>Storage Location</h3>
+                <p>The clipboard data directory differs from the recommended application support directory.</p>
+                <div class="paths">
+                    <div class="path-item">
+                        <strong>Current:</strong> {{ mismatchDirs.current }}
+                    </div>
+                    <div class="path-item">
+                        <strong>Recommended:</strong> {{ mismatchDirs.expected }}
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button @click="handleDirChoice('create')">
+                        Create new in Recommended
+                    </button>
+                    <button @click="handleDirChoice('import')">
+                        Import to Recommended
+                    </button>
+                    <button @click="handleDirChoice('continue')" class="secondary">
+                        Continue using Current
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Search bar -->
         <div class="search-container">
             <input
@@ -608,62 +561,20 @@ onMounted(async () => {
 
         <!-- Status bar -->
         <div v-if="showLoadingStatus || selectedItem" class="status-bar">
-            <!-- Loading status -->
             <div v-if="showLoadingStatus" class="status-item loading-status">
                 <div class="spinner"></div>
                 <span class="status-value">Loading...</span>
             </div>
 
-            <!-- Selected item info -->
             <template v-else-if="selectedItem">
                 <div class="status-item">
-                    <svg
-                        class="status-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="32"
-                        height="32"
-                        viewBox="0 0 256 256"
-                    >
-                        <path
-                            fill="currentColor"
-                            d="M208 32h-24v-8a8 8 0 0 0-16 0v8H88v-8a8 8 0 0 0-16 0v8H48a16 16 0 0 0-16 16v160a16 16 0 0 0 16 16h160a16 16 0 0 0 16-16V48a16 16 0 0 0-16-16M72 48v8a8 8 0 0 0 16 0v-8h80v8a8 8 0 0 0 16 0v-8h24v32H48V48Zm136 160H48V96h160zm-96-88v64a8 8 0 0 1-16 0v-51.06l-4.42 2.22a8 8 0 0 1-7.16-14.32l16-8A8 8 0 0 1 112 120m59.16 30.45L152 176h16a8 8 0 0 1 0 16h-32a8 8 0 0 1-6.4-12.8l28.78-38.37a8 8 0 1 0-13.31-8.83a8 8 0 1 1-13.85-8A24 24 0 0 1 176 136a23.76 23.76 0 0 1-4.84 14.45"
-                        />
-                    </svg>
-                    <span class="status-value">{{
-                        formatFirstCopied(selectedItem.firstCopied)
-                    }}</span>
+                    <span class="status-value">{{ formatFirstCopied(selectedItem.firstCopied) }}</span>
                 </div>
                 <div class="status-item">
-                    <svg
-                        class="status-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="32"
-                        height="32"
-                        viewBox="0 0 256 256"
-                    >
-                        <path
-                            fill="currentColor"
-                            d="M216 152h-48v-48h48a8 8 0 0 0 0-16h-48V40a8 8 0 0 0-16 0v48h-48V40a8 8 0 0 0-16 0v48H40a8 8 0 0 0 0 16h48v48H40a8 8 0 0 0 0 16h48v48a8 8 0 0 0 16 0v-48h48v48a8 8 0 0 0 16 0v-48h48a8 8 0 0 0 0-16m-112 0v-48h48v48Z"
-                        />
-                    </svg>
                     <span class="status-value">{{ selectedItem.copies }}</span>
                 </div>
                 <div class="status-item">
-                    <svg
-                        class="status-icon"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="32"
-                        height="32"
-                        viewBox="0 0 256 256"
-                    >
-                        <path
-                            fill="currentColor"
-                            d="M128 24c-53.83 0-96 24.6-96 56v96c0 31.4 42.17 56 96 56s96-24.6 96-56V80c0-31.4-42.17-56-96-56m80 104c0 9.62-7.88 19.43-21.61 26.92C170.93 163.35 150.19 168 128 168s-42.93-4.65-58.39-13.08C55.88 147.43 48 137.62 48 128v-16.64c17.06 15 46.23 24.64 80 24.64s62.94-9.68 80-24.64ZM69.61 53.08C85.07 44.65 105.81 40 128 40s42.93 4.65 58.39 13.08C200.12 60.57 208 70.38 208 80s-7.88 19.43-21.61 26.92C170.93 115.35 150.19 120 128 120s-42.93-4.65-58.39-13.08C55.88 99.43 48 89.62 48 80s7.88-19.43 21.61-26.92m116.78 149.84C170.93 211.35 150.19 216 128 216s-42.93-4.65-58.39-13.08C55.88 195.43 48 185.62 48 176v-16.64c17.06 15 46.23 24.64 80 24.64s62.94-9.68 80-24.64V176c0 9.62-7.88 19.43-21.61 26.92"
-                        />
-                    </svg>
-                    <span class="status-value">{{
-                        getItemInfo(selectedItem)?.size
-                    }}</span>
+                    <span class="status-value">{{ getItemInfo(selectedItem)?.size }}</span>
                 </div>
             </template>
         </div>
@@ -680,6 +591,7 @@ onMounted(async () => {
     padding: 8px;
     background: var(--bg-primary);
     color: var(--text-primary);
+    min-height: 200px; /* Ensure space for modal */
 
     .search-container,
     .items-container {
@@ -724,13 +636,81 @@ onMounted(async () => {
                 }
             }
         }
-
+        
         .clipboard-item:has(img) {
             height: 80px;
             padding-top: 4px;
             padding-bottom: 4px;
             img {
                 height: calc(100% - 8px);
+            }
+        }
+    }
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 20px;
+    backdrop-filter: blur(5px);
+}
+
+.modal {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    width: 100%;
+    max-width: 400px;
+    color: #333;
+
+    h3 {
+        margin-top: 0;
+    }
+
+    .paths {
+        background: #f5f5f5;
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        margin: 15px 0;
+        word-break: break-all;
+        
+        .path-item {
+            margin-bottom: 8px;
+            &:last-child { margin-bottom: 0; }
+        }
+    }
+
+    .modal-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+
+        button {
+            padding: 8px;
+            border-radius: 4px;
+            border: none;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            
+            &:hover {
+                filter: brightness(1.1);
+            }
+
+            &.secondary {
+                background: #e0e0e0;
+                color: #333;
             }
         }
     }
@@ -759,12 +739,8 @@ onMounted(async () => {
 }
 
 @keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .empty-state {
@@ -775,11 +751,6 @@ onMounted(async () => {
 .empty-icon {
     font-size: 32px;
     filter: grayscale(0.3);
-}
-
-.clipboard-list {
-    display: flex;
-    flex-direction: column;
 }
 
 .status-bar {
@@ -803,13 +774,6 @@ onMounted(async () => {
     gap: 4px;
     flex: 1;
     justify-content: center;
-}
-
-.status-icon {
-    width: 14px;
-    height: 14px;
-    opacity: 0.7;
-    color: var(--text-secondary);
 }
 
 .status-value {
