@@ -144,7 +144,8 @@ async function searchItems(query) {
         const rawItems = JSON.parse(jsonStr);
         
         const items = rawItems.map(item => ({
-            id: item.index,
+            id: item.id, // Use item.id (hash) instead of index for reliable identification
+            index: item.index, // Keep original index if needed
             text: item.summary,
             timestamp: new Date(item.date).getTime(),
             byteSize: item.size,
@@ -193,7 +194,8 @@ async function loadRecentItems(offset = 0) {
         const rawItems = JSON.parse(jsonStr);
         
         const items = rawItems.map(item => ({
-            id: item.index,
+            id: item.id, // Use item.id (hash) instead of index
+            index: item.index,
             text: item.summary,
             timestamp: new Date(item.date).getTime(),
             byteSize: item.size,
@@ -342,6 +344,7 @@ async function pasteItemToSystem(item) {
         // Hide the app window first to return focus to the previous application
         await invoke("hide_app");
         // Then invoke the paste command which copies to clipboard and simulates paste
+        // Use item.id which is now the hash string
         await invoke("paste_item", { selector: item.id.toString() });
         
         // Reload items in background to update copy count/order
@@ -562,6 +565,7 @@ onMounted(async () => {
                     :selected="index === selectedIndex"
                     @mouseenter="selectedIndex = index"
                     @delete="deleteItem(item.id)"
+                    @select="pasteItemToSystem(item)"
                 />
             </div>
         </div>

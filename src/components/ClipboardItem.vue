@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+// removed invoke import as it is not used anymore
+
 const props = defineProps({
     item: {
         type: Object,
@@ -12,7 +13,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(["delete", "mouseenter"]);
+const emit = defineEmits(["delete", "mouseenter", "select"]);
 
 // Format timestamp for display
 function formatTimestamp(timestamp) {
@@ -65,15 +66,9 @@ function getContentType(item) {
     return { type: "text", label: "Text" };
 }
 
-// Copy item to clipboard and paste
-async function copyToClipboard() {
-    try {
-        console.log("Injecting item from ID:", props.item.id);
-        const result = await invoke("inject_item", { id: props.item.id });
-        console.log("Item injection result:", result);
-    } catch (error) {
-        console.error("Failed to inject item:", error);
-    }
+// Select item (notify parent to paste)
+function selectItem() {
+    emit("select");
 }
 
 // Handle delete
@@ -135,7 +130,7 @@ const getIndexText = (idx, isSelected) => {
         class="clipboard-item"
         :class="{ 'is-selected': props.selected }"
         @mouseenter="$emit('mouseenter')"
-        @click="copyToClipboard"
+        @click="selectItem"
     >
         <!-- Image preview for images -->
         <img
