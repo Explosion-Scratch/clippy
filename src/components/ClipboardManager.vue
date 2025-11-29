@@ -16,7 +16,12 @@ const clipboardManager = ref(null);
 const totalItems = ref(0);
 let resizeObserver = null;
 let pollingInterval = null;
+let pollingInterval = null;
 let lastKnownId = null;
+
+// Sorting state
+const sortOrder = ref('desc');
+const sortBy = ref('date');
 
 // Modal state
 const showDirModal = ref(false);
@@ -108,7 +113,9 @@ async function loadItems(offset = 0) {
         const jsonStr = await invoke("get_history", { 
             query: query || null, 
             limit: itemsPerPage, 
-            offset: offset 
+            offset: offset,
+            sort: sortBy.value,
+            order: sortOrder.value
         });
         
         const rawItems = JSON.parse(jsonStr);
@@ -166,6 +173,25 @@ watch(searchQuery, (newQuery) => {
     currentPageOffset.value = 0;
     loadItems(0);
 }, { debounce: 300 });
+
+function toggleSort(field) {
+    if (sortBy.value === field) {
+        // If clicking same field, toggle order
+        toggleOrder();
+    } else {
+        sortBy.value = field;
+        // Default to desc for date/copies usually
+        sortOrder.value = 'desc';
+        currentPageOffset.value = 0;
+        loadItems(0);
+    }
+}
+
+function toggleOrder() {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
+    currentPageOffset.value = 0;
+    loadItems(0);
+}
 
 async function deleteItem(id) {
     try {
@@ -422,6 +448,13 @@ onMounted(async () => {
 
         <div class="search-container">
             <input v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" autofocus />
+            <div class="sort-controls">
+                <button @click="toggleSort('date')" :class="{ active: sortBy === 'date' }" title="Sort by Date">📅</button>
+                <button @click="toggleSort('copies')" :class="{ active: sortBy === 'copies' }" title="Sort by Copies">📋</button>
+                <button @click="toggleOrder()" class="order-btn" :title="sortOrder === 'asc' ? 'Ascending' : 'Descending'">
+                    {{ sortOrder === 'asc' ? '↑' : '↓' }}
+                </button>
+            </div>
         </div>
 
         <div class="items-container">
@@ -459,7 +492,41 @@ onMounted(async () => {
     color: var(--text-primary);
     min-height: 200px;
 
-    .search-container { margin-top: 3px; }
+    min-height: 200px;
+
+    .search-container { 
+        margin-top: 3px; 
+        display: flex;
+        gap: 8px;
+    }
+    .sort-controls {
+        display: flex;
+        gap: 4px;
+        button {
+            background: var(--bg-input);
+            border: 1px solid var(--border-light);
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 4px 8px;
+            color: var(--text-secondary);
+            font-size: 1.2em;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            
+            &:hover {
+                background: var(--bg-hover);
+                color: var(--text-primary);
+            }
+            
+            &.active {
+                background: var(--accent);
+                color: white;
+                border-color: var(--accent);
+            }
+        }
+    }
     .clipboard-list {
         padding-top: 10px; display: flex; flex-direction: column; gap: 1px;
         .clipboard-item {

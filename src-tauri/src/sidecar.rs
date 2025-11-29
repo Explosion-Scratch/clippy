@@ -1,7 +1,7 @@
+use crate::paste::simulate_system_paste_internal;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
-use crate::paste::simulate_system_paste_internal;
 
 const API_BASE: &str = "http://localhost:3016";
 
@@ -111,9 +111,11 @@ pub async fn get_history(
     limit: Option<usize>,
     offset: Option<usize>,
     query: Option<String>,
+    sort: Option<String>,
+    order: Option<String>,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
-    
+
     // Determine base URL based on whether a query is present
     let (base_url, is_search) = if let Some(ref q) = query {
         if !q.trim().is_empty() {
@@ -132,11 +134,18 @@ pub async fn get_history(
     if let Some(off) = offset {
         params.push(format!("offset={}", off));
     }
-    
+
     if is_search {
         if let Some(q) = query {
             params.push(format!("query={}", urlencoding::encode(&q)));
         }
+    }
+
+    if let Some(s) = sort {
+        params.push(format!("sort={}", s));
+    }
+    if let Some(o) = order {
+        params.push(format!("order={}", o));
     }
 
     let mut url = base_url;
@@ -159,7 +168,7 @@ pub async fn get_mtime(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     let url = format!("{}/mtime", API_BASE);
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
-    
+
     if response.status().is_success() {
         // Just pass the JSON string through to frontend
         Ok(response.text().await.map_err(|e| e.to_string())?)
@@ -282,12 +291,16 @@ pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     // Get all items (summary) to get IDs
     let items_url = format!("{}/items?count=1000000", API_BASE);
-    let resp = client.get(&items_url).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&items_url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
-         return Err(format!("Failed to list items: {}", resp.status()));
+        return Err(format!("Failed to list items: {}", resp.status()));
     }
     let items: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
-    
+
     // Fetch full data for each item to ensure complete export
     let mut full_items = Vec::new();
     for item in items {
@@ -302,14 +315,15 @@ pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
             }
         }
     }
-    
+
     serde_json::to_string_pretty(&full_items).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let items: Vec<serde_json::Value> = serde_json::from_str(&json_data).map_err(|e| e.to_string())?;
+    let items: Vec<serde_json::Value> =
+        serde_json::from_str(&json_data).map_err(|e| e.to_string())?;
     let mut success = 0;
     let mut failed = 0;
 
@@ -322,14 +336,14 @@ pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String,
             Ok(r) => {
                 println!("Failed to import item: {}", r.status());
                 failed += 1;
-            },
+            }
             Err(e) => {
                 println!("Request failed: {}", e);
                 failed += 1;
             }
         }
     }
-    
+
     Ok(format!("Imported {} items. Failed: {}", success, failed))
 }
 
@@ -337,18 +351,22 @@ pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String,
 pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     let items_url = format!("{}/items?count=1000000", API_BASE);
-    let resp = client.get(&items_url).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&items_url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let items: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
-    
+
     let mut count = 0;
     for item in items {
         if let Some(id) = item["hash"].as_str().or(item["id"].as_str()) {
-             let del_url = format!("{}/item/{}", API_BASE, id);
-             if let Ok(resp) = client.delete(&del_url).send().await {
-                 if resp.status().is_success() {
+            let del_url = format!("{}/item/{}", API_BASE, id);
+            if let Ok(resp) = client.delete(&del_url).send().await {
+                if resp.status().is_success() {
                     count += 1;
-                 }
-             }
+                }
+            }
         }
     }
     Ok(format!("Deleted {} items", count))
