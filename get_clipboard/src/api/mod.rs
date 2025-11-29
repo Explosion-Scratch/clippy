@@ -11,6 +11,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use include_dir::{include_dir, Dir};
 
 use anyhow::Result;
@@ -36,14 +37,26 @@ const API_DOCS: &str = include_str!("../../API.md");
 
 static FRONTEND_DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/frontend-dist");
 
+// Store API start time as a static variable
+static mut API_START_TIME: Option<u64> = None;
+
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     println!("API listening on http://{}", addr);
     println!("Dashboard available at http://{}/dashboard", addr);
-    
+
+    // Record API start time
+    let start_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    unsafe {
+        API_START_TIME = Some(start_time);
+    }
+
     // Note: Watcher is now run separately via 'get_clipboard watch' command
-    
+
     let app = router();
     let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
@@ -53,6 +66,7 @@ pub async fn serve(port: u16) -> Result<()> {
 fn router() -> Router {
     Router::new()
         .route("/", get(get_docs))
+        .route("/version", get(get_version))
         .route("/dashboard", get(serve_dashboard_index))
         .route("/dashboard/", get(serve_dashboard_index))
         .route("/dashboard/*path", get(serve_dashboard))
@@ -122,6 +136,14 @@ struct StatsResponse {
     total_size: u64,
     type_counts: HashMap<String, usize>,
     history: HashMap<String, HashMap<String, StatsHistoryEntry>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionResponse {
+    version: String,
+    api_start_time: Option<u64>,
+    api_start_time_iso: Option<String>,
 }
 
 #[derive(Clone)]
@@ -496,6 +518,29 @@ async fn get_mtime() -> Result<Json<MtimeResponse>, ApiError> {
             id: None,
         }))
     }
+}
+
+async fn get_version() -> Json<VersionResponse> {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+
+    let (api_start_time, api_start_time_iso) = unsafe {
+        match API_START_TIME {
+            Some(timestamp) => {
+                // Convert Unix timestamp to OffsetDateTime
+                let datetime = time::OffsetDateTime::from_unix_timestamp(timestamp as i64)
+                    .unwrap_or_else(|_| time::OffsetDateTime::UNIX_EPOCH);
+                let iso_string = format_iso(datetime);
+                (Some(timestamp), Some(iso_string))
+            }
+            None => (None, None),
+        }
+    };
+
+    Json(VersionResponse {
+        version,
+        api_start_time,
+        api_start_time_iso,
+    })
 }
 
 async fn get_dir() -> Result<Json<DirResponse>, ApiError> {

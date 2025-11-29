@@ -52,6 +52,13 @@ pub enum SortOrder {
     Relevance,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortDirection {
+    #[default]
+    Desc,
+    Asc,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SearchOptions {
     pub query: Option<String>,
@@ -61,6 +68,7 @@ pub struct SearchOptions {
     pub from: Option<OffsetDateTime>,
     pub to: Option<OffsetDateTime>,
     pub sort: SortOrder,
+    pub order: SortDirection,
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +109,7 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
         all_records.into_iter().enumerate().collect();
 
     match options.sort {
-        SortOrder::Date => { /* already sorted */ }
+        SortOrder::Date => { /* already sorted in desc order */ }
         SortOrder::Copies => {
             indexed_records.sort_by(|(_, a), (_, b)| b.copy_count.cmp(&a.copy_count))
         }
@@ -119,6 +127,11 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
                 });
             }
         }
+    }
+
+    // Apply sort direction (reverse if ascending)
+    if options.order == SortDirection::Asc {
+        indexed_records.reverse();
     }
 
     let records: Vec<_> = indexed_records

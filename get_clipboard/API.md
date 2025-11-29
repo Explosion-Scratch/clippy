@@ -17,6 +17,7 @@ The Clipboard Manager API is a RESTful HTTP API that provides programmatic acces
 2. [Data Models](#data-models)
 3. [Endpoints](#endpoints)
    - [Root](#get-)
+   - [Version](#get-version)
    - [Items Management](#items-management)
    - [Search](#search)
    - [Configuration](#configuration)
@@ -151,6 +152,37 @@ Full representation including all content data:
 ### GET /
 
 Returns this API documentation as plain text.
+
+### GET /version
+
+Returns the current version of get_clipboard and API server start time information.
+
+**Response:**
+```json
+{
+  "version": "0.1.0",
+  "apiStartTime": 1764457053,
+  "apiStartTimeIso": "2025-11-29T22:57:33.000000000Z"
+}
+```
+
+**Fields:**
+- `version` (string): Current version of get_clipboard from Cargo.toml
+- `apiStartTime` (number|null): Unix timestamp when API server started (seconds since epoch)
+- `apiStartTimeIso` (string|null): ISO 8601 formatted timestamp when API server started
+
+**Example:**
+```bash
+curl http://127.0.0.1:3000/version
+```
+
+**Use Cases:**
+- Version checking for client compatibility
+- Monitoring API server uptime
+- Debugging and troubleshooting
+- Cache invalidation based on server restart
+
+**Note:** If the API server has not been started properly, `apiStartTime` and `apiStartTimeIso` will be `null`.
 
 ### GET /dashboard/
 
