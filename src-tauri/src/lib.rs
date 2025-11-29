@@ -1,14 +1,18 @@
-use tauri::{Manager, Listener};
+use tauri::Manager;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
-use tauri::{menu::{MenuBuilder, MenuItemBuilder}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}};
+use tauri::{menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+use tauri_plugin_shell::ShellExt;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 mod sidecar;
 mod visibility;
 mod accessibility;
 mod paste;
-// mod db;       // Removed: SQLite no longer used
-// mod clipboard; // Removed: Listener handled by sidecar
+
+// Shared state for tray menu clipboard items
+type TrayClipboardItems = Arc<Mutex<Vec<(String, String)>>>; // (id, summary)
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -38,6 +42,12 @@ fn register_main_shortcut(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// Tauri command to open settings window (callable from frontend)
+#[tauri::command]
+fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
+    open_settings_window(app).map_err(|e| e.to_string())
+}
+
 // Function to open settings window
 fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::{Manager, WebviewWindowBuilder};
@@ -64,13 +74,22 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
          visibility::hide(&app_handle).ok();
     }
 
-    // Create new settings window using config from tauri.conf.json
-    let _settings_window = WebviewWindowBuilder::new(
+    // Create new settings window
+    let settings_window = WebviewWindowBuilder::new(
         &app_handle,
         "settings",
         tauri::WebviewUrl::App("/settings".into())
     )
+    .title("Settings")
+    .inner_size(400.0, 500.0)
+    .resizable(true)
+    .visible(true)
+    .focused(true)
     .build()?;
+    
+    // Ensure the settings window is shown and focused
+    settings_window.show()?;
+    settings_window.set_focus()?;
 
     // Apply vibrancy to settings window on macOS (must run on main thread)
     #[cfg(target_os = "macos")]
@@ -87,20 +106,6 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     Ok(())
 }
 
-// Function to hide settings window and restore dock state
-fn close_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(settings_window) = app_handle.get_webview_window("settings") {
-        settings_window.close()?;
-    }
-
-    // Hide dock icon when settings is closed (return to accessory mode)
-    #[cfg(target_os = "macos")]
-    {
-        app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory)?;
-    }
-
-    Ok(())
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -109,10 +114,23 @@ pub fn run() {
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .on_window_event(|window, event| {
+            // Handle settings window close/destroy events
+            if window.label() == "settings" {
+                if let tauri::WindowEvent::Destroyed = event {
+                    println!("Settings window destroyed, restoring dock state");
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             unregister_main_shortcut,
             register_main_shortcut,
+            open_settings,
             sidecar::init_service,
             sidecar::stop_service,
             sidecar::get_service_status,
@@ -141,36 +159,75 @@ pub fn run() {
             use tauri_plugin_global_shortcut::{Code, ShortcutState};
 
             let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
-            let settings_shortcut = Shortcut::new(Some(Modifiers::META), Code::Comma);
+            // NOTE: We no longer register Cmd+Comma as a global shortcut
+            // It will be handled by the frontend when the window is visible
+            // and by the tray menu accelerator when the tray is focused
 
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let app_handle = app.handle().clone();
             let window = app_handle.get_webview_window("main").unwrap();
 
+            // Shared state for clipboard items in tray
+            let tray_items: TrayClipboardItems = Arc::new(Mutex::new(Vec::new()));
+
             // Create system tray menu with dynamic stats
             let show_item = MenuItemBuilder::with_id("show", "Show Clippy").build(app)?;
-            let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            // Add Cmd+, accelerator to Settings menu item (only works when tray menu is open)
+            let settings_item = MenuItemBuilder::with_id("settings", "Settings")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             
             // Create initial stats item
             let stats_item = MenuItemBuilder::with_id("stats", "clippy v0.1.0 - Running")
                 .build(app)?;
             
-            let menu = MenuBuilder::new(app)
-                .items(&[&stats_item, &show_item, &settings_item, &quit_item])
+            // Create separator
+            let separator = PredefinedMenuItem::separator(app)?;
+            
+            // Create clipboard item menu entries (initially empty, will be populated)
+            let clip_items: Vec<tauri::menu::MenuItem<tauri::Wry>> = (0..10).map(|i| {
+                let key = if i == 9 { "0".to_string() } else { (i + 1).to_string() };
+                MenuItemBuilder::with_id(format!("clip_{}", i), format!("{}. (empty)", key))
+                    .accelerator(format!("CmdOrCtrl+{}", key))
+                    .enabled(false)
+                    .build(app)
+                    .unwrap()
+            }).collect();
+            
+            // Build menu with all items
+            let mut menu_builder = MenuBuilder::new(app)
+                .item(&stats_item)
+                .item(&show_item)
+                .item(&settings_item)
+                .item(&separator);
+            
+            // Add clipboard items
+            for clip_item in &clip_items {
+                menu_builder = menu_builder.item(clip_item);
+            }
+            
+            let menu = menu_builder
+                .item(&PredefinedMenuItem::separator(app)?)
+                .item(&quit_item)
                 .build()?;
 
-            // Spawn stats updater for Tray
+            // Spawn stats and clipboard items updater for Tray
             let stats_item_handle = stats_item.clone();
+            let clip_items_handles: Vec<_> = clip_items.iter().cloned().collect();
+            let tray_items_clone = tray_items.clone();
+            
             tauri::async_runtime::spawn(async move {
                 let client = reqwest::Client::new();
-                let url = "http://localhost:3016/stats";
+                let stats_url = "http://localhost:3016/stats";
+                let items_url = "http://localhost:3016/items?count=10";
                 
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                     
-                    if let Ok(response) = client.get(url).send().await {
+                    // Update stats
+                    if let Ok(response) = client.get(stats_url).send().await {
                         if let Ok(json) = response.json::<serde_json::Value>().await {
                             let count = json["totalItems"].as_u64().unwrap_or(0);
                             let size = json["totalSize"].as_u64().unwrap_or(0);
@@ -187,27 +244,92 @@ pub fn run() {
                             let _ = stats_item_handle.set_text(text);
                         }
                     }
+                    
+                    // Update clipboard items in tray
+                    if let Ok(response) = client.get(items_url).send().await {
+                        if let Ok(items) = response.json::<Vec<serde_json::Value>>().await {
+                            let mut tray_items_lock = tray_items_clone.lock().await;
+                            tray_items_lock.clear();
+                            
+                            for (i, item) in items.iter().take(10).enumerate() {
+                                let id = item["hash"].as_str()
+                                    .or(item["id"].as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let summary = item["summary"].as_str().unwrap_or("").to_string();
+                                
+                                // Truncate summary for menu display
+                                let display_summary = if summary.len() > 40 {
+                                    format!("{}...", &summary[..37])
+                                } else {
+                                    summary.clone()
+                                };
+                                
+                                // Update menu item text
+                                let key = if i == 9 { "0".to_string() } else { (i + 1).to_string() };
+                                let menu_text = format!("{}. {}", key, display_summary.replace('\n', " "));
+                                
+                                if let Some(menu_item) = clip_items_handles.get(i) {
+                                    let _ = menu_item.set_text(&menu_text);
+                                    let _ = menu_item.set_enabled(true);
+                                }
+                                
+                                tray_items_lock.push((id, summary));
+                            }
+                            
+                            // Disable unused menu items
+                            for i in items.len()..10 {
+                                if let Some(menu_item) = clip_items_handles.get(i) {
+                                    let key = if i == 9 { "0".to_string() } else { (i + 1).to_string() };
+                                    let _ = menu_item.set_text(&format!("{}. (empty)", key));
+                                    let _ = menu_item.set_enabled(false);
+                                }
+                            }
+                        }
+                    }
                 }
             });
+            
+            // Store tray items in app state for menu event handler
+            app.manage(tray_items.clone());
             
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .on_menu_event(move |app, event| match event.id().as_ref() {
-                  "show" => {
-                        if let Some(_window) = app.get_webview_window("main") {
-                            let _ = visibility::show(app.clone());
+                .on_menu_event(move |app, event| {
+                    let event_id = event.id().as_ref();
+                    match event_id {
+                        "show" => {
+                            if let Some(_window) = app.get_webview_window("main") {
+                                let _ = visibility::show(app.clone());
+                            }
                         }
-                    }
-                    "settings" => {
-                        if let Err(e) = open_settings_window(app.clone()) {
-                            eprintln!("Failed to open settings: {}", e);
+                        "settings" => {
+                            if let Err(e) = open_settings_window(app.clone()) {
+                                eprintln!("Failed to open settings: {}", e);
+                            }
                         }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        id if id.starts_with("clip_") => {
+                            // Handle clipboard item selection
+                            if let Ok(index) = id.strip_prefix("clip_").unwrap_or("").parse::<usize>() {
+                                let app_clone = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    let tray_items: tauri::State<'_, TrayClipboardItems> = app_clone.state();
+                                    let items = tray_items.lock().await;
+                                    if let Some((id, _)) = items.get(index) {
+                                        // Paste the item
+                                        if let Err(e) = sidecar::paste_item(app_clone.clone(), id.clone()).await {
+                                            eprintln!("Failed to paste item from tray: {}", e);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        _ => (),
                     }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => (),
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -227,26 +349,21 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            /* Shortcut */
+            /* Shortcut - Only register Ctrl+P as global shortcut */
+            /* Cmd+Comma is now handled by frontend and tray menu accelerator */
             app_handle.plugin(tauri_plugin_global_shortcut::Builder::new().with_handler({
-                let _app_handle = app_handle.clone();
-                let settings_shortcut_clone = settings_shortcut.clone();
                 move |app_handle, shortcut, event| {
                     if shortcut == &main_shortcut && event.state() == ShortcutState::Pressed {
                         println!("Ctrl+P pressed - showing window");
                         if let Err(e) = visibility::show(app_handle.clone()) {
                             eprintln!("Failed to show window: {}", e);
                         }
-                    } else if shortcut == &settings_shortcut_clone && event.state() == ShortcutState::Pressed {
-                        println!("Settings shortcut triggered");
-                        if let Err(e) = open_settings_window(app_handle.clone()) {
-                            eprintln!("Failed to open settings: {}", e);
-                        }
                     }
                 }
             }).build())?;
             app.global_shortcut().register(main_shortcut)?;
-            app.global_shortcut().register(settings_shortcut)?;
+            // NOTE: We no longer register settings_shortcut globally
+            // This allows other apps to receive Cmd+Comma for their preferences
 
             #[cfg(target_os = "macos")]
             {
@@ -280,23 +397,32 @@ pub fn run() {
                 });
             }
 
-            // Configure sidecar and start service
+            // Configure sidecar and start watcher service
             let app_handle_clone = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                println!("Initializing clipboard service...");
+                println!("Initializing clipboard watcher service...");
                 if let Err(e) = sidecar::init_service(app_handle_clone.clone()).await {
                     eprintln!("Failed to initialize service: {}", e);
                 } else {
-                    println!("Clipboard service initialized successfully");
+                    println!("Clipboard watcher service initialized successfully");
                 }
             });
 
-            // Listen for settings window close events to restore dock state
-            let app_handle_for_close = app_handle.clone();
-            app.listen("settings-window-closed", move |_event| {
-                println!("Settings window closed, restoring dock state");
-                if let Err(e) = close_settings_window(app_handle_for_close.clone()) {
-                    eprintln!("Failed to close settings window: {}", e);
+            // Start API server sidecar (child process)
+            let app_handle_clone = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                println!("Starting API sidecar...");
+                let sidecar = app_handle_clone.shell().sidecar("get_clipboard");
+                if let Ok(cmd) = sidecar {
+                     // We spawn it and let it run.
+                     // The process will persist as long as the main app runs (or until stopped).
+                     let result = cmd.args(["api", "--port", "3016"]).spawn();
+                     match result {
+                         Ok((_rx, _child)) => println!("API sidecar started successfully"),
+                         Err(e) => eprintln!("Failed to spawn API sidecar: {}", e),
+                     }
+                } else {
+                    eprintln!("Failed to find sidecar");
                 }
             });
 

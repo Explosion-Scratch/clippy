@@ -13,8 +13,27 @@ pub fn is_visible(app: AppHandle) -> Result<bool, String> {
     Ok(is_visible)
 }
 
-/// Hide the app and main window
+/// Hide the main window only (not the entire app)
 pub fn hide(app: &AppHandle) -> Result<(), String> {
+    println!("Hiding main window");
+    
+    let window = app.get_webview_window("main")
+        .ok_or("Failed to get main window")?;
+    
+    // Hide the main window only
+    window.hide()
+        .map_err(|e| format!("Failed to hide window: {}", e))?;
+    
+    println!("Main window hidden successfully");
+    
+    // Emit event to update tray menu
+    app.emit("window-visibility-changed", ()).map_err(|e| format!("Failed to emit visibility event: {}", e))?;
+    
+    Ok(())
+}
+
+/// Hide the entire app (all windows) - used when dismissing the clipboard manager
+pub fn hide_all(app: &AppHandle) -> Result<(), String> {
     println!("Hiding window and app");
     
     let window = app.get_webview_window("main")
@@ -43,6 +62,19 @@ pub fn hide(app: &AppHandle) -> Result<(), String> {
 pub fn show(app: AppHandle) -> Result<(), String> {
     println!("Showing window and app");
     
+    // First, close any settings window that might be open
+    // Only one of clipboard manager or settings can be open at a time
+    if let Some(settings_window) = app.get_webview_window("settings") {
+        println!("Closing settings window before showing main window");
+        let _ = settings_window.close();
+        
+        // Restore accessory mode since settings is closing
+        #[cfg(target_os = "macos")]
+        {
+            let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        }
+    }
+    
     let window = app.get_webview_window("main")
         .ok_or("Failed to get main window")?;
     
@@ -69,10 +101,10 @@ pub fn show(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Tauri command to hide the app and window
+/// Tauri command to hide the app and window (used by ESC key in clipboard manager)
 #[tauri::command]
 pub fn hide_app(app: AppHandle) -> Result<(), String> {
-    hide(&app)
+    hide_all(&app)
 }
 
 /// Tauri command to show the app and window

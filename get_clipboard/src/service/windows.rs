@@ -12,6 +12,7 @@ pub fn install_agent() -> Result<()> {
     let paths = resolve_paths();
     fs::create_dir_all(&paths.config_dir)?;
     let log_path = paths.config_dir.join("service.log");
+    // Ensure task runs 'watch' instead of just the bare executable
     let command = format!(
         "cmd /C \"\\\"{}\\\" watch >> \\\"{}\\\" 2>&1\"",
         exe.to_string_lossy(),

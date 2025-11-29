@@ -148,8 +148,9 @@ fn build_plist() -> Result<String> {
     fs::create_dir_all(&paths.config_dir)?;
     let log_path = paths.config_dir.join("service.log");
     let now = time::format_human(time::now());
+    // Using 'watch' command instead of 'api' for the background service
     Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>Label</key>\n    <string>{LABEL}</string>\n    <key>ProgramArguments</key>\n    <array>\n        <string>{}</string>\n        <string>api</string>\n        <string>--port</string>\n        <string>3016</string>\n    </array>\n    <key>RunAtLoad</key>\n    <true/>\n    <key>KeepAlive</key>\n    <true/>\n    <key>StandardErrorPath</key>\n    <string>{}</string>\n    <key>StandardOutPath</key>\n    <string>{}</string>\n    <key>EnvironmentVariables</key>\n    <dict>\n        <key>GET_CLIPBOARD_STARTED</key>\n        <string>{}</string>\n    </dict>\n</dict>\n</plist>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n    <key>Label</key>\n    <string>{LABEL}</string>\n    <key>ProgramArguments</key>\n    <array>\n        <string>{}</string>\n        <string>watch</string>\n    </array>\n    <key>RunAtLoad</key>\n    <true/>\n    <key>KeepAlive</key>\n    <true/>\n    <key>StandardErrorPath</key>\n    <string>{}</string>\n    <key>StandardOutPath</key>\n    <string>{}</string>\n    <key>EnvironmentVariables</key>\n    <dict>\n        <key>GET_CLIPBOARD_STARTED</key>\n        <string>{}</string>\n    </dict>\n</dict>\n</plist>\n",
         exe.to_string_lossy(),
         log_path.to_string_lossy(),
         log_path.to_string_lossy(),

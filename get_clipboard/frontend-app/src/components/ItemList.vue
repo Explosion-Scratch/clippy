@@ -64,6 +64,9 @@
           <div class="text-sm text-gray-900 truncate font-normal">
             {{ item.summary || item.data }}
           </div>
+          <div v-if="item.firstDate" class="text-[10px] text-gray-400 mt-0.5">
+            First: {{ formatDate(item.firstDate) }}
+          </div>
         </div>
         
         <div class="text-[10px] text-gray-400 tabular-nums whitespace-nowrap">
@@ -168,6 +171,23 @@ const formatBytes = (bytes) => {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined })
 }
 </script>
 

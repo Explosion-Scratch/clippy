@@ -29,7 +29,6 @@ use crate::data::store::{
 use crate::search::SearchOptions;
 use crate::util::time::format_iso;
 use crate::util::paste;
-use crate::service::watch;
 
 use tokio::net::TcpListener;
 
@@ -43,13 +42,7 @@ pub async fn serve(port: u16) -> Result<()> {
     println!("API listening on http://{}", addr);
     println!("Dashboard available at http://{}/dashboard", addr);
     
-    // Spawn clipboard watcher in background
-    std::thread::spawn(|| {
-        println!("Starting clipboard watcher...");
-        if let Err(e) = watch::run_watch(None) {
-            eprintln!("Clipboard watcher error: {:?}", e);
-        }
-    });
+    // Note: Watcher is now run separately via 'get_clipboard watch' command
     
     let app = router();
     let listener = TcpListener::bind(addr).await?;
@@ -61,6 +54,7 @@ fn router() -> Router {
     Router::new()
         .route("/", get(get_docs))
         .route("/dashboard", get(serve_dashboard_index))
+        .route("/dashboard/", get(serve_dashboard_index))
         .route("/dashboard/*path", get(serve_dashboard))
         .route("/items", get(get_items))
         .route("/item/:selector/data", get(get_item_data))
@@ -393,9 +387,10 @@ async fn search_items(
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<plugins::ClipboardJsonItem>>, ApiError> {
     let query = params.query.as_deref().unwrap_or("").trim();
-    if query.is_empty() && params.formats.is_none() {
+    let has_sort = params.sort.is_some();
+    if query.is_empty() && params.formats.is_none() && !has_sort {
         return Err(ApiError::bad_request(
-            "query or formats parameter must be provided",
+            "query, formats, or sort parameter must be provided",
         ));
     }
     let index = load_fresh_index()?;

@@ -83,13 +83,15 @@ export function useClipboard() {
       const hasSort = sortBy.value !== 'date' || sortDirection.value !== 'desc'
       
       let url
-      if (hasSearch || hasFilter) {
+      if (hasSearch || hasFilter || hasSort) {
         const params = new URLSearchParams()
         params.append('offset', offset.value)
         params.append('count', LIMIT)
         
         if (hasSearch) {
             params.append('query', searchQuery.value)
+        } else if (hasSort) {
+            params.append('query', '')
         }
         
         if (hasFilter) {
@@ -103,9 +105,6 @@ export function useClipboard() {
         const params = new URLSearchParams()
         params.append('offset', offset.value)
         params.append('count', LIMIT)
-        if (hasSort) {
-          params.append('sort', sortBy.value)
-        }
         url = `${API_BASE}/items?${params.toString()}`
       }
       

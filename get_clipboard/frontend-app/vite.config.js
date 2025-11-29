@@ -19,7 +19,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      input: 'src/main.js',
+      input: 'index.html',
     },
     outDir: '../frontend-dist',
     emptyOutDir: true,

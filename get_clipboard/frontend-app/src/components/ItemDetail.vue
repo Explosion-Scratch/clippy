@@ -19,8 +19,10 @@
               <h1 class="text-lg font-semibold text-gray-900 capitalize">
                 {{ item.type }} Item
               </h1>
-              <div class="text-xs text-gray-500 flex items-center gap-2">
+              <div class="text-xs text-gray-500 flex items-center gap-2 flex-wrap">
                 <span>{{ new Date(item.date).toLocaleString() }}</span>
+                <span v-if="item.firstDate">•</span>
+                <span v-if="item.firstDate">First: {{ new Date(item.firstDate).toLocaleString() }}</span>
                 <span>•</span>
                 <span>{{ formatBytes(item.size) }}</span>
                 <span v-if="item.copyCount">•</span>
