@@ -1,18 +1,18 @@
 use axum::{
+    Json, Router,
     body::Body,
     extract::{Path, Path as AxumPath, Query},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{delete as axum_delete, get, post},
-    Json, Router,
 };
+use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
-use include_dir::{include_dir, Dir};
 
 use anyhow::Result;
 
@@ -28,8 +28,8 @@ use crate::data::store::{
     load_index, load_metadata, refresh_index, store_json_item,
 };
 use crate::search::SearchOptions;
-use crate::util::time::format_iso;
 use crate::util::paste;
+use crate::util::time::format_iso;
 
 use tokio::net::TcpListener;
 
@@ -92,6 +92,7 @@ struct ItemsQuery {
     count: Option<usize>,
     ids: Option<String>,
     sort: Option<String>,
+    order: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,6 +102,7 @@ struct SearchQuery {
     count: Option<usize>,
     formats: Option<String>,
     sort: Option<String>,
+    order: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,7 +235,7 @@ async fn serve_dashboard_file(path: String) -> impl IntoResponse + use<> {
         let mime_type = mime_guess::from_path(file_path)
             .first_or_octet_stream()
             .to_string();
-        
+
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, mime_type)
@@ -287,6 +289,14 @@ async fn get_items(
         };
     }
 
+    if let Some(order) = params.order {
+        options.order = match order.to_lowercase().as_str() {
+            "asc" | "ascending" => crate::search::SortDirection::Asc,
+            "desc" | "descending" => crate::search::SortDirection::Desc,
+            _ => crate::search::SortDirection::Desc,
+        };
+    }
+
     let (items, _) = load_history_items(&index, &options).map_err(ApiError::from)?;
     let mut response = Vec::new();
     for item in items {
@@ -308,7 +318,7 @@ async fn get_item(
 ) -> Result<Json<plugins::ClipboardJsonItem>, ApiError> {
     let index = load_fresh_index()?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
-    
+
     let mut filter = crate::search::SelectionFilter::default();
     if let Some(formats) = params.formats {
         for fmt in formats.split(',') {
@@ -321,11 +331,12 @@ async fn get_item(
             }
         }
     }
-    
+
     let (ordered, offsets) = ordered_index_filtered(&index, &filter);
     let (hash, offset, real_index) = resolve_selector_filtered(&ordered, &offsets, &selector)?;
     let metadata = load_metadata(&hash).map_err(ApiError::from)?;
-    let item = json_from_metadata_with_index(&metadata, offset, real_index, &data_dir).map_err(ApiError::from)?;
+    let item = json_from_metadata_with_index(&metadata, offset, real_index, &data_dir)
+        .map_err(ApiError::from)?;
     Ok(Json(item))
 }
 
@@ -335,7 +346,7 @@ async fn get_item_data(
 ) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
     let index = load_fresh_index()?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
-    
+
     let mut filter = crate::search::SelectionFilter::default();
     if let Some(formats) = params.formats {
         for fmt in formats.split(',') {
@@ -348,7 +359,7 @@ async fn get_item_data(
             }
         }
     }
-    
+
     let (ordered, offsets) = ordered_index_filtered(&index, &filter);
     let (hash, offset, real_index) = resolve_selector_filtered(&ordered, &offsets, &selector)?;
     let metadata = load_metadata(&hash).map_err(ApiError::from)?;
@@ -434,6 +445,14 @@ async fn search_items(
         };
     }
 
+    if let Some(order) = params.order {
+        options.order = match order.to_lowercase().as_str() {
+            "asc" | "ascending" => crate::search::SortDirection::Asc,
+            "desc" | "descending" => crate::search::SortDirection::Desc,
+            _ => crate::search::SortDirection::Desc,
+        };
+    }
+
     if let Some(formats) = params.formats {
         for fmt in formats.split(',') {
             let fmt = fmt.trim().to_lowercase();
@@ -450,7 +469,13 @@ async fn search_items(
     let mut response = Vec::new();
     for item in items {
         response.push(
-            json_from_metadata_with_index(&item.metadata, item.offset, item.global_offset, &data_dir).map_err(ApiError::from)?,
+            json_from_metadata_with_index(
+                &item.metadata,
+                item.offset,
+                item.global_offset,
+                &data_dir,
+            )
+            .map_err(ApiError::from)?,
         );
     }
     Ok(Json(response))
@@ -458,10 +483,10 @@ async fn search_items(
 
 async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
     let index = load_fresh_index()?;
-    
+
     let total_items = index.len();
     let total_size = index.values().map(|r| r.byte_size).sum();
-    
+
     let mut type_counts = HashMap::new();
     let mut history: HashMap<String, HashMap<String, StatsHistoryEntry>> = HashMap::new();
 
@@ -489,14 +514,16 @@ async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
             .to_string();
 
         let day_entry = history.entry(date).or_default();
-        let type_entry = day_entry.entry(kind_str.to_string()).or_insert(StatsHistoryEntry {
-            count: 0,
-            ids: Vec::new(),
-        });
+        let type_entry = day_entry
+            .entry(kind_str.to_string())
+            .or_insert(StatsHistoryEntry {
+                count: 0,
+                ids: Vec::new(),
+            });
         type_entry.count += 1;
         type_entry.ids.push(record.hash.clone());
     }
-    
+
     Ok(Json(StatsResponse {
         total_items,
         total_size,
@@ -585,8 +612,8 @@ async fn save_payload(
     let index = load_index().map_err(ApiError::from)?;
     let (_, offsets) = ordered_index(&index);
     let offset = offsets.get(&metadata.hash).copied();
-    let item =
-        plugins::build_full_json_item(&metadata, &item_dir, offset, None).map_err(ApiError::from)?;
+    let item = plugins::build_full_json_item(&metadata, &item_dir, offset, None)
+        .map_err(ApiError::from)?;
     Ok(Json(item))
 }
 
@@ -630,17 +657,20 @@ fn ordered_index(index: &SearchIndex) -> (Vec<&SearchIndexRecord>, HashMap<Strin
     (ordered, offsets)
 }
 
-fn ordered_index_filtered<'a>(index: &'a SearchIndex, filter: &crate::search::SelectionFilter) -> (Vec<(usize, &'a SearchIndexRecord)>, HashMap<String, usize>) {
+fn ordered_index_filtered<'a>(
+    index: &'a SearchIndex,
+    filter: &crate::search::SelectionFilter,
+) -> (Vec<(usize, &'a SearchIndexRecord)>, HashMap<String, usize>) {
     let mut all_ordered: Vec<_> = index.values().collect();
     all_ordered.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
-    
+
     let filtered: Vec<_> = all_ordered
         .iter()
         .enumerate()
         .filter(|(_, record)| filter.matches(record))
         .map(|(idx, record)| (idx, *record))
         .collect();
-    
+
     let offsets = filtered
         .iter()
         .enumerate()
@@ -682,7 +712,8 @@ fn resolve_selector_filtered(
                 .get(&hash)
                 .copied()
                 .ok_or_else(|| ApiError::not_found(format!("Unknown item {hash}")))?;
-            let (real_index, _) = ordered.get(offset)
+            let (real_index, _) = ordered
+                .get(offset)
                 .ok_or_else(|| ApiError::not_found(format!("Unknown item {hash}")))?;
             Ok((hash, offset, *real_index))
         }

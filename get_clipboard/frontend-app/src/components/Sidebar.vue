@@ -1,10 +1,8 @@
 <template>
   <aside class="w-64 bg-[#f7f7f5] border-r border-gray-200 flex flex-col h-full">
     <div class="p-4 flex items-center gap-3 select-none cursor-default mb-2">
-      <div class="w-8 h-8 bg-gradient-to-br from-gray-900 to-gray-700 text-white rounded-lg flex items-center justify-center text-lg font-bold shadow-md">
-        C
-      </div>
-      <span class="font-semibold text-base">Clippith</span>
+      <img src="/icon.png" alt="Clippy" class="w-8 h-8 rounded-lg shadow-md" />
+      <span class="font-semibold text-base">Clippy</span>
     </div>
 
     <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1 scrollbar-thin">

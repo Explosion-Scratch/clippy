@@ -62,12 +62,12 @@ export function useClipboard() {
         const data = await res.json()
         dataDir.value = data.path
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   const loadItems = async (reset = false) => {
     if (loading.value || (endReached.value && !reset)) return
-    
+
     if (reset) {
       items.value = []
       offset.value = 0
@@ -81,25 +81,26 @@ export function useClipboard() {
       const hasFilter = selectedTypes.value.size > 0
       const hasSearch = !!searchQuery.value
       const hasSort = sortBy.value !== 'date' || sortDirection.value !== 'desc'
-      
+
       let url
       if (hasSearch || hasFilter || hasSort) {
         const params = new URLSearchParams()
         params.append('offset', offset.value)
         params.append('count', LIMIT)
-        
+
         if (hasSearch) {
-            params.append('query', searchQuery.value)
+          params.append('query', searchQuery.value)
         } else if (hasSort) {
-            params.append('query', '')
+          params.append('query', '')
         }
-        
+
         if (hasFilter) {
-            params.append('formats', Array.from(selectedTypes.value).join(','))
+          params.append('formats', Array.from(selectedTypes.value).join(','))
         }
-        
+
         params.append('sort', sortBy.value)
-        
+        params.append('order', sortDirection.value)
+
         url = `${API_BASE}/search?${params.toString()}`
       } else {
         const params = new URLSearchParams()
@@ -107,17 +108,13 @@ export function useClipboard() {
         params.append('count', LIMIT)
         url = `${API_BASE}/items?${params.toString()}`
       }
-      
+
       const res = await fetch(url)
       if (!res.ok) throw new Error('Failed to fetch')
       let newItems = await res.json()
-      
-      if (sortDirection.value === 'asc' && hasSort) {
-        newItems = newItems.reverse()
-      }
-      
+
       if (newItems.length < LIMIT) endReached.value = true
-      
+
       items.value = reset ? newItems : [...items.value, ...newItems]
       offset.value += LIMIT
       connected.value = true
@@ -167,7 +164,7 @@ export function useClipboard() {
     try {
       const res = await fetch(`${API_BASE}/dir`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode, path })
       })
       if (!res.ok) throw new Error('Failed')
@@ -183,8 +180,8 @@ export function useClipboard() {
 
   const selectItem = (item, event) => {
     if (event && (event.metaKey || event.ctrlKey)) {
-      selectedIds.value.has(item.id) 
-        ? selectedIds.value.delete(item.id) 
+      selectedIds.value.has(item.id)
+        ? selectedIds.value.delete(item.id)
         : selectedIds.value.add(item.id)
       return
     } else if (event && event.shiftKey && selectedItem.value) {
@@ -232,8 +229,8 @@ export function useClipboard() {
   const clearSelection = () => selectedIds.value.clear()
 
   const toggleSelect = (id) => {
-    selectedIds.value.has(id) 
-      ? selectedIds.value.delete(id) 
+    selectedIds.value.has(id)
+      ? selectedIds.value.delete(id)
       : selectedIds.value.add(id)
   }
 
@@ -298,7 +295,7 @@ export function useClipboard() {
       for (const item of itemsToImport) {
         await fetch(`${API_BASE}/save`, {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item)
         })
         count++
@@ -368,7 +365,7 @@ export function useClipboard() {
         loadItems(true)
         fetchStats()
       }
-    } catch(e) {}
+    } catch (e) { }
   }, 2000)
 
   return {
