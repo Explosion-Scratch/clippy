@@ -7,13 +7,35 @@
 
 <body>
     <div class="preview-container">
-        <div class="image-container" id="imgContainer">
-            <img src="{{content}}" id="previewImage" alt="Image Preview">
-            <div class="image-controls">
-                <button onclick="zoomIn()">+</button>
-                <button onclick="zoomOut()">-</button>
-                <button onclick="resetZoom()">R</button>
-            </div>
+        <div class="image-container" id="imageContainer">
+            <img src="{{content}}" id="previewImage" draggable="false">
+        </div>
+
+        <div class="zoom-controls">
+            <span class="dimensions-info">{{dimensions}}</span>
+            <div class="zoom-divider"></div>
+            <button class="zoom-btn" onclick="zoomOut()" title="Zoom Out">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+            </button>
+            <span class="zoom-level" id="zoomLevel">100%</span>
+            <button class="zoom-btn" onclick="zoomIn()" title="Zoom In">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+            </button>
+            <div class="zoom-divider"></div>
+            <button class="zoom-btn" onclick="resetZoom()" title="Reset Zoom">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                </svg>
+            </button>
         </div>
     </div>
     <script src="base_iframe.js"></script>
@@ -21,10 +43,12 @@
         let scale = 1;
         let translateX = 0, translateY = 0;
         const img = document.getElementById('previewImage');
-        const container = document.getElementById('imgContainer');
+        const container = document.getElementById('imageContainer');
+        const zoomLevel = document.getElementById('zoomLevel');
 
         function updateTransform() {
             img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            zoomLevel.textContent = `${Math.round(scale * 100)}%`;
         }
 
         function zoomIn() {
@@ -56,8 +80,6 @@
         // Drag functionality
         let isDragging = false;
         let startX, startY, initialTranslateX, initialTranslateY;
-
-        container.style.cursor = 'grab';
 
         container.addEventListener('mousedown', e => {
             if (e.target.tagName === 'BUTTON') return;

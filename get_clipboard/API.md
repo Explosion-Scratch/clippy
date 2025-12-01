@@ -329,6 +329,26 @@ curl {{URL}}/item/0/data
 
 ---
 
+#### GET /item/:selector/preview
+
+Retrieve an HTML preview for a single clipboard item.
+
+**Path Parameters:**
+- `selector` (string): Hash or offset identifier
+
+**Response:** HTML content (text/html)
+
+**Example:**
+```bash
+curl {{URL}}/item/0/preview
+```
+
+**Use Cases:**
+- Displaying item previews in the dashboard
+- Embedding previews in other applications
+
+---
+
 #### DELETE /item/:selector
 
 Delete a clipboard item from history.

@@ -56,20 +56,17 @@
           </div>
         </div>
 
-        <div v-if="fullData?.formats" class="flex items-end gap-1 overflow-x-auto scrollbar-thin">
+        <div v-if="previewData?.formatsOrder?.length > 0" class="flex items-end gap-1 overflow-x-auto scrollbar-thin">
           <button 
-            v-for="(fmt, idx) in fullData.formats" 
-            :key="idx"
-            @click="$emit('format-change', idx)"
-            class="px-3 py-1.5 text-xs font-medium rounded-t-lg border-t border-x transition-all flex items-center gap-2"
-            :class="activeFormatIndex === idx 
+            v-for="format in previewData.formatsOrder" 
+            :key="format"
+            @click="activeTab = format"
+            class="px-4 py-2 text-xs font-medium rounded-t-lg border-t border-x transition-all capitalize"
+            :class="activeTab === format 
               ? 'bg-white border-gray-200 text-gray-900 relative top-[1px] shadow-sm' 
               : 'border-transparent text-gray-500 hover:bg-gray-50'"
           >
-            <span>{{ fmt.pluginId }}</span>
-            <span class="text-[10px] bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
-              {{ getFormatSize(fmt) }}
-            </span>
+            {{ format }}
           </button>
         </div>
       </div>
@@ -79,82 +76,40 @@
           <div class="spinner w-8 h-8" />
         </div>
         
-        <div v-else-if="fullData?.formats?.[activeFormatIndex]" class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col max-w-4xl mx-auto w-full">
-          <div class="flex-1 overflow-y-auto p-1 relative scrollbar-thin">
-            <!-- Image -->
-            <div 
-              v-if="currentFormat.pluginId === 'image'" 
-              class="flex flex-col items-center justify-center min-h-full bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEwIDBoMTB2MTBIMTB6TTAgMTBoMTB2MTBIMHoiIGZpbGw9IiNmYWZhZmEiIGZpbGwtb3BhY2l0eT0iMSIvPjwvc3ZnPg==')]"
-            >
-              <img 
-                :src="imageBlobUrl || getImageSrc(currentFormat)" 
-                class="max-w-full max-h-full object-contain shadow-lg rounded cursor-pointer"
-                alt="Clipboard image"
-                @click="openImageInNewTab"
-              />
+        <div v-else-if="item" class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col max-w-4xl mx-auto w-full relative group">
+          <!-- Tabs moved to header -->
+
+          <div class="flex-1 relative bg-white">
+             <div v-if="previewLoading" class="absolute inset-0 flex items-center justify-center bg-white z-10">
+              <div class="spinner w-8 h-8" />
             </div>
             
-            <!-- HTML -->
-            <div v-else-if="currentFormat.pluginId === 'html'" class="h-full flex flex-col relative group">
-               <button 
-                  @click="copyTextWithToast(currentFormat.data)" 
-                  class="absolute right-4 top-4 z-10 bg-white/90 border border-gray-200 shadow-sm px-2 py-1 rounded text-xs hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
-                >
-                  <PhCopy :size="12" /> Copy
-                </button>
-              <iframe 
-                :srcdoc="currentFormat.data" 
-                class="w-full h-full border-none bg-white" 
-                sandbox="allow-same-origin"
-              ></iframe>
+            <div v-if="error" class="absolute inset-0 flex items-center justify-center text-red-500 p-4 text-center">
+              <p>Error loading preview: {{ error }}</p>
             </div>
 
-            <!-- Files -->
-             <div v-else-if="currentFormat.pluginId === 'files'" class="p-4">
-               <ul class="space-y-2">
-                 <li v-for="(file, i) in getFiles(currentFormat)" :key="i">
-                   <button 
-                    @click="copyTextWithToast(file.path)"
-                    class="w-full text-left group flex items-center gap-3 p-3 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-all"
-                    :title="file.path"
-                   >
-                     <div class="p-2 bg-gray-100 rounded-md text-gray-500 group-hover:bg-white group-hover:text-blue-500">
-                        <PhFileIcon :size="20" />
-                     </div>
-                     <div class="flex-1 min-w-0">
-                       <div class="text-sm font-medium text-gray-700 group-hover:text-blue-700 truncate">
-                         {{ file.name || file.path }}
-                       </div>
-                       <div class="text-xs text-gray-400 flex items-center gap-2">
-                          <span v-if="file.size">{{ formatBytes(file.size) }}</span>
-                          <span v-if="file.mime" class="px-1.5 py-0.5 bg-gray-100 rounded text-[10px] uppercase">{{ file.mime }}</span>
-                          <span class="text-gray-300 truncate">{{ file.path }}</span>
-                       </div>
-                     </div>
-                     <PhCopy :size="16" class="text-gray-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100" />
-                   </button>
-                 </li>
-               </ul>
-             </div>
+            <iframe 
+              v-if="previewData && activeTab && previewData.data[activeTab]"
+              :key="activeTab"
+              :srcdoc="previewData.data[activeTab].html"
+              class="w-full h-full border-none bg-white block" 
+              sandbox="allow-same-origin allow-scripts"
+            ></iframe>
+          </div>
 
-            <!-- Text/Code -->
-            <div v-else class="relative group min-h-full">
-              <button 
-                @click="copyTextWithToast(getFormatText(currentFormat))" 
-                class="absolute right-4 top-4 bg-white/90 border border-gray-200 shadow-sm px-2 py-1 rounded text-xs hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
-              >
-                <PhCopy :size="12" /> Copy
-              </button>
-              <pre class="p-6 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-gray-800">{{ getFormatText(currentFormat) }}</pre>
-            </div>
+          <div class="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+            <button 
+              @click="copyCurrentContent" 
+              class="bg-white/90 border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg text-xs hover:bg-gray-100 flex items-center gap-2 font-medium text-gray-700"
+            >
+              <PhCopy :size="14" /> 
+              {{ activeTab === 'image' ? 'Copy Image' : 'Copy Content' }}
+            </button>
           </div>
           
           <div class="bg-gray-50 border-t border-gray-100 px-4 py-2 text-[10px] text-gray-500 flex gap-4 font-mono flex-shrink-0">
-            <div>KIND: {{ currentFormat.kind || 'unknown' }}</div>
-            <div>PRIORITY: {{ currentFormat.priority || 0 }}</div>
-            <div v-if="currentFormat.pluginId === 'image' && currentFormat.metadata?.width">
-              DIMENSIONS: {{ currentFormat.metadata.width }} x {{ currentFormat.metadata.height }}
-            </div>
+            <div v-if="previewData?.kind">KIND: {{ previewData.kind }}</div>
+            <div v-if="activeTab">FORMAT: {{ activeTab }}</div>
           </div>
         </div>
       </div>
@@ -163,7 +118,7 @@
 </template>
 
 <script setup>
-import { computed, watch, onUnmounted, ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash } from '@phosphor-icons/vue'
 
 const props = defineProps({
@@ -175,36 +130,43 @@ const props = defineProps({
 
 const emit = defineEmits(['format-change', 'copy', 'delete', 'toast'])
 
-const imageBlobUrl = ref(null)
+const previewData = ref(null)
+const previewLoading = ref(false)
+const activeTab = ref('')
+const error = ref(null)
 
-const currentFormat = computed(() => props.fullData?.formats?.[props.activeFormatIndex])
-
-watch(currentFormat, (newFormat, oldFormat) => {
-  if (oldFormat?.pluginId === 'image' && imageBlobUrl.value) {
-    URL.revokeObjectURL(imageBlobUrl.value)
-    imageBlobUrl.value = null
-  }
+const fetchPreview = async (id) => {
+  if (!id) return
+  previewLoading.value = true
+  error.value = null
+  previewData.value = null
   
-  if (newFormat?.pluginId === 'image') {
-    const dataUrl = getImageSrc(newFormat)
-    if (dataUrl) {
-      fetch(dataUrl)
-        .then(res => res.blob())
-        .then(blob => {
-          imageBlobUrl.value = URL.createObjectURL(blob)
-        })
-        .catch(() => {
-          imageBlobUrl.value = null
-        })
+  try {
+    const res = await fetch(`/item/${id}/preview`)
+    if (!res.ok) throw new Error('Failed to load preview')
+    const data = await res.json()
+    previewData.value = data
+    
+    // Set initial active tab
+    if (data.formatsOrder && data.formatsOrder.length > 0) {
+      activeTab.value = data.formatsOrder[0]
     }
+  } catch (err) {
+    console.error('Preview fetch error:', err)
+    error.value = err.message
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+watch(() => props.item?.id, (newId) => {
+  if (newId) {
+    fetchPreview(newId)
+  } else {
+    previewData.value = null
+    activeTab.value = ''
   }
 }, { immediate: true })
-
-onUnmounted(() => {
-  if (imageBlobUrl.value) {
-    URL.revokeObjectURL(imageBlobUrl.value)
-  }
-})
 
 const formatBytes = (bytes) => {
   if (!bytes && bytes !== 0) return ''
@@ -222,47 +184,64 @@ const getFormatSize = (fmt) => {
   return '?'
 }
 
-const getImageSrc = (fmt) => {
-  if (!fmt?.data) return ''
-  if (typeof fmt.data === 'string') {
-    return fmt.data.startsWith('data:') ? fmt.data : `data:image/png;base64,${fmt.data}`
-  }
-  return ''
-}
-
-const getFormatText = (fmt) => {
-  if (!fmt) return ''
-  return typeof fmt.data === 'string' ? fmt.data : JSON.stringify(fmt.data, null, 2)
-}
-
-const getFiles = (fmt) => {
-  if (Array.isArray(fmt.data)) {
-    return fmt.data.map(item => {
-      if (typeof item === 'string') {
-        return { path: item, name: item.split('/').pop() || item }
-      }
-      return {
-          path: item.source_path || item.sourcePath || item.path,
-          name: item.name || (item.source_path || item.sourcePath || item.path).split('/').pop(),
-          size: item.size,
-          mime: item.mime
-      }
-    })
-  }
-  return []
-}
-
 const copyTextWithToast = (text) => {
   navigator.clipboard.writeText(text).then(() => {
     emit('toast', { title: 'Copied', message: 'Content copied to clipboard', type: 'success' })
   })
 }
 
-const openImageInNewTab = () => {
-  if (imageBlobUrl.value) {
-    window.open(imageBlobUrl.value, '_blank')
+const copyImage = async () => {
+  const html = previewData.value?.data?.image?.html
+  if (!html) return
+
+  // Extract base64 from HTML
+  const match = html.match(/src="(data:image\/[^;]+;base64,[^"]+)"/)
+  if (match && match[1]) {
+    try {
+      const res = await fetch(match[1])
+      const blob = await res.blob()
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [blob.type]: blob
+        })
+      ])
+      emit('toast', { title: 'Copied', message: 'Image copied to clipboard', type: 'success' })
+    } catch (err) {
+      console.error('Failed to copy image:', err)
+      emit('toast', { title: 'Error', message: 'Failed to copy image', type: 'error' })
+    }
   }
 }
+
+const copyCurrentContent = () => {
+  if (activeTab.value === 'image') {
+    copyImage()
+    return
+  }
+  
+  // For text/files/html, copy the raw text if available, or fall back to item ID copy
+  const text = previewData.value?.data?.[activeTab.value]?.text
+  if (text) {
+    copyTextWithToast(text)
+  } else {
+    emit('copy', props.item.id)
+  }
+}
+
+const handleMessage = (event) => {
+  if (event.data?.type === 'toast') {
+    emit('toast', event.data.toast || { message: event.data.message, type: event.data.level || 'info' })
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('message', handleMessage)
+})
+
+import { onUnmounted } from 'vue'
+onUnmounted(() => {
+  window.removeEventListener('message', handleMessage)
+})
 </script>
 
 <style scoped>

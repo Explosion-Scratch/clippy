@@ -379,6 +379,7 @@ async fn get_item_data(
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PreviewResponse {
+    kind: String,
     formats_order: Vec<String>,
     data: HashMap<String, PreviewData>,
 }
@@ -414,15 +415,6 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
     let style_css = load_template("style.css")?;
 
     let wrap_html = |content_html: String| -> String {
-        // We inject style and script directly to make it self-contained
-        // The templates already have <link> and <script> tags, but since we are returning
-        // the HTML string to be rendered in an iframe (likely via srcdoc or similar),
-        // we should probably inline them or ensure the relative paths work.
-        // User said "bundle this templates folder... fill in the templates".
-        // If the iframe is rendered with srcdoc, relative links won't work easily unless base tag is set.
-        // But simpler to inline for "self contained".
-        // However, the templates I wrote use <link href="style.css">.
-        // I will replace those tags with inline content.
         content_html
             .replace(
                 r#"<link rel="stylesheet" href="style.css">"#,
@@ -434,154 +426,156 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
             )
     };
 
-    // 1. Text Format
-    if metadata.kind == crate::data::model::EntryKind::Text {
-        if let Some(text) = &metadata.summary {
-            // Or load full text if needed
-            // For text kind, summary is usually the content if short, or we might need to load full content.
-            // Let's try to load full content if available.
-            let full_text =
-                if let Some(text_file) = metadata.files.iter().find(|f| f.ends_with(".txt")) {
-                    std::fs::read_to_string(item_dir.join(text_file)).unwrap_or(text.clone())
-                } else {
-                    text.clone()
-                };
+    // Use build_full_json_item to get data for all formats
+    let full_item = plugins::build_full_json_item(&metadata, &item_dir, None, None)
+        .map_err(ApiError::from)?;
 
-            let template = load_template("text.html")?;
-            let html = template.replace("{{content}}", &html_escape::encode_text(&full_text));
-            let final_html = wrap_html(html);
+    for format in full_item.formats {
+        match format.plugin_id.as_str() {
+            "text" => {
+                if let Some(text_content) = format.data.as_str() {
+                    let template = load_template("text.html")?;
+                    let html = template.replace("{{content}}", &html_escape::encode_text(text_content));
+                    let final_html = wrap_html(html);
 
-            data.insert(
-                "text".to_string(),
-                PreviewData {
-                    html: final_html,
-                    text: Some(full_text),
-                },
-            );
-            formats_order.push("text".to_string());
-        }
-    }
-
-    // 2. Image Format
-    if metadata.kind == crate::data::model::EntryKind::Image {
-        // We need to serve the image. For a self-contained HTML, we can base64 encode it.
-        // Or we can use a blob URL if served from same origin, but API returns JSON.
-        // Base64 is safest for "self contained".
-        if let Some(img_file) = metadata
-            .files
-            .iter()
-            .find(|f| f.ends_with(".png") || f.ends_with(".jpg"))
-        {
-            let img_path = item_dir.join(img_file);
-            if let Ok(img_bytes) = std::fs::read(&img_path) {
-                let mime = if img_file.ends_with(".png") {
-                    "image/png"
-                } else {
-                    "image/jpeg"
-                };
-                let b64 = base64::encode(&img_bytes);
-                let src = format!("data:{};base64,{}", mime, b64);
-
-                let template = load_template("image.html")?;
-                let html = template.replace("{{content}}", &src);
-                let final_html = wrap_html(html);
-
-                data.insert(
-                    "image".to_string(),
-                    PreviewData {
-                        html: final_html,
-                        text: None,
-                    },
-                );
-                formats_order.push("image".to_string());
+                    data.insert(
+                        "text".to_string(),
+                        PreviewData {
+                            html: final_html,
+                            text: Some(text_content.to_string()),
+                        },
+                    );
+                    formats_order.push("text".to_string());
+                }
             }
+            "image" => {
+                if let Some(src) = format.data.as_str() {
+                    // Extract dimensions from metadata
+                    let width = format.metadata.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let height = format.metadata.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let dimensions = if width > 0 && height > 0 {
+                        format!("{} x {} px", width, height)
+                    } else {
+                        String::new()
+                    };
+
+                    let template = load_template("image.html")?;
+                    let html = template
+                        .replace("{{content}}", src)
+                        .replace("{{dimensions}}", &dimensions);
+                    let final_html = wrap_html(html);
+
+                    data.insert(
+                        "image".to_string(),
+                        PreviewData {
+                            html: final_html,
+                            text: None,
+                        },
+                    );
+                    formats_order.push("image".to_string());
+                }
+            }
+            "files" => {
+                if let Some(arr) = format.data.as_array() {
+                    let mut file_items = Vec::new();
+                    for file_obj in arr {
+                        let name = file_obj.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        let size_bytes = file_obj.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let source_path = file_obj.get("source_path").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                        
+                        file_items.push((name, crate::data::store::human_size(size_bytes), source_path));
+                    }
+
+                    if !file_items.is_empty() {
+                        let template = load_template("file.html")?;
+                        let list_item_template = r##"<a href="#" class="file-item" onclick="copyPath('{{path}}'); return false;" title="Click to copy path">
+                            <div class="file-icon">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 0 0 0 2 2h12a2 0 0 0 2-2V9z"></path>
+                                    <polyline points="13 2 13 9 20 9"></polyline>
+                                </svg>
+                            </div>
+                            <div class="file-info">
+                                <div class="file-name">{{name}}</div>
+                                <div class="file-meta">
+                                    <span class="file-tag">FILE</span>
+                                    <span class="file-path">{{path}}</span>
+                                    <span class="file-size">{{size}}</span>
+                                </div>
+                            </div>
+                        </a>"##;
+
+                        let list_html: String = file_items
+                            .iter()
+                            .map(|(name, size, path)| {
+                                list_item_template
+                                    .replace("{{path}}", &html_escape::encode_text(path))
+                                    .replace("{{name}}", &html_escape::encode_text(name))
+                                    .replace("{{size}}", size)
+                            })
+                            .collect();
+
+                        let copy_text = file_items.iter().map(|(_, _, path)| path.as_str()).collect::<Vec<_>>().join("\n");
+
+                        let re = regex::Regex::new(r"\{\{#each files\}\}([\s\S]*?)\{\{/each\}\}").unwrap();
+                        let html = re.replace(&template, &list_html).to_string();
+                        
+                        let script = r#"
+                        <script>
+                            function copyPath(text) {
+                                navigator.clipboard.writeText(text).then(() => {
+                                    window.parent.postMessage({ 
+                                        type: 'toast', 
+                                        toast: { title: 'Copied', message: 'Path copied to clipboard', type: 'success' } 
+                                    }, '*');
+                                });
+                            }
+                        </script>
+                        "#;
+                        
+                        let final_html = wrap_html(html + script);
+
+                        data.insert(
+                            "files".to_string(),
+                            PreviewData {
+                                html: final_html,
+                                text: Some(copy_text),
+                            },
+                        );
+                        formats_order.push("files".to_string());
+                    }
+                }
+            }
+            "html" => {
+                if let Some(html_content) = format.data.as_str() {
+                    let template = load_template("html.html")?;
+                    let escaped_content = html_escape::encode_double_quoted_attribute(html_content);
+                    let html = template.replace("{{content}}", &escaped_content);
+                    let final_html = wrap_html(html);
+
+                    data.insert(
+                        "html".to_string(),
+                        PreviewData {
+                            html: final_html,
+                            text: None,
+                        },
+                    );
+                    formats_order.push("html".to_string());
+                }
+            }
+            _ => {}
         }
     }
 
-    // 3. Files Format
-    if metadata.kind == crate::data::model::EntryKind::File {
-        // We have a list of files in metadata.summary (usually) or we need to parse it.
-        // Actually metadata.summary for files is usually the list of files or first file.
-        // Let's assume we can get the list.
-        // In `mapApiItem` in frontend, it uses `item.summary` as a single file or parses it?
-        // The `ClipboardItem.vue` logic handles it.
-        // For now, let's assume summary contains the file list or we can get it from somewhere.
-        // `metadata.files` contains the files stored in the data dir, NOT the original file paths.
-        // The original file paths are usually in the content if it was a file copy.
-        // But `get_clipboard` stores the file content if it can, or just paths?
-        // Looking at `src/clipboard/plugins/files.rs` would clarify, but let's assume `summary` has the paths for now.
-        // Or `search_text`.
-
-        let file_paths: Vec<String> = if let Some(summary) = &metadata.summary {
-            summary.lines().map(|s| s.to_string()).collect()
-        } else {
-            vec![]
-        };
-
-        if !file_paths.is_empty() {
-            let template = load_template("file.html")?;
-            // Simple handlebars-like replacement for list
-            // {{#each files}}...{{/each}}
-            // I'll do a manual replacement since I don't have a template engine.
-            let list_item_template = r#"<li class="file-item">
-                <span class="file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256"><path fill="currentColor" d="m213.66 82.34l-56-56A8 8 0 0 0 152 24H56a16 16 0 0 0-16 16v176a16 16 0 0 0 16 16h144a16 16 0 0 0 16-16V88a8 8 0 0 0-2.34-5.66M160 51.31L188.69 80H160ZM200 216H56V40h88v48a8 8 0 0 0 8 8h48z"/></svg></span>
-                <span class="file-path" title="{{this}}">{{this}}</span>
-                <button class="copy-btn" data-text="{{this}}">Copy Path</button>
-            </li>"#;
-
-            let list_html: String = file_paths
-                .iter()
-                .map(|path| list_item_template.replace("{{this}}", &html_escape::encode_text(path)))
-                .collect();
-
-            // Regex to replace the block
-            let re = regex::Regex::new(r"\{\{#each files\}\}([\s\S]*?)\{\{/each\}\}").unwrap();
-            // Note: my manual replacement above used the inner content of the block from my memory of the template.
-            // But I should extract it from the template string to be correct.
-            // Let's just replace the whole block with my generated list for simplicity,
-            // assuming the template matches what I wrote.
-            // Actually, to be robust, I should just replace `{{#each files}}...{{/each}}` with the list.
-            // But I need the inner template.
-            // Let's simplify: I'll just replace `{{#each files}}...{{/each}}` with the generated list items,
-            // ignoring the inner template in the file and using the one hardcoded here which matches.
-
-            let html = re.replace(&template, &list_html).to_string();
-            let final_html = wrap_html(html);
-
-            data.insert(
-                "files".to_string(),
-                PreviewData {
-                    html: final_html,
-                    text: None, // Files implement their own copy buttons
-                },
-            );
-            formats_order.push("files".to_string());
-        }
-    }
-
-    // 4. HTML Format
-    // Check if we have HTML content stored
-    if let Some(html_file) = metadata.files.iter().find(|f| f.ends_with(".html")) {
-        let html_content = std::fs::read_to_string(item_dir.join(html_file)).unwrap_or_default();
-        if !html_content.is_empty() {
-            let template = load_template("html.html")?;
-            // Escape for srcdoc attribute
-            let escaped_content = html_escape::encode_double_quoted_attribute(&html_content);
-            let html = template.replace("{{content}}", &escaped_content);
-            let final_html = wrap_html(html);
-
-            data.insert(
-                "html".to_string(),
-                PreviewData {
-                    html: final_html,
-                    text: None,
-                },
-            );
-            formats_order.push("html".to_string());
-        }
-    }
+    let kind_str = match metadata.kind {
+        crate::data::model::EntryKind::Text => "text",
+        crate::data::model::EntryKind::Image => "image",
+        crate::data::model::EntryKind::File => "file",
+        crate::data::model::EntryKind::Other => "other",
+    };
 
     Ok(Json(PreviewResponse {
+        kind: kind_str.to_string(),
         formats_order,
         data,
     }))
@@ -647,7 +641,7 @@ async fn search_items(
     let index = load_fresh_index()?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
 
-    let (parsed_query, is_regex, mut selection_filter) =
+    let (parsed_query, is_regex, selection_filter) =
         crate::search::parse_search_query(query, false);
 
     let mut options = SearchOptions::default();

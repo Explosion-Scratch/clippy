@@ -7,7 +7,7 @@ mod text;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use clipboard_rs::common::ClipboardContent;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -397,16 +397,16 @@ pub fn build_json_item_with_preference(
         .ok_or_else(|| anyhow!("Missing plugin metadata for {}", metadata.hash))?;
 
     if let Some(plugin_id) = preferred {
-        if let Some(item) =
-            json_with_plugin(metadata, item_dir, &item_path, &map, plugin_id, index, real_index)?
-        {
+        if let Some(item) = json_with_plugin(
+            metadata, item_dir, &item_path, &map, plugin_id, index, real_index,
+        )? {
             return Ok(item);
         }
     }
     for plugin_id in order {
-        if let Some(item) =
-            json_with_plugin(metadata, item_dir, &item_path, &map, &plugin_id, index, real_index)?
-        {
+        if let Some(item) = json_with_plugin(
+            metadata, item_dir, &item_path, &map, &plugin_id, index, real_index,
+        )? {
             return Ok(item);
         }
     }
@@ -505,7 +505,7 @@ pub fn compute_json_item_hash(item: &ClipboardJsonFullItem) -> Result<String> {
     Ok(sha256_bytes(&bytes))
 }
 
-fn extract_plugin_meta(
+pub fn extract_plugin_meta(
     metadata: &EntryMetadata,
 ) -> Result<Option<(Vec<String>, Map<String, Value>)>> {
     let root = match metadata.extra.as_object() {

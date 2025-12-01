@@ -9,11 +9,23 @@
     <div class="preview-container">
         <ul class="file-list">
             {{#each files}}
-            <li class="file-item">
-                <span class="file-icon">📄</span>
-                <span class="file-path" title="{{this}}">{{this}}</span>
-                <button class="copy-btn" data-text="{{this}}">Copy Path</button>
-            </li>
+            <a href="#" class="file-item" onclick="navigator.clipboard.writeText('{{this}}'); return false;"
+                title="Click to copy path">
+                <div class="file-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 256 256"><!-- Icon from Phosphor by Phosphor Icons - https://github.com/phosphor-icons/core/blob/main/LICENSE -->
+                        <path fill="currentColor"
+                            d="m213.66 82.34l-56-56A8 8 0 0 0 152 24H56a16 16 0 0 0-16 16v176a16 16 0 0 0 16 16h144a16 16 0 0 0 16-16V88a8 8 0 0 0-2.34-5.66M160 51.31L188.69 80H160ZM200 216H56V40h88v48a8 8 0 0 0 8 8h48z" />
+                    </svg>
+                </div>
+                <div class="file-info">
+                    <div class="file-name">{{this}}</div>
+                    <div class="file-meta">
+                        <span class="file-tag">FILE</span>
+                        <span class="file-path">{{this}}</span>
+                    </div>
+                </div>
+            </a>
             {{/each}}
         </ul>
     </div>
