@@ -161,6 +161,61 @@ function mapApiItem(item) {
     };
 }
 
+// Preview logic
+const previewHtml = ref("");
+const previewCache = new Map();
+
+async function fetchPreview(id) {
+    if (!id) {
+        previewHtml.value = "";
+        return;
+    }
+    
+    // Check cache
+    if (previewCache.has(id)) {
+        previewHtml.value = previewCache.get(id);
+        return;
+    }
+    
+    previewHtml.value = ""; // Clear while loading
+    
+    try {
+        const response = await fetch(`http://localhost:3016/item/${id}/preview`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const data = await response.json();
+        if (data.formatsOrder && data.formatsOrder.length > 0) {
+            const preferredFormat = data.formatsOrder[0];
+            const formatData = data.data[preferredFormat];
+            if (formatData && formatData.html) {
+                previewHtml.value = formatData.html;
+                previewCache.set(id, formatData.html);
+            }
+        } else {
+             previewHtml.value = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">No preview available</div>`;
+        }
+    } catch (e) {
+        console.error("Failed to fetch preview:", e);
+        previewHtml.value = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">Failed to load preview</div>`;
+    }
+}
+
+watch(selectedItem, async (newItem) => {
+    if (newItem) {
+        await fetchPreview(newItem.id);
+    } else {
+        previewHtml.value = "";
+    }
+});
+
+// Listen for toast messages from iframe
+onMounted(() => {
+    window.addEventListener('show-toast', (e) => {
+        // TODO: Implement a proper toast notification system
+        console.log("Toast:", e.detail);
+    });
+});
+
 watch(searchQuery, (newQuery) => {
     selectedIndex.value = -1;
     currentPageOffset.value = 0;
@@ -424,13 +479,28 @@ onMounted(async () => {
             <input v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" autofocus />
         </div>
 
-        <div class="items-container">
-            <div v-if="clipboardItems?.length === 0 && !isLoading" class="empty-state">
-                <div class="empty-icon">📋</div>
-                <p>{{ searchQuery ? "No results" : "Copy something to get started" }}</p>
+        <div class="content-area">
+            <div class="items-container">
+                <div v-if="clipboardItems?.length === 0 && !isLoading" class="empty-state">
+                    <div class="empty-icon">📋</div>
+                    <p>{{ searchQuery ? "No results" : "Copy something to get started" }}</p>
+                </div>
+                <div v-else class="clipboard-list">
+                    <ClipboardItem v-for="(item, index) in clipboardItems" :key="item.id" :item="{ ...item, index }" :selected="index === selectedIndex" @mouseenter="selectedIndex = index" @delete="deleteItem(item.id)" @select="pasteItemToSystem(item)" />
+                </div>
             </div>
-            <div v-else class="clipboard-list">
-                <ClipboardItem v-for="(item, index) in clipboardItems" :key="item.id" :item="{ ...item, index }" :selected="index === selectedIndex" @mouseenter="selectedIndex = index" @delete="deleteItem(item.id)" @select="pasteItemToSystem(item)" />
+            
+            <div class="preview-pane" v-if="selectedItem">
+                <div class="preview-header">
+                    <span>Preview</span>
+                    <div class="preview-actions">
+                        <!-- Actions like copy raw text could go here -->
+                    </div>
+                </div>
+                <iframe v-if="previewHtml" :srcdoc="previewHtml" sandbox="allow-scripts allow-same-origin"></iframe>
+                <div v-else class="loading-preview" style="display: flex; justify-content: center; align-items: center; height: 100%; color: var(--text-secondary);">
+                    Loading preview...
+                </div>
             </div>
         </div>
 
@@ -460,6 +530,45 @@ onMounted(async () => {
     min-height: 200px;
 
     .search-container { margin-top: 3px; }
+    .content-area {
+        display: flex;
+        gap: 10px;
+        flex: 1;
+        min-height: 0;
+    }
+    .items-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+    .preview-pane {
+        width: 400px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        
+        iframe {
+            flex: 1;
+            border: none;
+            background: white;
+        }
+        
+        .preview-header {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.8em;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-tertiary);
+        }
+    }
+
     .clipboard-list {
         padding-top: 10px; display: flex; flex-direction: column; gap: 1px;
         .clipboard-item {

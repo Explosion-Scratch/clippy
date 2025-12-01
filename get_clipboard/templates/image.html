@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="preview-container">
+        <div class="image-container" id="imgContainer">
+            <img src="{{content}}" id="previewImage" alt="Image Preview">
+            <div class="image-controls">
+                <button onclick="zoomIn()">+</button>
+                <button onclick="zoomOut()">-</button>
+                <button onclick="resetZoom()">R</button>
+            </div>
+        </div>
+    </div>
+    <script src="base_iframe.js"></script>
+    <script>
+        let scale = 1;
+        let translateX = 0, translateY = 0;
+        const img = document.getElementById('previewImage');
+        const container = document.getElementById('imgContainer');
+
+        function updateTransform() {
+            img.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        }
+
+        function zoomIn() {
+            scale *= 1.2;
+            updateTransform();
+        }
+
+        function zoomOut() {
+            scale /= 1.2;
+            updateTransform();
+        }
+
+        function resetZoom() {
+            scale = 1;
+            translateX = 0;
+            translateY = 0;
+            updateTransform();
+        }
+
+        // Zoom with scroll
+        container.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = e.deltaY * -0.01;
+            // Limit scale between 0.1 and 10
+            scale = Math.min(Math.max(0.1, scale + delta), 10);
+            updateTransform();
+        }, { passive: false });
+
+        // Drag functionality
+        let isDragging = false;
+        let startX, startY, initialTranslateX, initialTranslateY;
+
+        container.style.cursor = 'grab';
+
+        container.addEventListener('mousedown', e => {
+            if (e.target.tagName === 'BUTTON') return;
+            e.preventDefault();
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialTranslateX = translateX;
+            initialTranslateY = translateY;
+            container.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                container.style.cursor = 'grab';
+            }
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            translateX = initialTranslateX + dx;
+            translateY = initialTranslateY + dy;
+            updateTransform();
+        });
+    </script>
+</body>
+
+</html>

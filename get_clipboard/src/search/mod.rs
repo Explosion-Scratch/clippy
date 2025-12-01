@@ -7,6 +7,7 @@ pub struct SelectionFilter {
     pub include_image: bool,
     pub include_file: bool,
     pub include_other: bool,
+    pub include_html: bool,
     pub include_formats: Vec<String>,
 }
 
@@ -15,7 +16,8 @@ impl SelectionFilter {
         let kind_filter_active = self.include_text
             || self.include_image
             || self.include_file
-            || self.include_other;
+            || self.include_other
+            || self.include_html;
         let format_filter_active = !self.include_formats.is_empty();
 
         if !kind_filter_active && !format_filter_active {
@@ -27,6 +29,7 @@ impl SelectionFilter {
                 || (self.include_image && record.kind == EntryKind::Image)
                 || (self.include_file && record.kind == EntryKind::File)
                 || (self.include_other && record.kind == EntryKind::Other)
+                || (self.include_html && contains_format(&record.detected_formats, "html"))
         } else {
             false
         };
@@ -69,6 +72,7 @@ pub struct SearchOptions {
     pub to: Option<OffsetDateTime>,
     pub sort: SortOrder,
     pub order: SortDirection,
+    pub regex: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -149,7 +153,7 @@ pub fn search(index: &SearchIndex, options: &SearchOptions) -> SearchResult {
     for (global_position, record) in records {
         let record = *record;
         if let Some(query) = normalized_query.as_ref() {
-            if !query_matches(record, query) {
+            if !query_matches(record, query, options.regex) {
                 continue;
             }
         }
@@ -195,7 +199,31 @@ fn in_range(
     }
 }
 
-fn query_matches(record: &SearchIndexRecord, query: &str) -> bool {
+fn query_matches(record: &SearchIndexRecord, query: &str, is_regex: bool) -> bool {
+    if is_regex {
+        if let Ok(re) = regex::RegexBuilder::new(query)
+            .case_insensitive(true)
+            .build()
+        {
+            if re.is_match(&record.hash) {
+                return true;
+            }
+            if record
+                .summary
+                .as_ref()
+                .map(|summary| re.is_match(summary))
+                .unwrap_or(false)
+            {
+                return true;
+            }
+            return record
+                .search_text
+                .as_ref()
+                .map(|text| re.is_match(text))
+                .unwrap_or(false);
+        }
+    }
+
     if record.hash.to_lowercase().contains(query) {
         return true;
     }
@@ -223,6 +251,14 @@ fn contains_format(formats: &[String], needle: &str) -> bool {
 }
 
 fn calculate_relevance(record: &SearchIndexRecord, query: &str) -> u32 {
+    // Note: Regex relevance scoring is simplified to boolean match for now
+    // as calculating "how much" it matches is complex and potentially slow.
+    // We fall back to standard string matching for relevance if not regex,
+    // or if regex we could try to see if it matches.
+    // For now, let's keep the existing logic which assumes 'query' is a string literal.
+    // If the user passed a regex, this might give low scores if the regex syntax
+    // doesn't literally appear in the text, but that's acceptable for a first pass.
+
     let hash = record.hash.to_lowercase();
     let mut score = if hash == query {
         100
@@ -256,18 +292,70 @@ fn calculate_relevance(record: &SearchIndexRecord, query: &str) -> u32 {
     };
 
     if score > 0 {
-        let content_len = record.summary.as_ref().map(|s| s.len())
+        let content_len = record
+            .summary
+            .as_ref()
+            .map(|s| s.len())
             .or_else(|| record.search_text.as_ref().map(|t| t.len()))
             .unwrap_or(0) as f64;
-        
+
         let length_boost = if content_len > 0.0 {
             (1000.0 / (content_len + 100.0)).max(0.5)
         } else {
             1.0
         };
-        
+
         score = (score as f64 * length_boost).round() as u32;
     }
 
     score
+}
+
+pub fn parse_search_query(query: &str, force_regex: bool) -> (String, bool, SelectionFilter) {
+    let mut filter = SelectionFilter::default();
+    let mut final_query = query.to_string();
+    let mut is_regex = force_regex;
+
+    if query.starts_with("@") {
+        match query {
+            "@link" => {
+                final_query = r"https?://[^\s]+".to_string();
+                is_regex = true;
+            }
+            "@image" => {
+                filter.include_image = true;
+                final_query = "".to_string();
+            }
+            "@file" => {
+                filter.include_file = true;
+                final_query = "".to_string();
+            }
+            "@html" => {
+                filter.include_html = true;
+                final_query = "".to_string();
+            }
+            "@color" => {
+                // Matches hex, rgb, rgba, hsl, hsla
+                final_query = r"(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\)|hsla?\([^)]+\))".to_string();
+                is_regex = true;
+            }
+            "@path" => {
+                // Matches file paths (Unix/Windows)
+                final_query = r"(/[^/ ]*)+/?|[a-zA-Z]:\\[^\\]*".to_string();
+                is_regex = true;
+                filter.include_file = true; // Also include file types
+                filter.include_text = true; // And text that looks like paths
+            }
+            _ => {
+                // Check for @[thing] syntax
+                if query.starts_with("@[") && query.ends_with("]") {
+                    // Treat as regex
+                    final_query = query[2..query.len() - 1].to_string();
+                    is_regex = true;
+                }
+            }
+        }
+    }
+
+    (final_query, is_regex, filter)
 }

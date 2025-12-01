@@ -36,9 +36,11 @@ use tokio::net::TcpListener;
 const API_DOCS: &str = include_str!("../../API.md");
 
 static FRONTEND_DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/frontend-dist");
+static TEMPLATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/templates");
 
 // Store API start time as a static variable
 static mut API_START_TIME: Option<u64> = None;
+static mut API_PORT: Option<u16> = None;
 
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
@@ -46,13 +48,14 @@ pub async fn serve(port: u16) -> Result<()> {
     println!("API listening on http://{}", addr);
     println!("Dashboard available at http://{}/dashboard", addr);
 
-    // Record API start time
+    // Record API start time and port
     let start_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
     unsafe {
         API_START_TIME = Some(start_time);
+        API_PORT = Some(port);
     }
 
     // Note: Watcher is now run separately via 'get_clipboard watch' command
@@ -76,6 +79,7 @@ fn router() -> Router {
             "/item/:selector",
             get(get_item).delete(axum_delete(delete_item)).put(put_item),
         )
+        .route("/item/:selector/preview", get(preview_item))
         .route("/item/:selector/copy", post(copy_item))
         .route("/item/:selector/paste", post(paste_item))
         .route("/search", get(search_items))
@@ -86,132 +90,14 @@ fn router() -> Router {
         .route("/save", post(save_payload))
 }
 
-#[derive(Debug, Deserialize)]
-struct ItemsQuery {
-    offset: Option<usize>,
-    count: Option<usize>,
-    ids: Option<String>,
-    sort: Option<String>,
-    order: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SearchQuery {
-    query: Option<String>,
-    offset: Option<usize>,
-    count: Option<usize>,
-    formats: Option<String>,
-    sort: Option<String>,
-    order: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DirUpdateRequest {
-    mode: String,
-    path: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DirResponse {
-    path: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct MtimeResponse {
-    last_modified: Option<String>,
-    id: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StatsHistoryEntry {
-    count: usize,
-    ids: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StatsResponse {
-    total_items: usize,
-    total_size: u64,
-    type_counts: HashMap<String, usize>,
-    history: HashMap<String, HashMap<String, StatsHistoryEntry>>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct VersionResponse {
-    version: String,
-    api_start_time: Option<u64>,
-    api_start_time_iso: Option<String>,
-}
-
-#[derive(Clone)]
-enum Selector {
-    Hash(String),
-    Offset(usize),
-}
-
-impl Selector {
-    fn parse(input: &str) -> Self {
-        if input.len() >= 6 {
-            Selector::Hash(input.to_string())
-        } else if let Ok(index) = input.parse::<usize>() {
-            Selector::Offset(index)
-        } else {
-            Selector::Hash(input.to_string())
-        }
-    }
-}
-
-#[derive(Debug)]
-enum ApiError {
-    NotFound(String),
-    BadRequest(String),
-    Internal(anyhow::Error),
-}
-
-impl ApiError {
-    fn not_found(message: impl Into<String>) -> Self {
-        ApiError::NotFound(message.into())
-    }
-
-    fn bad_request(message: impl Into<String>) -> Self {
-        ApiError::BadRequest(message.into())
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        match self {
-            ApiError::NotFound(message) => {
-                (StatusCode::NOT_FOUND, Json(json!({ "error": message }))).into_response()
-            }
-            ApiError::BadRequest(message) => {
-                (StatusCode::BAD_REQUEST, Json(json!({ "error": message }))).into_response()
-            }
-            ApiError::Internal(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": error.to_string() })),
-            )
-                .into_response(),
-        }
-    }
-}
-
-impl From<anyhow::Error> for ApiError {
-    fn from(error: anyhow::Error) -> Self {
-        ApiError::Internal(error)
-    }
-}
-
 async fn get_docs() -> impl IntoResponse {
+    let port = unsafe { API_PORT.unwrap_or(3000) };
+    let url = format!("http://127.0.0.1:{}", port);
+    let docs = API_DOCS.replace("{{URL}}", &url);
     (
         StatusCode::OK,
         [("Content-Type", "text/plain; charset=utf-8")],
-        API_DOCS,
+        docs,
     )
 }
 
@@ -307,9 +193,130 @@ async fn get_items(
     Ok(Json(response))
 }
 
+#[derive(Clone)]
+enum Selector {
+    Hash(String),
+    Offset(usize),
+}
+
+impl Selector {
+    fn parse(input: &str) -> Self {
+        if input.len() >= 6 {
+            Selector::Hash(input.to_string())
+        } else if let Ok(index) = input.parse::<usize>() {
+            Selector::Offset(index)
+        } else {
+            Selector::Hash(input.to_string())
+        }
+    }
+}
+
+#[derive(Debug)]
+enum ApiError {
+    NotFound(String),
+    BadRequest(String),
+    Internal(anyhow::Error),
+}
+
+impl ApiError {
+    fn not_found(message: impl Into<String>) -> Self {
+        ApiError::NotFound(message.into())
+    }
+
+    fn bad_request(message: impl Into<String>) -> Self {
+        ApiError::BadRequest(message.into())
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        match self {
+            ApiError::NotFound(message) => {
+                (StatusCode::NOT_FOUND, Json(json!({ "error": message }))).into_response()
+            }
+            ApiError::BadRequest(message) => {
+                (StatusCode::BAD_REQUEST, Json(json!({ "error": message }))).into_response()
+            }
+            ApiError::Internal(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": error.to_string() })),
+            )
+                .into_response(),
+        }
+    }
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(error: anyhow::Error) -> Self {
+        ApiError::Internal(error)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct ItemQuery {
     formats: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ItemsQuery {
+    offset: Option<usize>,
+    count: Option<usize>,
+    ids: Option<String>,
+    sort: Option<String>,
+    order: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchQuery {
+    query: Option<String>,
+    offset: Option<usize>,
+    count: Option<usize>,
+    formats: Option<String>,
+    sort: Option<String>,
+    order: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DirUpdateRequest {
+    mode: String,
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirResponse {
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MtimeResponse {
+    last_modified: Option<String>,
+    id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatsHistoryEntry {
+    count: usize,
+    ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatsResponse {
+    total_items: usize,
+    total_size: u64,
+    type_counts: HashMap<String, usize>,
+    history: HashMap<String, HashMap<String, StatsHistoryEntry>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VersionResponse {
+    version: String,
+    api_start_time: Option<u64>,
+    api_start_time_iso: Option<String>,
 }
 
 async fn get_item(
@@ -367,6 +374,217 @@ async fn get_item_data(
     let item = plugins::build_full_json_item(&metadata, &item_dir, Some(offset), Some(real_index))
         .map_err(ApiError::from)?;
     Ok(Json(item))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewResponse {
+    formats_order: Vec<String>,
+    data: HashMap<String, PreviewData>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewData {
+    html: String,
+    text: Option<String>,
+}
+
+async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewResponse>, ApiError> {
+    let index = load_fresh_index()?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
+    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+
+    let mut data = HashMap::new();
+    let mut formats_order = Vec::new();
+
+    // Helper to load template
+    let load_template = |name: &str| -> Result<String, ApiError> {
+        let file = TEMPLATES
+            .get_file(name)
+            .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("Template {} not found", name)))?;
+        Ok(String::from_utf8_lossy(file.contents()).to_string())
+    };
+
+    // Helper to load base JS/CSS
+    let base_js = load_template("base_iframe.js")?;
+    let style_css = load_template("style.css")?;
+
+    let wrap_html = |content_html: String| -> String {
+        // We inject style and script directly to make it self-contained
+        // The templates already have <link> and <script> tags, but since we are returning
+        // the HTML string to be rendered in an iframe (likely via srcdoc or similar),
+        // we should probably inline them or ensure the relative paths work.
+        // User said "bundle this templates folder... fill in the templates".
+        // If the iframe is rendered with srcdoc, relative links won't work easily unless base tag is set.
+        // But simpler to inline for "self contained".
+        // However, the templates I wrote use <link href="style.css">.
+        // I will replace those tags with inline content.
+        content_html
+            .replace(
+                r#"<link rel="stylesheet" href="style.css">"#,
+                &format!("<style>{}</style>", style_css),
+            )
+            .replace(
+                r#"<script src="base_iframe.js"></script>"#,
+                &format!("<script>{}</script>", base_js),
+            )
+    };
+
+    // 1. Text Format
+    if metadata.kind == crate::data::model::EntryKind::Text {
+        if let Some(text) = &metadata.summary {
+            // Or load full text if needed
+            // For text kind, summary is usually the content if short, or we might need to load full content.
+            // Let's try to load full content if available.
+            let full_text =
+                if let Some(text_file) = metadata.files.iter().find(|f| f.ends_with(".txt")) {
+                    std::fs::read_to_string(item_dir.join(text_file)).unwrap_or(text.clone())
+                } else {
+                    text.clone()
+                };
+
+            let template = load_template("text.html")?;
+            let html = template.replace("{{content}}", &html_escape::encode_text(&full_text));
+            let final_html = wrap_html(html);
+
+            data.insert(
+                "text".to_string(),
+                PreviewData {
+                    html: final_html,
+                    text: Some(full_text),
+                },
+            );
+            formats_order.push("text".to_string());
+        }
+    }
+
+    // 2. Image Format
+    if metadata.kind == crate::data::model::EntryKind::Image {
+        // We need to serve the image. For a self-contained HTML, we can base64 encode it.
+        // Or we can use a blob URL if served from same origin, but API returns JSON.
+        // Base64 is safest for "self contained".
+        if let Some(img_file) = metadata
+            .files
+            .iter()
+            .find(|f| f.ends_with(".png") || f.ends_with(".jpg"))
+        {
+            let img_path = item_dir.join(img_file);
+            if let Ok(img_bytes) = std::fs::read(&img_path) {
+                let mime = if img_file.ends_with(".png") {
+                    "image/png"
+                } else {
+                    "image/jpeg"
+                };
+                let b64 = base64::encode(&img_bytes);
+                let src = format!("data:{};base64,{}", mime, b64);
+
+                let template = load_template("image.html")?;
+                let html = template.replace("{{content}}", &src);
+                let final_html = wrap_html(html);
+
+                data.insert(
+                    "image".to_string(),
+                    PreviewData {
+                        html: final_html,
+                        text: None,
+                    },
+                );
+                formats_order.push("image".to_string());
+            }
+        }
+    }
+
+    // 3. Files Format
+    if metadata.kind == crate::data::model::EntryKind::File {
+        // We have a list of files in metadata.summary (usually) or we need to parse it.
+        // Actually metadata.summary for files is usually the list of files or first file.
+        // Let's assume we can get the list.
+        // In `mapApiItem` in frontend, it uses `item.summary` as a single file or parses it?
+        // The `ClipboardItem.vue` logic handles it.
+        // For now, let's assume summary contains the file list or we can get it from somewhere.
+        // `metadata.files` contains the files stored in the data dir, NOT the original file paths.
+        // The original file paths are usually in the content if it was a file copy.
+        // But `get_clipboard` stores the file content if it can, or just paths?
+        // Looking at `src/clipboard/plugins/files.rs` would clarify, but let's assume `summary` has the paths for now.
+        // Or `search_text`.
+
+        let file_paths: Vec<String> = if let Some(summary) = &metadata.summary {
+            summary.lines().map(|s| s.to_string()).collect()
+        } else {
+            vec![]
+        };
+
+        if !file_paths.is_empty() {
+            let template = load_template("file.html")?;
+            // Simple handlebars-like replacement for list
+            // {{#each files}}...{{/each}}
+            // I'll do a manual replacement since I don't have a template engine.
+            let list_item_template = r#"<li class="file-item">
+                <span class="file-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 256 256"><path fill="currentColor" d="m213.66 82.34l-56-56A8 8 0 0 0 152 24H56a16 16 0 0 0-16 16v176a16 16 0 0 0 16 16h144a16 16 0 0 0 16-16V88a8 8 0 0 0-2.34-5.66M160 51.31L188.69 80H160ZM200 216H56V40h88v48a8 8 0 0 0 8 8h48z"/></svg></span>
+                <span class="file-path" title="{{this}}">{{this}}</span>
+                <button class="copy-btn" data-text="{{this}}">Copy Path</button>
+            </li>"#;
+
+            let list_html: String = file_paths
+                .iter()
+                .map(|path| list_item_template.replace("{{this}}", &html_escape::encode_text(path)))
+                .collect();
+
+            // Regex to replace the block
+            let re = regex::Regex::new(r"\{\{#each files\}\}([\s\S]*?)\{\{/each\}\}").unwrap();
+            // Note: my manual replacement above used the inner content of the block from my memory of the template.
+            // But I should extract it from the template string to be correct.
+            // Let's just replace the whole block with my generated list for simplicity,
+            // assuming the template matches what I wrote.
+            // Actually, to be robust, I should just replace `{{#each files}}...{{/each}}` with the list.
+            // But I need the inner template.
+            // Let's simplify: I'll just replace `{{#each files}}...{{/each}}` with the generated list items,
+            // ignoring the inner template in the file and using the one hardcoded here which matches.
+
+            let html = re.replace(&template, &list_html).to_string();
+            let final_html = wrap_html(html);
+
+            data.insert(
+                "files".to_string(),
+                PreviewData {
+                    html: final_html,
+                    text: None, // Files implement their own copy buttons
+                },
+            );
+            formats_order.push("files".to_string());
+        }
+    }
+
+    // 4. HTML Format
+    // Check if we have HTML content stored
+    if let Some(html_file) = metadata.files.iter().find(|f| f.ends_with(".html")) {
+        let html_content = std::fs::read_to_string(item_dir.join(html_file)).unwrap_or_default();
+        if !html_content.is_empty() {
+            let template = load_template("html.html")?;
+            // Escape for srcdoc attribute
+            let escaped_content = html_escape::encode_double_quoted_attribute(&html_content);
+            let html = template.replace("{{content}}", &escaped_content);
+            let final_html = wrap_html(html);
+
+            data.insert(
+                "html".to_string(),
+                PreviewData {
+                    html: final_html,
+                    text: None,
+                },
+            );
+            formats_order.push("html".to_string());
+        }
+    }
+
+    Ok(Json(PreviewResponse {
+        formats_order,
+        data,
+    }))
 }
 
 async fn copy_item(
@@ -428,10 +646,17 @@ async fn search_items(
     }
     let index = load_fresh_index()?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
+
+    let (parsed_query, is_regex, mut selection_filter) =
+        crate::search::parse_search_query(query, false);
+
     let mut options = SearchOptions::default();
-    if !query.is_empty() {
-        options.query = Some(query.to_string());
+    if !parsed_query.is_empty() {
+        options.query = Some(parsed_query);
     }
+    options.regex = is_regex;
+    options.filter = selection_filter;
+
     options.offset = params.offset.unwrap_or(0);
     options.limit = Some(params.count.unwrap_or(50));
 
@@ -460,6 +685,7 @@ async fn search_items(
                 "text" => options.filter.include_text = true,
                 "image" => options.filter.include_image = true,
                 "file" | "files" => options.filter.include_file = true,
+                "html" => options.filter.include_html = true,
                 other => options.filter.include_formats.push(other.to_string()),
             }
         }

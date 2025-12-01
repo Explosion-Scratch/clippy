@@ -120,6 +120,8 @@ pub struct HistoryArgs {
     pub to: Option<String>,
     #[arg(long)]
     pub full: bool,
+    #[arg(long)]
+    pub regex: bool,
     #[arg(long, value_enum)]
     pub sort: Option<HistorySort>,
 }
@@ -131,6 +133,8 @@ pub struct SearchArgs {
     pub limit: Option<usize>,
     #[arg(long)]
     pub full: bool,
+    #[arg(long)]
+    pub regex: bool,
     #[arg(long, value_enum)]
     pub sort: Option<SearchSort>,
 }

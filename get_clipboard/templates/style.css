@@ -1,0 +1,163 @@
+:root {
+    --bg-primary: #ffffff;
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --border-color: #e0e0e0;
+    --accent: #007bff;
+    --accent-text: #ffffff;
+    --bg-code: #f5f5f5;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-primary: #1e1e1e;
+        --text-primary: #e0e0e0;
+        --text-secondary: #aaaaaa;
+        --border-color: #333333;
+        --accent: #007bff;
+        --accent-text: #ffffff;
+        --bg-code: #2d2d2d;
+    }
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: transparent;
+    /* Transparent background for iframe */
+    color: var(--text-primary);
+    margin: 0;
+    padding: 10px;
+    height: 100vh;
+    box-sizing: border-box;
+    overflow: hidden;
+    /* Let specific containers scroll */
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-container {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Text Preview */
+.text-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Image Preview */
+.image-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    background: repeating-conic-gradient(#808080 0% 25%, transparent 0% 50%) 50% / 20px 20px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.image-container img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: transform 0.1s;
+}
+
+.image-controls {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    padding: 5px 10px;
+    border-radius: 20px;
+    display: flex;
+    gap: 10px;
+    color: white;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.image-container:hover .image-controls {
+    opacity: 1;
+}
+
+.image-controls button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+/* File Preview */
+.file-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-icon {
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    color: var(--text-secondary);
+}
+
+.file-icon svg {
+    display: block;
+}
+
+.file-path {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.copy-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.copy-btn:hover {
+    background: var(--bg-code);
+    color: var(--text-primary);
+}
+
+/* HTML Preview */
+.html-content {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: white;
+    /* HTML usually expects white background */
+}

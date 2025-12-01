@@ -1,7 +1,7 @@
 use crate::api;
 use crate::cli::args::{
     ApiArgs, Cli, Command, DirCommand, EntryKind as CliEntryKind, FilterFlags, HistoryArgs,
-    SearchArgs, ServiceAction, PermissionsCmd,
+    PermissionsCmd, SearchArgs, ServiceAction,
 };
 use crate::clipboard::plugins::{self, DisplayContent, ImageDisplay};
 use crate::config::{self, ensure_data_dir, load_config};
@@ -11,10 +11,10 @@ use crate::data::store::{
     load_index, load_metadata, refresh_index, resolve_selector, stream_history_items,
 };
 use crate::search::SearchOptions;
-use crate::service::{self, ServiceStatus, watch, permissions};
+use crate::service::{self, ServiceStatus, permissions, watch};
 use crate::tui;
-use crate::util::time::{OffsetDateTime, format_iso, parse_date};
 use crate::util::paste;
+use crate::util::time::{OffsetDateTime, format_iso, parse_date};
 use anyhow::{Context, Result, bail};
 use serde_json::to_string_pretty;
 use std::{
@@ -88,23 +88,21 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             paste::simulate_paste()?;
             Ok(())
         }
-        Command::Permissions { subcommand } => {
-            match subcommand {
-                PermissionsCmd::Check => {
-                    if permissions::check_accessibility() {
-                        println!("Accessibility permissions granted");
-                        Ok(())
-                    } else {
-                        bail!("Accessibility permissions NOT granted");
-                    }
-                }
-                PermissionsCmd::Request => {
-                    permissions::request_accessibility();
-                    println!("Opened System Settings to request permissions");
+        Command::Permissions { subcommand } => match subcommand {
+            PermissionsCmd::Check => {
+                if permissions::check_accessibility() {
+                    println!("Accessibility permissions granted");
                     Ok(())
+                } else {
+                    bail!("Accessibility permissions NOT granted");
                 }
             }
-        }
+            PermissionsCmd::Request => {
+                permissions::request_accessibility();
+                println!("Opened System Settings to request permissions");
+                Ok(())
+            }
+        },
     }
 }
 
@@ -165,12 +163,8 @@ fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<
 
     match mode {
         OutputMode::JsonFull => {
-            let json_item = plugins::build_full_json_item(
-                &metadata,
-                &item_dir,
-                selector_index,
-                None,
-            )?;
+            let json_item =
+                plugins::build_full_json_item(&metadata, &item_dir, selector_index, None)?;
             let output = to_string_pretty(&json_item)?;
             if !write_line(&output)? {
                 return Ok(());
@@ -190,8 +184,11 @@ fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<
             }
         }
         OutputMode::Text => {
-            let content =
-                plugins::build_display_content_with_preference(&metadata, &item_dir, preferred_plugin)?;
+            let content = plugins::build_display_content_with_preference(
+                &metadata,
+                &item_dir,
+                preferred_plugin,
+            )?;
             render_display(content)?;
             log_item_details(&metadata, &item_dir)?;
         }
@@ -275,13 +272,7 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
 
     let mut options = SearchOptions::default();
     let is_interactive = io::stdout().is_terminal();
-    options.limit = limit.or_else(|| {
-        if is_interactive {
-            Some(100)
-        } else {
-            None
-        }
-    });
+    options.limit = limit.or_else(|| if is_interactive { Some(100) } else { None });
     options.query = query;
     options.filter = selection_filter;
     options.from = from;
@@ -295,9 +286,7 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
 
     match mode {
         OutputMode::Text => {
-            stream_history_items(&index, &options, |item| {
-                output_single_item(item, mode)
-            })
+            stream_history_items(&index, &options, |item| output_single_item(item, mode))
         }
         _ => {
             let (items, _) = load_history_items(&index, &options)?;
@@ -309,13 +298,42 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
 fn run_search(args: SearchArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
-    let SearchArgs { query, limit, sort, .. } = args;
-    let selection_filter = build_selection_filter(filters, None);
+    let SearchArgs {
+        query,
+        limit,
+        sort,
+        regex,
+        ..
+    } = args;
+
+    let (query, is_regex, mut selection_filter) = crate::search::parse_search_query(&query, regex);
+    let extra_filter = build_selection_filter(filters, None);
+
+    // Merge filters
+    if extra_filter.include_text {
+        selection_filter.include_text = true;
+    }
+    if extra_filter.include_image {
+        selection_filter.include_image = true;
+    }
+    if extra_filter.include_file {
+        selection_filter.include_file = true;
+    }
+    if extra_filter.include_other {
+        selection_filter.include_other = true;
+    }
+    if extra_filter.include_html {
+        selection_filter.include_html = true;
+    }
+    selection_filter
+        .include_formats
+        .extend(extra_filter.include_formats);
 
     let mut options = SearchOptions::default();
     options.limit = limit;
     options.query = Some(query);
     options.filter = selection_filter;
+    options.regex = is_regex;
     options.sort = match sort {
         Some(crate::cli::args::SearchSort::Date) => crate::search::SortOrder::Date,
         Some(crate::cli::args::SearchSort::Copies) => crate::search::SortOrder::Copies,
@@ -326,9 +344,7 @@ fn run_search(args: SearchArgs, filters: &FilterFlags, mode: OutputMode) -> Resu
 
     match mode {
         OutputMode::Text => {
-            stream_history_items(&index, &options, |item| {
-                output_single_item(item, mode)
-            })
+            stream_history_items(&index, &options, |item| output_single_item(item, mode))
         }
         _ => {
             let (items, _) = load_history_items(&index, &options)?;
@@ -363,7 +379,10 @@ fn output_single_item(item: &HistoryItem, mode: OutputMode) -> Result<bool> {
             } else {
                 clean_summary(&item.summary)
             };
-            let line = format!("{} ({}) [{} x{}]   {}", item.offset, item.global_offset, timestamp, copies, summary);
+            let line = format!(
+                "{} ({}) [{} x{}]   {}",
+                item.offset, item.global_offset, timestamp, copies, summary
+            );
             write_line(&line)
         }
         _ => Ok(true),
@@ -434,7 +453,10 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
                 } else {
                     clean_summary(&item.summary)
                 };
-                let line = format!("{} ({}) [{} x{}]   {}", item.offset, item.global_offset, timestamp, copies, summary);
+                let line = format!(
+                    "{} ({}) [{} x{}]   {}",
+                    item.offset, item.global_offset, timestamp, copies, summary
+                );
                 if !write_line(&line)? {
                     break;
                 }
@@ -613,7 +635,10 @@ fn clip_summary_to_width(
     global_index: usize,
 ) -> String {
     let clean = clean_summary(input);
-    let prefix = format!("{} ({}) [{} x{}]   ", index, global_index, timestamp, copies);
+    let prefix = format!(
+        "{} ({}) [{} x{}]   ",
+        index, global_index, timestamp, copies
+    );
     let prefix_len = prefix.chars().count();
 
     if terminal_width <= prefix_len {

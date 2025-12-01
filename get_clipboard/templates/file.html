@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="preview-container">
+        <ul class="file-list">
+            {{#each files}}
+            <li class="file-item">
+                <span class="file-icon">📄</span>
+                <span class="file-path" title="{{this}}">{{this}}</span>
+                <button class="copy-btn" data-text="{{this}}">Copy Path</button>
+            </li>
+            {{/each}}
+        </ul>
+    </div>
+    <script src="base_iframe.js"></script>
+</body>
+
+</html>

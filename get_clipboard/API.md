@@ -4,7 +4,7 @@
 
 The Clipboard Manager API is a RESTful HTTP API that provides programmatic access to clipboard history management. It allows you to retrieve, search, copy, save, and delete clipboard items through a simple HTTP interface.
 
-**Base URL:** `http://127.0.0.1:<port>`  
+**Base URL:** `{{URL}}`  
 **Default Port:** Configurable via command line arguments  
 **Response Format:** JSON  
 **Authentication:** None (local access only)
@@ -173,7 +173,7 @@ Returns the current version of get_clipboard and API server start time informati
 
 **Example:**
 ```bash
-curl http://127.0.0.1:3000/version
+curl {{URL}}/version
 ```
 
 **Use Cases:**
@@ -201,7 +201,7 @@ Serves the static Vue.js dashboard application. This is a full-featured web inte
 
 **Example:**
 ```bash
-curl http://127.0.0.1:3000/
+curl {{URL}}/
 ```
 
 ---
@@ -224,17 +224,17 @@ Retrieve a list of clipboard items with optional filtering.
 
 Get 10 most recent items:
 ```bash
-curl "http://127.0.0.1:3000/items?count=10"
+curl "{{URL}}/items?count=10"
 ```
 
 Get items starting from offset 20:
 ```bash
-curl "http://127.0.0.1:3000/items?offset=20&count=10"
+curl "{{URL}}/items?offset=20&count=10"
 ```
 
 Get specific items by hash or offset:
 ```bash
-curl "http://127.0.0.1:3000/items?ids=0,1,a1b2c3d4e5f6"
+curl "{{URL}}/items?ids=0,1,a1b2c3d4e5f6"
 ```
 
 **Response Example:**
@@ -273,12 +273,12 @@ Retrieve metadata and summary for a single clipboard item.
 
 Get most recent item:
 ```bash
-curl http://127.0.0.1:3000/item/0
+curl {{URL}}/item/0
 ```
 
 Get item by hash:
 ```bash
-curl http://127.0.0.1:3000/item/abc123def456
+curl {{URL}}/item/abc123def456
 ```
 
 **Error Responses:**
@@ -298,7 +298,7 @@ Retrieve complete data for a single clipboard item, including all content.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:3000/item/0/data
+curl {{URL}}/item/0/data
 ```
 
 **Response Example:**
@@ -340,7 +340,7 @@ Delete a clipboard item from history.
 
 **Example:**
 ```bash
-curl -X DELETE http://127.0.0.1:3000/item/0
+curl -X DELETE {{URL}}/item/0
 ```
 
 **Error Responses:**
@@ -365,7 +365,7 @@ Increment the copy count for an item without copying to clipboard.
 
 **Example:**
 ```bash
-curl -X PUT http://127.0.0.1:3000/item/0
+curl -X PUT {{URL}}/item/0
 ```
 
 **Use Cases:**
@@ -386,7 +386,7 @@ Copy a clipboard item to the system clipboard and increment its copy count.
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:3000/item/0/copy
+curl -X POST {{URL}}/item/0/copy
 ```
 
 **Response Example:**
@@ -434,12 +434,12 @@ Search clipboard history using full-text search.
 
 Basic search:
 ```bash
-curl "http://127.0.0.1:3000/search?query=important"
+curl "{{URL}}/search?query=important"
 ```
 
 Paginated search:
 ```bash
-curl "http://127.0.0.1:3000/search?query=meeting&offset=0&count=10"
+curl "{{URL}}/search?query=meeting&offset=0&count=10"
 ```
 
 **Search Behavior:**
@@ -486,7 +486,7 @@ Retrieve library statistics including total items, size, and historical breakdow
 
 **Example:**
 ```bash
-curl http://127.0.0.1:3000/stats
+curl {{URL}}/stats
 ```
 
 ---
@@ -511,7 +511,7 @@ Get the timestamp of the most recently added clipboard item.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:3000/mtime
+curl {{URL}}/mtime
 ```
 
 **Use Cases:**
@@ -534,7 +534,7 @@ Get the current data directory path.
 
 **Example:**
 ```bash
-curl http://127.0.0.1:3000/dir
+curl {{URL}}/dir
 ```
 
 ---
@@ -566,14 +566,14 @@ Update the data directory path.
 
 **Example (Move Data):**
 ```bash
-curl -X POST http://127.0.0.1:3000/dir \
+curl -X POST {{URL}}/dir \
   -H "Content-Type: application/json" \
   -d '{"mode": "move", "path": "/Users/me/clipboard_backup"}'
 ```
 
 **Example (Update Path):**
 ```bash
-curl -X POST http://127.0.0.1:3000/dir \
+curl -X POST {{URL}}/dir \
   -H "Content-Type: application/json" \
   -d '{"mode": "update", "path": "/existing/data/path"}'
 ```
@@ -596,7 +596,7 @@ Copy provided JSON data directly to the system clipboard without saving to histo
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:3000/copy \
+curl -X POST {{URL}}/copy \
   -H "Content-Type: application/json" \
   -d '{
     "hash": "temporary",
@@ -640,7 +640,7 @@ Save provided JSON data to clipboard history and optionally copy to system clipb
 
 **Example:**
 ```bash
-curl -X POST http://127.0.0.1:3000/save \
+curl -X POST {{URL}}/save \
   -H "Content-Type: application/json" \
   -d '{
     "hash": "new-item",
@@ -764,31 +764,31 @@ The API uses standard HTTP status codes and returns JSON error objects.
 
 ```bash
 # Get 20 most recent items
-curl "http://127.0.0.1:3000/items?count=20"
+curl "{{URL}}/items?count=20"
 ```
 
 #### 2. Search and Copy
 
 ```bash
 # Search for items
-curl "http://127.0.0.1:3000/search?query=meeting+notes"
+curl "{{URL}}/search?query=meeting+notes"
 
 # Copy first result to clipboard
-curl -X POST http://127.0.0.1:3000/item/0/copy
+curl -X POST {{URL}}/item/0/copy
 ```
 
 #### 3. Export Item Data
 
 ```bash
 # Get full data for an item
-curl http://127.0.0.1:3000/item/0/data > clipboard_item.json
+curl {{URL}}/item/0/data > clipboard_item.json
 ```
 
 #### 4. Import Item
 
 ```bash
 # Save external data to history
-curl -X POST http://127.0.0.1:3000/save \
+curl -X POST {{URL}}/save \
   -H "Content-Type: application/json" \
   -d @clipboard_item.json
 ```
@@ -797,7 +797,7 @@ curl -X POST http://127.0.0.1:3000/save \
 
 ```bash
 # Get items from offset 100 onwards
-curl "http://127.0.0.1:3000/items?offset=100&count=50" | \
+curl "{{URL}}/items?offset=100&count=50" | \
   jq -r '.[].hash' | \
   while read hash; do
     curl -X DELETE "http://127.0.0.1:3000/item/$hash"
