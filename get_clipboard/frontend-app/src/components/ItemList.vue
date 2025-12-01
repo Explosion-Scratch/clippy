@@ -36,8 +36,8 @@
         @click="$emit('select', item, $event)"
         class="group flex items-center gap-3 px-4 py-2 cursor-pointer border-b border-gray-50 hover:bg-gray-50 transition-all relative select-none"
         :class="{
-          'bg-stone-100': selectedItem?.id === item.id,
-          'bg-stone-100/50': selectedIds.has(item.id) && selectedItem?.id !== item.id
+          'bg-stone-200': selectedItem?.id === item.id,
+          'bg-stone-200/90': selectedIds.has(item.id) && selectedItem?.id !== item.id
         }"
       >
         <div 
