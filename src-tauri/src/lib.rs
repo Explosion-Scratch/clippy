@@ -5,6 +5,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 use tauri_plugin_shell::ShellExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tauri::Emitter;
 
 mod sidecar;
 mod visibility;
@@ -80,9 +81,11 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
         "settings",
         tauri::WebviewUrl::App("/settings".into())
     )
-    .title("Settings")
-    .inner_size(400.0, 500.0)
-    .resizable(true)
+    .title("Clippy Settings")
+    .inner_size(400.0, 450.0)
+    .resizable(false)
+    .minimizable(true)
+    .maximizable(false)
     .visible(true)
     .focused(true)
     .build()?;
@@ -106,6 +109,87 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     Ok(())
 }
 
+
+// Command to show preview for an item
+// Command to show preview for an item
+#[tauri::command]
+fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    use tauri::{Manager, LogicalSize};
+
+    let preview_window = app.get_webview_window("preview")
+        .ok_or("Failed to get preview window")?;
+    
+    let main_window = app.get_webview_window("main")
+        .ok_or("Failed to get main window")?;
+
+
+    // Apply vibrancy
+
+    #[cfg(target_os = "macos")]
+    {
+        apply_vibrancy(&preview_window, NSVisualEffectMaterial::HudWindow, None, None)
+            .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS")
+    }
+
+    // Get main window position and size
+    let main_pos = main_window.outer_position()
+        .map_err(|e| format!("Failed to get main window position: {}", e))?;
+    let main_size = main_window.outer_size()
+        .map_err(|e| format!("Failed to get main window size: {}", e))?;
+
+    // Calculate preview position (right of main window)
+    // We use physical coordinates for set_position
+    let gap = 10; // Gap between windows
+    let preview_x = main_pos.x + main_size.width as i32 + gap;
+    let preview_y = main_pos.y;
+
+    preview_window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+        x: preview_x,
+        y: preview_y,
+    })).map_err(|e| format!("Failed to set preview position: {}", e))?;
+
+
+    // Make window non-focusable to prevent focus stealing
+    preview_window.set_focusable(false)
+        .map_err(|e| format!("Failed to set focusable: {}", e))?;
+
+    // Show the window without focusing it
+    // Note: set_focusable(false) should prevent focus on show, but we can also use show() safely now.
+    preview_window.show()
+        .map_err(|e| format!("Failed to show preview window: {}", e))?;
+
+    println!("Showing preview for item: {}", id);
+
+    // Emit event to preview window
+    preview_window.emit("preview-item", id)
+        .map_err(|e| format!("Failed to emit preview event: {}", e))?;
+
+    println!("Emitted preview-item event");
+
+    Ok(())
+}
+
+// Command to fetch preview content
+#[tauri::command]
+async fn get_preview_content(id: String) -> Result<serde_json::Value, String> {
+    let url = format!("http://localhost:3016/item/{}/preview?interactive=false", id);
+    let client = reqwest::Client::new();
+    
+    let response = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch preview: {}", e))?;
+        
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+    
+    let json = response.json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        
+    Ok(json)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -131,6 +215,8 @@ pub fn run() {
             unregister_main_shortcut,
             register_main_shortcut,
             open_settings,
+            preview_item,
+            get_preview_content,
             sidecar::init_service,
             sidecar::stop_service,
             sidecar::get_service_status,
@@ -159,10 +245,7 @@ pub fn run() {
             use tauri_plugin_global_shortcut::{Code, ShortcutState};
 
             let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
-            // NOTE: We no longer register Cmd+Comma as a global shortcut
-            // It will be handled by the frontend when the window is visible
-            // and by the tray menu accelerator when the tray is focused
-
+            
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let app_handle = app.handle().clone();

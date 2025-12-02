@@ -31,20 +31,24 @@
         },
         "visible": false
       },
-    {
-        "label": "settings",
-        "title": "Clippy Settings",
-        "url": "/settings",
-        "width": 400,
-        "height": 450,
-        "transparent": false,
+      {
+        "label": "preview",
+        "title": "Preview",
+        "url": "/preview",
+        "width": 300,
+        "height": 200,
+        "transparent": true,
         "resizable": false,
-        "minimizable": true,
+        "minimizable": false,
         "maximizable": false,
-        "alwaysOnTop": false,
-        "skipTaskbar": false,
-        "decorations": true,
-        "center": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": -100,
+          "y": -100
+        },
         "visible": false
       }
     ],
@@ -54,7 +58,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": [
+      "app"
+    ],
     "externalBin": [
       "binaries/get_clipboard"
     ],

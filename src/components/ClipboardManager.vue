@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch, nextTick, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+// ClipboardItem component
 import ClipboardItem from "./ClipboardItem.vue";
 
 const clipboardItems = ref([]);
@@ -162,49 +163,17 @@ function mapApiItem(item) {
 }
 
 // Preview logic
-const previewHtml = ref("");
-const previewCache = new Map();
-
-async function fetchPreview(id) {
-    if (!id) {
-        previewHtml.value = "";
-        return;
-    }
-    
-    // Check cache
-    if (previewCache.has(id)) {
-        previewHtml.value = previewCache.get(id);
-        return;
-    }
-    
-    previewHtml.value = ""; // Clear while loading
-    
-    try {
-        const response = await fetch(`http://localhost:3016/item/${id}/preview`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
-        const data = await response.json();
-        if (data.formatsOrder && data.formatsOrder.length > 0) {
-            const preferredFormat = data.formatsOrder[0];
-            const formatData = data.data[preferredFormat];
-            if (formatData && formatData.html) {
-                previewHtml.value = formatData.html;
-                previewCache.set(id, formatData.html);
-            }
-        } else {
-             previewHtml.value = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">No preview available</div>`;
-        }
-    } catch (e) {
-        console.error("Failed to fetch preview:", e);
-        previewHtml.value = `<div style="padding: 20px; color: var(--text-secondary); text-align: center;">Failed to load preview</div>`;
-    }
-}
-
 watch(selectedItem, async (newItem) => {
     if (newItem) {
-        await fetchPreview(newItem.id);
+        try {
+            await invoke("preview_item", { id: newItem.id });
+        } catch (e) {
+            console.error("Failed to show preview:", e);
+        }
     } else {
-        previewHtml.value = "";
+        // We might want to hide the preview window here, but currently the backend 'hide' logic handles hiding both.
+        // If we want to hide just the preview when no item is selected (but window is open), we'd need a new command.
+        // For now, let's leave it as is, or maybe send an empty preview?
     }
 });
 
@@ -489,19 +458,6 @@ onMounted(async () => {
                     <ClipboardItem v-for="(item, index) in clipboardItems" :key="item.id" :item="{ ...item, index }" :selected="index === selectedIndex" @mouseenter="selectedIndex = index" @delete="deleteItem(item.id)" @select="pasteItemToSystem(item)" />
                 </div>
             </div>
-            
-            <div class="preview-pane" v-if="selectedItem">
-                <div class="preview-header">
-                    <span>Preview</span>
-                    <div class="preview-actions">
-                        <!-- Actions like copy raw text could go here -->
-                    </div>
-                </div>
-                <iframe v-if="previewHtml" :srcdoc="previewHtml" sandbox="allow-scripts allow-same-origin"></iframe>
-                <div v-else class="loading-preview" style="display: flex; justify-content: center; align-items: center; height: 100%; color: var(--text-secondary);">
-                    Loading preview...
-                </div>
-            </div>
         </div>
 
         <div v-if="showLoadingStatus || selectedItem" class="status-bar">
@@ -542,32 +498,7 @@ onMounted(async () => {
         flex-direction: column;
         min-width: 0;
     }
-    .preview-pane {
-        width: 400px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        
-        iframe {
-            flex: 1;
-            border: none;
-            background: white;
-        }
-        
-        .preview-header {
-            padding: 8px;
-            border-bottom: 1px solid var(--border-color);
-            font-size: 0.8em;
-            font-weight: bold;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: var(--bg-tertiary);
-        }
-    }
+
 
     .clipboard-list {
         padding-top: 10px; display: flex; flex-direction: column; gap: 1px;

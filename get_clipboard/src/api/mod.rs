@@ -391,7 +391,15 @@ struct PreviewData {
     text: Option<String>,
 }
 
-async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewResponse>, ApiError> {
+#[derive(Debug, Deserialize)]
+struct PreviewQuery {
+    interactive: Option<String>, // Accept string "true"/"false" to be safe, or bool if axum handles it well. Axum handles bool.
+}
+
+async fn preview_item(
+    Path(selector): Path<String>,
+    Query(params): Query<PreviewQuery>,
+) -> Result<Json<PreviewResponse>, ApiError> {
     let index = load_fresh_index()?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
@@ -402,12 +410,37 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
     let mut data = HashMap::new();
     let mut formats_order = Vec::new();
 
+    let interactive = params.interactive.as_deref().unwrap_or("false") == "true";
+
     // Helper to load template
     let load_template = |name: &str| -> Result<String, ApiError> {
         let file = TEMPLATES
             .get_file(name)
             .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("Template {} not found", name)))?;
         Ok(String::from_utf8_lossy(file.contents()).to_string())
+    };
+
+    // Helper to process conditional blocks
+    let process_template = |template: &str| -> String {
+        let mut result = template.to_string();
+        
+        // Handle {{#if interactive}}...{{/if}}
+        let re_if = regex::Regex::new(r"\{\{#if interactive\}\}([\s\S]*?)\{\{/if\}\}").unwrap();
+        if interactive {
+            result = re_if.replace_all(&result, "$1").to_string();
+        } else {
+            result = re_if.replace_all(&result, "").to_string();
+        }
+
+        // Handle {{#unless interactive}}...{{/unless}}
+        let re_unless = regex::Regex::new(r"\{\{#unless interactive\}\}([\s\S]*?)\{\{/unless\}\}").unwrap();
+        if !interactive {
+            result = re_unless.replace_all(&result, "$1").to_string();
+        } else {
+            result = re_unless.replace_all(&result, "").to_string();
+        }
+        
+        result
     };
 
     // Helper to load base JS/CSS
@@ -435,6 +468,7 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
             "text" => {
                 if let Some(text_content) = format.data.as_str() {
                     let template = load_template("text.html")?;
+                    let template = process_template(&template);
                     let html = template.replace("{{content}}", &html_escape::encode_text(text_content));
                     let final_html = wrap_html(html);
 
@@ -460,6 +494,7 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
                     };
 
                     let template = load_template("image.html")?;
+                    let template = process_template(&template);
                     let html = template
                         .replace("{{content}}", src)
                         .replace("{{dimensions}}", &dimensions);
@@ -488,6 +523,7 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
 
                     if !file_items.is_empty() {
                         let template = load_template("file.html")?;
+                        let template = process_template(&template);
                         let list_item_template = r##"<a href="#" class="file-item" onclick="copyPath('{{path}}'); return false;" title="Click to copy path">
                             <div class="file-icon">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -517,8 +553,23 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
 
                         let copy_text = file_items.iter().map(|(_, _, path)| path.as_str()).collect::<Vec<_>>().join("\n");
 
+                        let file_count = file_items.len();
+                        let first_file_name = file_items.first().map(|(n, _, _)| n.clone()).unwrap_or_default();
+                        let others_count = if file_count > 1 { file_count - 1 } else { 0 };
+
                         let re = regex::Regex::new(r"\{\{#each files\}\}([\s\S]*?)\{\{/each\}\}").unwrap();
                         let html = re.replace(&template, &list_html).to_string();
+                        
+                        let others_text = if others_count > 0 {
+                            format!("<br>and {} others", others_count)
+                        } else {
+                            String::new()
+                        };
+
+                        let html = html
+                            .replace("{{file_count}}", &file_count.to_string())
+                            .replace("{{first_file_name}}", &html_escape::encode_text(&first_file_name))
+                            .replace("{{others_text}}", &others_text);
                         
                         let script = r#"
                         <script>
@@ -549,6 +600,7 @@ async fn preview_item(Path(selector): Path<String>) -> Result<Json<PreviewRespon
             "html" => {
                 if let Some(html_content) = format.data.as_str() {
                     let template = load_template("html.html")?;
+                    let template = process_template(&template);
                     let escaped_content = html_escape::encode_double_quoted_attribute(html_content);
                     let html = template.replace("{{content}}", &escaped_content);
                     let final_html = wrap_html(html);
