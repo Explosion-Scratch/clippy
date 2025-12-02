@@ -13,19 +13,19 @@ async function fetchPreview(id) {
         previewHtml.value = "";
         return;
     }
-    
+
     console.log("Fetching preview for id:", id);
-    
+
     isLoading.value = true;
     error.value = null;
     previewHtml.value = "";
-    
+
     try {
         // Fetch preview using Tauri command
         console.log("Invoking get_preview_content");
         const data = await invoke("get_preview_content", { id });
         console.log("Preview data received:", data);
-        
+
         if (data.formatsOrder && data.formatsOrder.length > 0) {
             const preferredFormat = data.formatsOrder[0];
             const formatData = data.data[preferredFormat];
@@ -35,9 +35,9 @@ async function fetchPreview(id) {
                 // If it's a full HTML string containing an iframe, we might need to parse it.
                 // However, the current implementation seems to return HTML content directly.
                 // If the content is an iframe (like for images), we need to make sure the src has the param.
-                
+
                 let html = formatData.html;
-                
+
                 // Simple regex to append query param to src attribute if it's an iframe
                 // This is a bit hacky but works for the current template system
                 if (html.includes('<iframe') && html.includes('src="')) {
@@ -46,13 +46,13 @@ async function fetchPreview(id) {
                         return `src="${url}${separator}interactive=false"`;
                     });
                 }
-                
+
                 previewHtml.value = html;
                 console.log("Preview HTML set");
             }
         } else {
-             console.warn("No formats available for preview");
-             error.value = "No preview available";
+            console.warn("No formats available for preview");
+            error.value = "No preview available";
         }
     } catch (e) {
         console.error("Failed to fetch preview:", e);
@@ -77,60 +77,58 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="preview-window">
-        <div class="content-wrapper">
-            <div v-if="isLoading" class="loading-state">
-                <div class="spinner"></div>
-                <span>Loading preview...</span>
-            </div>
-            <div v-else-if="error" class="error-state">
-                {{ error }}
-            </div>
-            <div v-else-if="previewHtml" class="preview-content" v-html="previewHtml"></div>
-            <div v-else class="empty-state">
-                No item selected
-            </div>
+    <div id="wrapper" class="compact">
+        <div v-if="isLoading" class="loading-state">
+            <div class="spinner"></div>
+            <span>Loading preview...</span>
+        </div>
+        <div v-else-if="error" class="error-state">
+            {{ error }}
+        </div>
+        <div v-else-if="previewHtml" id="content" v-html="previewHtml"></div>
+        <div v-else class="empty-state">
+            No item selected
         </div>
     </div>
 </template>
 
 <style lang="less">
-:root, body, #app {
+:root,
+body,
+#app {
     background: transparent !important;
-}
-
-.preview-window {
-    height: 100vh;
-    width: 100vw;
-    padding: 10px; /* Padding for the shadow/border */
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
     font-family: system-ui, sans-serif;
 }
 
-.content-wrapper {
-    flex: 1;
-    overflow: hidden;
+#wrapper {
+    height: 100vh;
+    width: 100vw;
+    padding: 10px;
+    /* Padding for the shadow/border */
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    position: relative;
+    overflow-y: scroll;
+    font-family: system-ui, sans-serif;
 }
 
-.preview-content {
+#content {
     flex: 1;
     width: 100%;
     height: 100%;
-    
+
     iframe {
         width: 100%;
         height: 100%;
         border: none;
-        background: white; /* Ensure iframe background is white */
+        background: white;
+        /* Ensure iframe background is white */
     }
 }
 
-.loading-state, .error-state, .empty-state {
+.loading-state,
+.error-state,
+.empty-state {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -151,6 +149,8 @@ onMounted(async () => {
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 </style>
