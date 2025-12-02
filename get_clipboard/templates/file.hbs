@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        {{>style.css}}
+    </style>
+</head>
+
+<body>
+    <div class="content-wrapper">
+        <div class="preview-container">
+            {{#if interactive}}
+            <div id="fullList" class="file-list-container">
+                <ul class="file-list">
+                    {{#each files}}
+                    <a href="#" class="file-item" onclick="copyPath('{{path}}'); return false;"
+                        title="Click to copy path">
+                        <div class="file-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256">
+                                <path fill="currentColor"
+                                    d="m213.66 82.34l-56-56A8 8 0 0 0 152 24H56a16 16 0 0 0-16 16v176a16 16 0 0 0 16 16h144a16 16 0 0 0 16-16V88a8 8 0 0 0-2.34-5.66M160 51.31L188.69 80H160ZM200 216H56V40h88v48a8 8 0 0 0 8 8h48z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div class="file-info">
+                            <div class="file-name">{{name}}</div>
+                            <div class="file-meta">
+                                <span class="file-tag">FILE</span>
+                                <span class="file-path">{{path}}</span>
+                                <span class="file-size">{{size}}</span>
+                            </div>
+                        </div>
+                    </a>
+                    {{/each}}
+                </ul>
+            </div>
+            {{/if}}
+
+            {{#unless interactive}}
+            <div class="file-list-container compact-mode">
+                <ul class="file-list">
+                    {{#each files}}
+                    <div class="file-item">
+                        <div class="file-info">
+                            <div class="file-name">{{name}}</div>
+                            <div class="file-meta">
+                                <span class="file-path">{{path}}</span>
+                                <span class="file-size">{{size}}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {{/each}}
+                </ul>
+            </div>
+            <style>
+                .compact-mode .file-list {
+                    gap: 0;
+                }
+
+                .compact-mode .file-item {
+                    padding: 4px 8px;
+                    border: none;
+                    border-bottom: 1px solid var(--bg-hover);
+                    border-radius: 0;
+                    gap: 8px;
+                    display: flex;
+                }
+
+                .compact-mode .file-item:last-child {
+                    border-bottom: none;
+                }
+
+                .compact-mode .file-icon {
+                    display: none;
+                }
+
+                .compact-mode .file-info {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: baseline;
+                    gap: 8px;
+                    width: 100%;
+                }
+
+                .compact-mode .file-name {
+                    font-size: 12px;
+                    flex: 0 0 auto;
+                    max-width: 40%;
+                }
+
+                .compact-mode .file-meta {
+                    margin-top: 0;
+                    font-size: 11px;
+                    flex: 1;
+                    min-width: 0;
+                    display: flex;
+                }
+
+                .compact-mode .file-tag {
+                    display: none;
+                }
+
+                .compact-mode .file-path {
+                    color: var(--text-secondary);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .compact-mode .file-size {
+                    color: var(--text-secondary);
+                    margin-left: auto;
+                }
+            </style>
+            {{/unless}}
+        </div>
+    </div>
+    <script>
+        {{> base_iframe.js }}
+    </script>
+    <script>
+        function copyPath(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                window.parent.postMessage({
+                    type: 'toast',
+                    toast: { title: 'Copied', message: 'Path copied to clipboard', type: 'success' }
+                }, '*');
+            });
+        }
+    </script>
+</body>
+
+</html>

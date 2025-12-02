@@ -2,7 +2,9 @@
 <html>
 
 <head>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        {{>style.css}}
+    </style>
 </head>
 
 <body>
@@ -41,8 +43,13 @@
             </div>
             {{/if}}
         </div>
+        {{#unless interactive}}
+        <span class="dimensions-info">{{dimensions}}</span>
+        {{/unless}}
     </div>
-    <script src="base_iframe.js"></script>
+    <script>
+        {{> base_iframe.js }}
+    </script>
 
     {{#unless interactive}}
     <style>
@@ -54,6 +61,17 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
+        }
+
+        .dimensions-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: #666;
+            font-size: 12px;
+            border-radius: 1000px;
+            padding: 3px 6px;
+            background-color: rgba(255, 255, 255, 0.7);
         }
 
         .image-container {
@@ -74,9 +92,8 @@
         }
     </style>
     {{/unless}}
-
+    {{ #if interactive }}
     <script>
-        { { #if interactive } }
         let scale = 1;
         let translateX = 0, translateY = 0;
         const img = document.getElementById('previewImage');
@@ -145,8 +162,8 @@
             translateY = initialTranslateY + dy;
             updateTransform();
         });
-        { {/if } }
     </script>
+    {{/if }}
 </body>
 
 </html>

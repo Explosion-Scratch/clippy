@@ -46,13 +46,16 @@ body {
     flex-direction: column;
 }
 
-.content-wrapper {
+.content-wrapper:not(.compact *) {
     background: var(--bg-primary);
     border-radius: 0.5rem;
-    height: 100%;
-    overflow: hidden;
+    overflow-y: scroll;
     display: flex;
     flex-direction: column;
+}
+
+.content-wrapper {
+    height: 100%;
 }
 
 .preview-container {
@@ -60,6 +63,10 @@ body {
     overflow: auto;
     display: flex;
     flex-direction: column;
+    height: 100%;
+}
+
+.preview-container:not(.compact *) {
     gap: 1rem;
     padding: 1.5rem;
 }
@@ -82,7 +89,6 @@ body {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    padding: 2rem;
     cursor: grab;
 }
 

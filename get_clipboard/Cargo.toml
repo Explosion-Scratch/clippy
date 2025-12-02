@@ -34,6 +34,7 @@ include_dir = "0.7"
 objc2-core-graphics = { version = "0.3.2", features = ["CGEvent", "CGEventSource", "CGEventTypes"] }
 html-escape = "0.2.13"
 regex = "1.12.2"
+handlebars = "5.1"
 
 [[bin]]
 name = "test_paste"

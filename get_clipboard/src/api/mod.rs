@@ -14,6 +14,8 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use handlebars::Handlebars;
+use once_cell::sync::Lazy;
 use anyhow::Result;
 
 use crate::clipboard::plugins;
@@ -37,6 +39,19 @@ const API_DOCS: &str = include_str!("../../API.md");
 
 static FRONTEND_DIST: Dir = include_dir!("$CARGO_MANIFEST_DIR/frontend-dist");
 static TEMPLATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/templates");
+
+static HANDLEBARS: Lazy<Handlebars<'static>> = Lazy::new(|| {
+    let mut hb = Handlebars::new();
+    for file in TEMPLATES.files() {
+        if let Some(name) = file.path().to_str() {
+             if let Ok(content) = std::str::from_utf8(file.contents()) {
+                 let _ = hb.register_template_string(name, content);
+                 let _ = hb.register_partial(name, content);
+             }
+        }
+    }
+    hb
+});
 
 // Store API start time as a static variable
 static mut API_START_TIME: Option<u64> = None;
@@ -410,54 +425,7 @@ async fn preview_item(
     let mut data = HashMap::new();
     let mut formats_order = Vec::new();
 
-    let interactive = params.interactive.as_deref().unwrap_or("false") == "true";
-
-    // Helper to load template
-    let load_template = |name: &str| -> Result<String, ApiError> {
-        let file = TEMPLATES
-            .get_file(name)
-            .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("Template {} not found", name)))?;
-        Ok(String::from_utf8_lossy(file.contents()).to_string())
-    };
-
-    // Helper to process conditional blocks
-    let process_template = |template: &str| -> String {
-        let mut result = template.to_string();
-        
-        // Handle {{#if interactive}}...{{/if}}
-        let re_if = regex::Regex::new(r"\{\{#if interactive\}\}([\s\S]*?)\{\{/if\}\}").unwrap();
-        if interactive {
-            result = re_if.replace_all(&result, "$1").to_string();
-        } else {
-            result = re_if.replace_all(&result, "").to_string();
-        }
-
-        // Handle {{#unless interactive}}...{{/unless}}
-        let re_unless = regex::Regex::new(r"\{\{#unless interactive\}\}([\s\S]*?)\{\{/unless\}\}").unwrap();
-        if !interactive {
-            result = re_unless.replace_all(&result, "$1").to_string();
-        } else {
-            result = re_unless.replace_all(&result, "").to_string();
-        }
-        
-        result
-    };
-
-    // Helper to load base JS/CSS
-    let base_js = load_template("base_iframe.js")?;
-    let style_css = load_template("style.css")?;
-
-    let wrap_html = |content_html: String| -> String {
-        content_html
-            .replace(
-                r#"<link rel="stylesheet" href="style.css">"#,
-                &format!("<style>{}</style>", style_css),
-            )
-            .replace(
-                r#"<script src="base_iframe.js"></script>"#,
-                &format!("<script>{}</script>", base_js),
-            )
-    };
+    let interactive = params.interactive.as_deref().unwrap_or("true") == "true";
 
     // Use build_full_json_item to get data for all formats
     let full_item = plugins::build_full_json_item(&metadata, &item_dir, None, None)
@@ -467,19 +435,37 @@ async fn preview_item(
         match format.plugin_id.as_str() {
             "text" => {
                 if let Some(text_content) = format.data.as_str() {
-                    let template = load_template("text.html")?;
-                    let template = process_template(&template);
-                    let html = template.replace("{{content}}", &html_escape::encode_text(text_content));
-                    let final_html = wrap_html(html);
+                    let trimmed = text_content.trim();
+                    let is_svg = trimmed.starts_with("<svg") && trimmed.ends_with("</svg>");
+                    
+                    // Simple color detection
+                    let color_re = regex::Regex::new(r"(?i)^#([0-9a-f]{3}|[0-9a-f]{6})$|^rgb\s*\(|^rgba\s*\(|^hsl\s*\(|^hsla\s*\(").unwrap();
+                    let is_color = color_re.is_match(trimmed);
 
-                    data.insert(
-                        "text".to_string(),
-                        PreviewData {
-                            html: final_html,
-                            text: Some(text_content.to_string()),
-                        },
-                    );
-                    formats_order.push("text".to_string());
+                    let content = if is_svg {
+                        text_content.to_string()
+                    } else {
+                        html_escape::encode_text(text_content).to_string()
+                    };
+
+                    let template_ctx = json!({
+                        "interactive": interactive,
+                        "content": content,
+                        "is_svg": is_svg,
+                        "is_color": is_color,
+                        "color_value": if is_color { trimmed } else { "" }
+                    });
+                    
+                    if let Ok(html) = HANDLEBARS.render("text.hbs", &template_ctx) {
+                         data.insert(
+                            "text".to_string(),
+                            PreviewData {
+                                html,
+                                text: Some(text_content.to_string()),
+                            },
+                        );
+                        formats_order.push("text".to_string());
+                    }
                 }
             }
             "image" => {
@@ -493,21 +479,22 @@ async fn preview_item(
                         String::new()
                     };
 
-                    let template = load_template("image.html")?;
-                    let template = process_template(&template);
-                    let html = template
-                        .replace("{{content}}", src)
-                        .replace("{{dimensions}}", &dimensions);
-                    let final_html = wrap_html(html);
+                    let template_ctx = json!({
+                        "interactive": interactive,
+                        "content": src,
+                        "dimensions": dimensions,
+                    });
 
-                    data.insert(
-                        "image".to_string(),
-                        PreviewData {
-                            html: final_html,
-                            text: None,
-                        },
-                    );
-                    formats_order.push("image".to_string());
+                    if let Ok(html) = HANDLEBARS.render("image.hbs", &template_ctx) {
+                        data.insert(
+                            "image".to_string(),
+                            PreviewData {
+                                html,
+                                text: None,
+                            },
+                        );
+                        formats_order.push("image".to_string());
+                    }
                 }
             }
             "files" => {
@@ -518,101 +505,54 @@ async fn preview_item(
                         let size_bytes = file_obj.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
                         let source_path = file_obj.get("source_path").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                         
-                        file_items.push((name, crate::data::store::human_size(size_bytes), source_path));
+                        file_items.push(json!({
+                            "name": name,
+                            "size": crate::data::store::human_size(size_bytes),
+                            "path": source_path
+                        }));
                     }
 
                     if !file_items.is_empty() {
-                        let template = load_template("file.html")?;
-                        let template = process_template(&template);
-                        let list_item_template = r##"<a href="#" class="file-item" onclick="copyPath('{{path}}'); return false;" title="Click to copy path">
-                            <div class="file-icon">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 0 0 0 2 2h12a2 0 0 0 2-2V9z"></path>
-                                    <polyline points="13 2 13 9 20 9"></polyline>
-                                </svg>
-                            </div>
-                            <div class="file-info">
-                                <div class="file-name">{{name}}</div>
-                                <div class="file-meta">
-                                    <span class="file-tag">FILE</span>
-                                    <span class="file-path">{{path}}</span>
-                                    <span class="file-size">{{size}}</span>
-                                </div>
-                            </div>
-                        </a>"##;
+                        let copy_text = file_items.iter()
+                            .filter_map(|f| f.get("path").and_then(|p| p.as_str()))
+                            .collect::<Vec<_>>()
+                            .join("\n");
 
-                        let list_html: String = file_items
-                            .iter()
-                            .map(|(name, size, path)| {
-                                list_item_template
-                                    .replace("{{path}}", &html_escape::encode_text(path))
-                                    .replace("{{name}}", &html_escape::encode_text(name))
-                                    .replace("{{size}}", size)
-                            })
-                            .collect();
+                        let template_ctx = json!({
+                            "interactive": interactive,
+                            "files": file_items,
+                        });
 
-                        let copy_text = file_items.iter().map(|(_, _, path)| path.as_str()).collect::<Vec<_>>().join("\n");
-
-                        let file_count = file_items.len();
-                        let first_file_name = file_items.first().map(|(n, _, _)| n.clone()).unwrap_or_default();
-                        let others_count = if file_count > 1 { file_count - 1 } else { 0 };
-
-                        let re = regex::Regex::new(r"\{\{#each files\}\}([\s\S]*?)\{\{/each\}\}").unwrap();
-                        let html = re.replace(&template, &list_html).to_string();
-                        
-                        let others_text = if others_count > 0 {
-                            format!("<br>and {} others", others_count)
-                        } else {
-                            String::new()
-                        };
-
-                        let html = html
-                            .replace("{{file_count}}", &file_count.to_string())
-                            .replace("{{first_file_name}}", &html_escape::encode_text(&first_file_name))
-                            .replace("{{others_text}}", &others_text);
-                        
-                        let script = r#"
-                        <script>
-                            function copyPath(text) {
-                                navigator.clipboard.writeText(text).then(() => {
-                                    window.parent.postMessage({ 
-                                        type: 'toast', 
-                                        toast: { title: 'Copied', message: 'Path copied to clipboard', type: 'success' } 
-                                    }, '*');
-                                });
-                            }
-                        </script>
-                        "#;
-                        
-                        let final_html = wrap_html(html + script);
-
-                        data.insert(
-                            "files".to_string(),
-                            PreviewData {
-                                html: final_html,
-                                text: Some(copy_text),
-                            },
-                        );
-                        formats_order.push("files".to_string());
+                        if let Ok(html) = HANDLEBARS.render("file.hbs", &template_ctx) {
+                            data.insert(
+                                "files".to_string(),
+                                PreviewData {
+                                    html,
+                                    text: Some(copy_text),
+                                },
+                            );
+                            formats_order.push("files".to_string());
+                        }
                     }
                 }
             }
             "html" => {
                 if let Some(html_content) = format.data.as_str() {
-                    let template = load_template("html.html")?;
-                    let template = process_template(&template);
-                    let escaped_content = html_escape::encode_double_quoted_attribute(html_content);
-                    let html = template.replace("{{content}}", &escaped_content);
-                    let final_html = wrap_html(html);
+                    let template_ctx = json!({
+                        "interactive": interactive,
+                        "content": html_escape::encode_double_quoted_attribute(html_content),
+                    });
 
-                    data.insert(
-                        "html".to_string(),
-                        PreviewData {
-                            html: final_html,
-                            text: None,
-                        },
-                    );
-                    formats_order.push("html".to_string());
+                    if let Ok(html) = HANDLEBARS.render("html.hbs", &template_ctx) {
+                        data.insert(
+                            "html".to_string(),
+                            PreviewData {
+                                html,
+                                text: None,
+                            },
+                        );
+                        formats_order.push("html".to_string());
+                    }
                 }
             }
             _ => {}
