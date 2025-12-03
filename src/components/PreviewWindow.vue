@@ -55,7 +55,7 @@ async function fetchPreview(id) {
                     });
                 }
 
-                previewHtml.value = html;
+                previewContent.value = html;
                 console.log("Preview HTML set");
             }
         } else {
@@ -93,7 +93,7 @@ onMounted(async () => {
         <div v-else-if="error" class="error-state">
             {{ error }}
         </div>
-        <div v-else-if="previewHtml" id="content" v-html="previewHtml"></div>
+        <div v-else-if="previewContent" id="content" v-html="previewContent"></div>
         <div v-else class="empty-state">
             No item selected
         </div>
@@ -144,6 +144,10 @@ body,
         height: 100%;
         border: none;
         background: white;
+        border-radius: 4px;
+        overflow-y: scroll;
+        margin-bottom: 10px;
+        overflow-x: hidden;
         /* Ensure iframe background is white */
     }
 }
@@ -176,16 +180,32 @@ body,
     }
 }
 
+:root {
+    --footer-bg: #f3f4f6;
+    --footer-border: #e5e7eb;
+    --footer-text: #6b7280;
+    --footer-text-hover: #111827;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --footer-bg: #00000033;
+        --footer-border: #3e3e3e33;
+        --footer-text: #9ca3af;
+        --footer-text-hover: #f9fafb;
+    }
+}
+
 .footer {
     height: 24px;
-    background-color: #f3f4f6;
-    border-top: 1px solid #e5e7eb;
+    background-color: var(--footer-bg);
+    border-top: 1px solid var(--footer-border);
     display: flex;
     align-items: center;
     justify-content: space-evenly;
     padding: 0 12px;
     font-size: 10px;
-    color: #6b7280;
+    color: var(--footer-text);
     user-select: none;
     flex-shrink: 0;
     font-family: system-ui, sans-serif;
@@ -210,7 +230,7 @@ body,
         transition: color 0.15s;
 
         &:hover {
-            color: #111827;
+            color: var(--footer-text-hover);
         }
     }
 }

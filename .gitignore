@@ -27,4 +27,4 @@ target
 src-tauri/gen
 src-tauri/binaries
 get_clipboard/frontend-dist
-src-tauri/icons
+src-tauri/icons/*

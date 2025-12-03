@@ -16,7 +16,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    :root {
+    .compact {
         --bg-primary: #1f2937;
         /* gray-800 */
         --text-primary: #f9fafb;

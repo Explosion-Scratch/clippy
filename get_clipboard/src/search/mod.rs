@@ -319,7 +319,11 @@ pub fn parse_search_query(query: &str, force_regex: bool) -> (String, bool, Sele
     if query.starts_with("@") {
         match query {
             "@link" => {
-                final_query = r"https?://[^\s]+".to_string();
+                final_query = r"^https?://[^\s]+$".to_string();
+                is_regex = true;
+            }
+            "@email" => {
+                final_query = r"^[\w\-\.]+@([\w-]+\.)+[\w-]{2,4}$".to_string();
                 is_regex = true;
             }
             "@image" => {
@@ -358,4 +362,60 @@ pub fn parse_search_query(query: &str, force_regex: bool) -> (String, bool, Sele
     }
 
     (final_query, is_regex, filter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::model::{EntryKind, SearchIndexRecord};
+    use time::OffsetDateTime;
+
+    fn create_record(hash: &str, kind: EntryKind, formats: Vec<String>, summary: Option<String>) -> SearchIndexRecord {
+        SearchIndexRecord {
+            hash: hash.to_string(),
+            last_seen: OffsetDateTime::now_utc(),
+            kind,
+            copy_count: 1,
+            summary,
+            search_text: None,
+            detected_formats: formats,
+            byte_size: 100,
+            relative_path: "".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_parse_search_query_link() {
+        let (query, is_regex, _) = parse_search_query("@link", false);
+        assert!(is_regex);
+        let re = regex::RegexBuilder::new(&query).case_insensitive(true).build().unwrap();
+        
+        assert!(re.is_match("https://google.com"));
+        assert!(re.is_match("http://example.com/foo"));
+        assert!(!re.is_match("foo https://google.com bar"));
+    }
+
+    #[test]
+    fn test_parse_search_query_email() {
+        let (query, is_regex, _) = parse_search_query("@email", false);
+        assert!(is_regex);
+        let re = regex::RegexBuilder::new(&query).case_insensitive(true).build().unwrap();
+
+        assert!(re.is_match("test@example.com"));
+        assert!(re.is_match("foo.bar@baz.co.uk"));
+        assert!(!re.is_match("not an email"));
+        assert!(!re.is_match("contact: email@inside.text"));
+    }
+
+    #[test]
+    fn test_search_html_filter() {
+        let (_, _, filter) = parse_search_query("@html", false);
+        assert!(filter.include_html);
+
+        let record_html = create_record("1", EntryKind::Text, vec!["public.html".to_string()], None);
+        let record_text = create_record("2", EntryKind::Text, vec!["public.utf8-plain-text".to_string()], None);
+
+        assert!(filter.matches(&record_html));
+        assert!(!filter.matches(&record_text));
+    }
 }
