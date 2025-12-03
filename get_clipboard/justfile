@@ -1,0 +1,3 @@
+install-binary:
+    cargo build --release
+    cp target/release/get_clipboard ~/.local/bin/get_clipboard

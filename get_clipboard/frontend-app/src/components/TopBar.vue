@@ -1,6 +1,13 @@
 <template>
   <div class="border-b border-gray-200 bg-white z-10 shadow-sm">
     <div class="h-14 flex items-center px-4 gap-4">
+      <button 
+        v-if="showHamburger"
+        @click="$emit('toggleSidebar')"
+        class="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-lg text-gray-600"
+      >
+        <PhList :size="20" />
+      </button>
       <div class="relative flex-1 group">
         <PhMagnifyingGlass 
           :size="18"
@@ -74,17 +81,18 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { PhMagnifyingGlass, PhArrowsClockwise, PhCaretUp, PhCaretDown } from '@phosphor-icons/vue'
+import { PhMagnifyingGlass, PhArrowsClockwise, PhCaretUp, PhCaretDown, PhList } from '@phosphor-icons/vue'
 
 const props = defineProps({
   searchQuery: String,
   isSearching: Boolean,
   sortBy: String,
   sortDirection: String,
-  selectedTypes: Set
+  selectedTypes: Set,
+  showHamburger: Boolean
 })
 
-defineEmits(['update:searchQuery', 'refresh', 'sort', 'toggleType'])
+defineEmits(['update:searchQuery', 'refresh', 'sort', 'toggleType', 'toggleSidebar'])
 
 const searchInputRef = ref(null)
 

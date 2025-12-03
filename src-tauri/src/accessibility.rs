@@ -1,6 +1,6 @@
 use tauri::AppHandle;
-use tauri_plugin_macos_permissions;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_macos_permissions;
 /// Check if the app has accessibility permissions on macOS
 #[cfg(target_os = "macos")]
 pub async fn check_accessibility_permissions() -> bool {
@@ -13,7 +13,6 @@ pub async fn request_accessibility_permissions() -> Result<(), String> {
     tauri_plugin_macos_permissions::request_accessibility_permission().await;
     Ok(())
 }
-
 
 /// Ensure accessibility permissions are available, requesting if needed
 pub async fn ensure_accessibility_permissions() -> Result<bool, String> {

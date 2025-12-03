@@ -11,7 +11,9 @@ pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // Use CGEvent for the most reliable and fastest keyboard simulation
-        use objc2_core_graphics::{CGEvent, CGEventSource, CGEventSourceStateID, CGEventFlags, CGEventTapLocation};
+        use objc2_core_graphics::{
+            CGEvent, CGEventFlags, CGEventSource, CGEventSourceStateID, CGEventTapLocation,
+        };
 
         unsafe {
             // Create an event source for keyboard events using HID system state
@@ -23,28 +25,32 @@ pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
                 Some(&event_source),
                 0x37, // kVK_Command
                 true, // key down
-            ).ok_or("Failed to create Command down event")?;
+            )
+            .ok_or("Failed to create Command down event")?;
 
             // Create V key down event (0x09 is V key)
             let v_down_event = CGEvent::new_keyboard_event(
                 Some(&event_source),
                 0x09, // kVK_ANSI_V
                 true, // key down
-            ).ok_or("Failed to create V down event")?;
+            )
+            .ok_or("Failed to create V down event")?;
 
             // Create V key up event
             let v_up_event = CGEvent::new_keyboard_event(
                 Some(&event_source),
-                0x09, // kVK_ANSI_V
+                0x09,  // kVK_ANSI_V
                 false, // key up
-            ).ok_or("Failed to create V up event")?;
+            )
+            .ok_or("Failed to create V up event")?;
 
             // Create Command key up event
             let cmd_up_event = CGEvent::new_keyboard_event(
                 Some(&event_source),
-                0x37, // kVK_Command
+                0x37,  // kVK_Command
                 false, // key up
-            ).ok_or("Failed to create Command up event")?;
+            )
+            .ok_or("Failed to create Command up event")?;
 
             // Set Command modifier flag on all events
             let cmd_flags = CGEventFlags::MaskCommand;

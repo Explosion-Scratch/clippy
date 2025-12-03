@@ -9,6 +9,13 @@
       <div class="px-6 py-4 border-b border-gray-200 bg-white flex-shrink-0">
         <div class="flex items-center justify-between mb-4">
           <div class="flex items-center gap-3">
+            <button 
+              v-if="showBackButton"
+              @click="$emit('back')"
+              class="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-lg text-gray-600"
+            >
+              <PhArrowLeft :size="20" />
+            </button>
             <div class="p-2 bg-gradient-to-br from-gray-100 to-gray-50 rounded-lg shadow-sm">
               <PhTextT v-if="item.type === 'text'" :size="24" />
               <PhImageIcon v-else-if="item.type === 'image'" :size="24" />
@@ -119,16 +126,17 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash } from '@phosphor-icons/vue'
+import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash, PhArrowLeft } from '@phosphor-icons/vue'
 
 const props = defineProps({
   item: Object,
   fullData: Object,
   loading: Boolean,
-  activeFormatIndex: Number
+  activeFormatIndex: Number,
+  showBackButton: Boolean
 })
 
-const emit = defineEmits(['format-change', 'copy', 'delete', 'toast'])
+const emit = defineEmits(['format-change', 'copy', 'delete', 'toast', 'back'])
 
 const previewData = ref(null)
 const previewLoading = ref(false)

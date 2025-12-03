@@ -26,6 +26,11 @@ mkdir -p src-tauri/binaries
 echo "Copying binary to src-tauri/binaries/get_clipboard-$TARGET_TRIPLE"
 cp get_clipboard/target/release/get_clipboard "src-tauri/binaries/get_clipboard-$TARGET_TRIPLE"
 
+# Also copy to resources for manual user access (as requested)
+mkdir -p src-tauri/resources
+echo "Copying binary to src-tauri/resources/get_clipboard"
+cp get_clipboard/target/release/get_clipboard "src-tauri/resources/get_clipboard"
+
 echo "Build and copy complete!"
 
 

@@ -49,3 +49,11 @@ compile-templates:
     # In the future, we could run a handlebars validator here.
     ls -la get_clipboard/templates
 
+# Install the application
+install-app:
+    just build
+    cp -r src-tauri/target/release/bundle/macos/Clippy.app /Applications/
+
+# Install the binary
+install-binary:
+    cd get_clipboard && just install-binary

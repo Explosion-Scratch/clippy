@@ -1,9 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { save, open, ask } from '@tauri-apps/plugin-dialog';
+import { save, open as openDialog, ask } from '@tauri-apps/plugin-dialog';
 import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { openPath } from '@tauri-apps/plugin-opener';
 
 const appVersion = ref('0.1.0');
 const itemCount = ref(0);
@@ -23,9 +24,19 @@ async function loadStats() {
   }
 }
 
+async function openDataDirectory() {
+  if (currentDataDir.value) {
+    try {
+      await openPath(currentDataDir.value);
+    } catch (error) {
+      console.error('Failed to open directory:', error);
+    }
+  }
+}
+
 async function changeDataDirectory() {
   try {
-    const selected = await open({
+    const selected = await openDialog({
       directory: true,
       multiple: false,
       title: 'Select Data Directory',
@@ -84,7 +95,7 @@ async function importDatabase() {
   try {
     isImporting.value = true;
     
-    const filePath = await open({
+    const filePath = await openDialog({
       title: 'Import Clipboard Database',
       filters: [
         {
@@ -176,7 +187,14 @@ onMounted(() => {
         <h2>Storage</h2>
         <div class="path-container">
           <p class="path-label">Current Data Directory:</p>
-          <p class="path-value">{{ currentDataDir || 'Loading...' }}</p>
+          <a 
+            href="#" 
+            @click.prevent="openDataDirectory" 
+            class="path-value clickable" 
+            title="Open in Finder"
+          >
+            {{ currentDataDir || 'Loading...' }}
+          </a>
         </div>
         <button @click="changeDataDirectory" class="action-button">Change Directory...</button>
       </div>
@@ -332,6 +350,17 @@ onMounted(() => {
           border-radius: 3px;
           word-break: break-all;
           color: var(--text-primary);
+          
+          &.clickable {
+            display: block;
+            text-decoration: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            
+            &:hover {
+              background: rgba(0,0,0,0.1);
+            }
+          }
         }
       }
       

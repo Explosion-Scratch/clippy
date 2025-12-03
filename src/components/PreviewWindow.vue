@@ -2,15 +2,23 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
-const previewHtml = ref("");
+const previewContent = ref("");
 const isLoading = ref(false);
 const error = ref(null);
+const currentId = ref(null);
+
+async function openInDashboard() {
+    if (currentId.value) {
+        // Open dashboard with the item selected via backend command
+        await invoke("open_in_dashboard", { id: currentId.value });
+    }
+}
 
 async function fetchPreview(id) {
+    currentId.value = id; // Store the current ID
     if (!id) {
-        previewHtml.value = "";
+        previewContent.value = "";
         return;
     }
 
@@ -18,7 +26,7 @@ async function fetchPreview(id) {
 
     isLoading.value = true;
     error.value = null;
-    previewHtml.value = "";
+    previewContent.value = "";
 
     try {
         // Fetch preview using Tauri command
@@ -89,7 +97,21 @@ onMounted(async () => {
         <div v-else class="empty-state">
             No item selected
         </div>
+      <div class="footer">
+        <div class="shortcut-group">
+          <span>Inject</span>
+          <span class="shortcut-key">⏎</span>
+        </div>
+        <div class="shortcut-group">
+          <span>Copy</span>
+          <span class="shortcut-key">⌘⏎</span>
+        </div>
+        <div class="action-button" @click="openInDashboard">
+          <span>Open</span>
+          <span class="shortcut-key">⇧⏎</span>
+        </div>
     </div>
+  </div>
 </template>
 
 <style lang="less">
@@ -151,6 +173,45 @@ body,
 @keyframes spin {
     to {
         transform: rotate(360deg);
+    }
+}
+
+.footer {
+    height: 24px;
+    background-color: #f3f4f6;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    padding: 0 12px;
+    font-size: 10px;
+    color: #6b7280;
+    user-select: none;
+    flex-shrink: 0;
+    font-family: system-ui, sans-serif;
+    border-radius: 6px;
+
+    .shortcut-group {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .shortcut-key {
+        font-family: system-ui, sans-serif;
+        opacity: 0.7;
+    }
+
+    .action-button {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        transition: color 0.15s;
+
+        &:hover {
+            color: #111827;
+        }
     }
 }
 </style>

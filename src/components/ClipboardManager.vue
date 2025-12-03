@@ -244,7 +244,25 @@ document.addEventListener("keydown", (e) => {
     if (!isCycling.value) {
         if (e.key === "ArrowDown") { e.preventDefault(); handleArrowDown(); }
         else if (e.key === "ArrowUp") { e.preventDefault(); handleArrowUp(); }
-        else if (e.key === "Enter") { e.preventDefault(); handleEnter(); }
+        else if (e.key === "Enter") {
+            e.preventDefault();
+            if (e.shiftKey) {
+                // Shift+Enter: Open in dashboard
+                if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
+                     invoke("open_in_dashboard", { id: clipboardItems.value[selectedIndex.value].id.toString() })
+                        .catch(err => console.error("Failed to open in dashboard:", err));
+                     invoke("hide_app");
+                }
+            } else if (e.metaKey) {
+                // Cmd+Enter: Copy to clipboard (no paste)
+                if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
+                     copyItemToSystem(clipboardItems.value[selectedIndex.value]);
+                }
+            } else {
+                // Enter: Paste
+                handleEnter();
+            }
+        }
     }
 });
 
@@ -304,6 +322,17 @@ async function pasteItemToSystem(item) {
         loadItems(currentPageOffset.value);
     } catch (error) {
         console.error("Failed to inject item:", error);
+    }
+}
+
+async function copyItemToSystem(item) {
+    try {
+        await invoke("copy_item", { selector: item.id.toString() });
+        await invoke("hide_app");
+        // Optional: Show a toast or feedback?
+        // For now just hide app as requested "just copy it but not attempt to inject"
+    } catch (error) {
+        console.error("Failed to copy item:", error);
     }
 }
 
@@ -466,8 +495,7 @@ onMounted(async () => {
             </div>
             <template v-else-if="selectedItem">
                 <div class="status-item"><span class="status-value">{{ formatFirstCopied(selectedItem.firstCopied) }}</span></div>
-                <div class="status-item"><span class="status-value">{{ selectedItem.copies }}</span></div>
-                <div class="status-item"><span class="status-value">{{ getItemInfo(selectedItem)?.size }}</span></div>
+                <div class="status-item"><span class="status-value">{{ selectedItem.copies }} copies</span></div>
             </template>
         </div>
     </div>

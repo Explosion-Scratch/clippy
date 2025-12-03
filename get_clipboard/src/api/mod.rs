@@ -423,7 +423,7 @@ async fn preview_item(
     let item_dir = data_dir.join(&metadata.relative_path);
 
     let mut data = HashMap::new();
-    let mut formats_order = Vec::new();
+    let mut formats_order: Vec<String> = Vec::new();
 
     let interactive = params.interactive.as_deref().unwrap_or("true") == "true";
 
@@ -464,7 +464,6 @@ async fn preview_item(
                                 text: Some(text_content.to_string()),
                             },
                         );
-                        formats_order.push("text".to_string());
                     }
                 }
             }
@@ -493,7 +492,6 @@ async fn preview_item(
                                 text: None,
                             },
                         );
-                        formats_order.push("image".to_string());
                     }
                 }
             }
@@ -531,7 +529,6 @@ async fn preview_item(
                                     text: Some(copy_text),
                                 },
                             );
-                            formats_order.push("files".to_string());
                         }
                     }
                 }
@@ -551,12 +548,27 @@ async fn preview_item(
                                 text: None,
                             },
                         );
-                        formats_order.push("html".to_string());
                     }
                 }
             }
             _ => {}
         }
+    }
+
+    // Determine formats order (files > html > text > image)
+    let mut formats_order = Vec::new();
+    
+    if data.contains_key("files") {
+        formats_order.push("files".to_string());
+    }
+    if data.contains_key("html") {
+        formats_order.push("html".to_string());
+    }
+    if data.contains_key("text") {
+        formats_order.push("text".to_string());
+    }
+    if data.contains_key("image") {
+        formats_order.push("image".to_string());
     }
 
     let kind_str = match metadata.kind {
