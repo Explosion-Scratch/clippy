@@ -35,6 +35,7 @@ use crate::util::time::format_iso;
 use crate::website_fetcher;
 
 use tokio::net::TcpListener;
+use tokio::task;
 
 const API_DOCS: &str = include_str!("../../API.md");
 
@@ -54,12 +55,7 @@ static HANDLEBARS: Lazy<Handlebars<'static>> = Lazy::new(|| {
     hb
 });
 
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .user_agent("clippy-clipboard-manager/0.1.0")
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
-});
+
 
 // Store API start time as a static variable
 static mut API_START_TIME: Option<u64> = None;
@@ -467,7 +463,10 @@ async fn preview_item(
                     // Check for link preview
                     if !is_svg && !is_color && (trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
                          if let Ok(url) = url::Url::parse(trimmed) {
-                             if let Ok(preview) = website_fetcher::fetch_website_data(&HTTP_CLIENT, &url).await {
+                             let url_clone = url.clone();
+                             if let Ok(Ok(preview)) = task::spawn_blocking(move || {
+                                 website_fetcher::fetch_website_data(&url_clone)
+                             }).await {
                                 if let Some(obj) = template_ctx.as_object_mut() {
                                     obj.insert("link_preview".to_string(), json!({
                                         "title": preview.title,
