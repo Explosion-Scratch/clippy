@@ -32,6 +32,7 @@ use crate::data::store::{
 use crate::search::SearchOptions;
 use crate::util::paste;
 use crate::util::time::format_iso;
+use crate::website_fetcher;
 
 use tokio::net::TcpListener;
 
@@ -51,6 +52,13 @@ static HANDLEBARS: Lazy<Handlebars<'static>> = Lazy::new(|| {
         }
     }
     hb
+});
+
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .user_agent("clippy-clipboard-manager/0.1.0")
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
 });
 
 // Store API start time as a static variable
@@ -448,13 +456,30 @@ async fn preview_item(
                         html_escape::encode_text(text_content).to_string()
                     };
 
-                    let template_ctx = json!({
+                    let mut template_ctx = json!({
                         "interactive": interactive,
                         "content": content,
                         "is_svg": is_svg,
                         "is_color": is_color,
                         "color_value": if is_color { trimmed } else { "" }
                     });
+
+                    // Check for link preview
+                    if !is_svg && !is_color && (trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+                         if let Ok(url) = url::Url::parse(trimmed) {
+                             if let Ok(preview) = website_fetcher::fetch_website_data(&HTTP_CLIENT, &url).await {
+                                if let Some(obj) = template_ctx.as_object_mut() {
+                                    obj.insert("link_preview".to_string(), json!({
+                                        "title": preview.title,
+                                        "description": preview.description,
+                                        "image": preview.og_image,
+                                        "favicon": preview.favicon,
+                                        "url": trimmed
+                                    }));
+                                }
+                             }
+                         }
+                    }
                     
                     if let Ok(html) = HANDLEBARS.render("text.hbs", &template_ctx) {
                          data.insert(

@@ -97,21 +97,21 @@ onMounted(async () => {
         <div v-else class="empty-state">
             No item selected
         </div>
-      <div class="footer">
-        <div class="shortcut-group">
-          <span>Inject</span>
-          <span class="shortcut-key">⏎</span>
-        </div>
-        <div class="shortcut-group">
-          <span>Copy</span>
-          <span class="shortcut-key">⌘⏎</span>
-        </div>
-        <div class="action-button" @click="openInDashboard">
-          <span>Open</span>
-          <span class="shortcut-key">⇧⏎</span>
+        <div class="footer">
+            <div class="shortcut-group">
+                <span>Inject</span>
+                <span class="shortcut-key">⏎</span>
+            </div>
+            <div class="shortcut-group">
+                <span>Copy</span>
+                <span class="shortcut-key">⌘⏎</span>
+            </div>
+            <div class="action-button" @click="openInDashboard">
+                <span>Open</span>
+                <span class="shortcut-key">⇧⏎</span>
+            </div>
         </div>
     </div>
-  </div>
 </template>
 
 <style lang="less">
@@ -136,14 +136,12 @@ body,
 
 #content {
     flex: 1;
-    width: 100%;
-    height: 100%;
+    overflow-y: scroll;
+    padding-bottom: 10px;
+    position: relative;
 
     iframe {
-        width: 100%;
-        height: 100%;
         border: none;
-        background: white;
         border-radius: 4px;
         overflow-y: scroll;
         margin-bottom: 10px;

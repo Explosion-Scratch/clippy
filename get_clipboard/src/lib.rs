@@ -8,5 +8,6 @@ pub mod search;
 pub mod service;
 pub mod tui;
 pub mod util;
+pub mod website_fetcher;
 
 

@@ -11,6 +11,7 @@ use tokio::sync::Mutex;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 mod accessibility;
+mod api;
 mod paste;
 mod sidecar;
 mod visibility;
@@ -191,10 +192,7 @@ fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
 // Command to fetch preview content
 #[tauri::command]
 async fn get_preview_content(id: String) -> Result<serde_json::Value, String> {
-    let url = format!(
-        "http://localhost:3016/item/{}/preview?interactive=false",
-        id
-    );
+    let url = api::item_preview_url(&id, false);
     let client = reqwest::Client::new();
 
     let response = client
@@ -221,7 +219,7 @@ fn open_in_dashboard(app: tauri::AppHandle, id: String) -> Result<(), String> {
     use tauri::Manager;
 
     // Open URL in default browser
-    let url = format!("http://localhost:3016/dashboard?item={}", id);
+    let url = api::dashboard_item_url(&id);
     app.shell()
         .open(&url, None)
         .map_err(|e| format!("Failed to open URL: {}", e))?;
@@ -361,14 +359,14 @@ pub fn run() {
 
             tauri::async_runtime::spawn(async move {
                 let client = reqwest::Client::new();
-                let stats_url = "http://localhost:3016/stats";
-                let items_url = "http://localhost:3016/items?count=10";
+                let stats_url = api::stats_url();
+                let items_url = api::items_url(10);
 
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
                     // Update stats
-                    if let Ok(response) = client.get(stats_url).send().await {
+                    if let Ok(response) = client.get(&stats_url).send().await {
                         if let Ok(json) = response.json::<serde_json::Value>().await {
                             let count = json["totalItems"].as_u64().unwrap_or(0);
                             let size = json["totalSize"].as_u64().unwrap_or(0);
@@ -387,7 +385,7 @@ pub fn run() {
                     }
 
                     // Update clipboard items in tray
-                    if let Ok(response) = client.get(items_url).send().await {
+                    if let Ok(response) = client.get(&items_url).send().await {
                         if let Ok(items) = response.json::<Vec<serde_json::Value>>().await {
                             let mut tray_items_lock = tray_items_clone.lock().await;
                             tray_items_lock.clear();
@@ -456,7 +454,7 @@ pub fn run() {
                             }
                         }
                         "dashboard" => {
-                            let _ = app.shell().open("http://localhost:3016/dashboard", None);
+                            let _ = app.shell().open(&api::dashboard_url(), None);
                         }
                         "settings" => {
                             if let Err(e) = open_settings_window(app.clone()) {
@@ -587,7 +585,7 @@ pub fn run() {
                 if let Ok(cmd) = sidecar {
                     // We spawn it and let it run.
                     // The process will persist as long as the main app runs (or until stopped).
-                    let result = cmd.args(["api", "--port", "3016"]).spawn();
+                    let result = cmd.args(["api", "--port", &api::API_PORT.to_string()]).spawn();
                     match result {
                         Ok((_rx, _child)) => println!("API sidecar started successfully"),
                         Err(e) => eprintln!("Failed to spawn API sidecar: {}", e),

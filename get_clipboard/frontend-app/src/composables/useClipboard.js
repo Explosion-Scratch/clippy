@@ -179,6 +179,12 @@ export function useClipboard() {
   }
 
   const selectItem = (item, event) => {
+    if (!item) {
+      selectedIds.value.clear()
+      selectedItem.value = null
+      fullItemData.value = null
+      return
+    }
     if (event && (event.metaKey || event.ctrlKey)) {
       selectedIds.value.has(item.id)
         ? selectedIds.value.delete(item.id)
@@ -378,6 +384,7 @@ export function useClipboard() {
     loadingDetails,
     searchQuery,
     isSearching,
+    currentFilter,
     selectedTypes,
     sortBy,
     sortDirection,

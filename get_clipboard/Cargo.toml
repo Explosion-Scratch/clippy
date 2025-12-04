@@ -35,6 +35,8 @@ objc2-core-graphics = { version = "0.3.2", features = ["CGEvent", "CGEventSource
 html-escape = "0.2.13"
 regex = "1.12.2"
 handlebars = "5.1"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+scraper = "0.19.0"
 
 [[bin]]
 name = "test_paste"

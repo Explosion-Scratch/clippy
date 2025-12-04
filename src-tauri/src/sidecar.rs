@@ -1,9 +1,8 @@
+use crate::api;
 use crate::paste::simulate_system_paste_internal;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
-
-const API_BASE: &str = "http://localhost:3016";
 
 #[derive(Serialize, Deserialize)]
 struct DirResponse {
@@ -119,12 +118,12 @@ pub async fn get_history(
     // Determine base URL based on whether a query is present
     let (base_url, is_search) = if let Some(ref q) = query {
         if !q.trim().is_empty() {
-            (format!("{}/search", API_BASE), true)
+            (api::search_url(), true)
         } else {
-            (format!("{}/items", API_BASE), false)
+            (format!("{}/items", api::API_BASE), false)
         }
     } else {
-        (format!("{}/items", API_BASE), false)
+        (format!("{}/items", api::API_BASE), false)
     };
 
     let mut params = vec![];
@@ -166,7 +165,7 @@ pub async fn get_history(
 #[tauri::command]
 pub async fn get_mtime(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/mtime", API_BASE);
+    let url = api::mtime_url();
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
     if response.status().is_success() {
@@ -180,7 +179,7 @@ pub async fn get_mtime(_app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn copy_item(_app: AppHandle, selector: String) -> Result<(), String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/item/{}/copy", API_BASE, selector);
+    let url = api::item_copy_url(&selector);
 
     let response = client.post(&url).send().await.map_err(|e| e.to_string())?;
 
@@ -195,7 +194,7 @@ pub async fn copy_item(_app: AppHandle, selector: String) -> Result<(), String> 
 pub async fn paste_item(app: AppHandle, selector: String) -> Result<(), String> {
     // 1. Copy to system clipboard via API (incrementing copy count)
     let client = reqwest::Client::new();
-    let url = format!("{}/item/{}/copy", API_BASE, selector);
+    let url = api::item_copy_url(&selector);
     let response = client.post(&url).send().await.map_err(|e| e.to_string())?;
 
     if !response.status().is_success() {
@@ -218,7 +217,7 @@ pub async fn paste_item(app: AppHandle, selector: String) -> Result<(), String> 
 #[tauri::command]
 pub async fn delete_item(_app: AppHandle, selector: String) -> Result<(), String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/item/{}", API_BASE, selector);
+    let url = api::item_delete_url(&selector);
 
     let response = client
         .delete(&url)
@@ -259,7 +258,7 @@ pub async fn configure_data_dir(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn db_get_count(_app: AppHandle) -> Result<usize, String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/stats", API_BASE);
+    let url = api::stats_url();
 
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
@@ -274,7 +273,7 @@ pub async fn db_get_count(_app: AppHandle) -> Result<usize, String> {
 #[tauri::command]
 pub async fn db_get_size(_app: AppHandle) -> Result<u64, String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/stats", API_BASE);
+    let url = api::stats_url();
 
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
 
@@ -290,7 +289,7 @@ pub async fn db_get_size(_app: AppHandle) -> Result<u64, String> {
 pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     // Get all items (summary) to get IDs
-    let items_url = format!("{}/items?count=1000000", API_BASE);
+    let items_url = api::items_url(1000000);
     let resp = client
         .get(&items_url)
         .send()
@@ -305,7 +304,7 @@ pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     let mut full_items = Vec::new();
     for item in items {
         if let Some(id) = item["hash"].as_str().or(item["id"].as_str()) {
-            let data_url = format!("{}/item/{}/data", API_BASE, id);
+            let data_url = api::item_data_url(id);
             if let Ok(resp) = client.get(&data_url).send().await {
                 if resp.status().is_success() {
                     if let Ok(full_item) = resp.json::<serde_json::Value>().await {
@@ -327,7 +326,7 @@ pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String,
     let mut success = 0;
     let mut failed = 0;
 
-    let save_url = format!("{}/save", API_BASE);
+    let save_url = api::save_url();
 
     for item in items {
         let resp = client.post(&save_url).json(&item).send().await;
@@ -350,7 +349,7 @@ pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String,
 #[tauri::command]
 pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let items_url = format!("{}/items?count=1000000", API_BASE);
+    let items_url = api::items_url(1000000);
     let resp = client
         .get(&items_url)
         .send()
@@ -361,7 +360,7 @@ pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
     let mut count = 0;
     for item in items {
         if let Some(id) = item["hash"].as_str().or(item["id"].as_str()) {
-            let del_url = format!("{}/item/{}", API_BASE, id);
+            let del_url = api::item_delete_url(id);
             if let Ok(resp) = client.delete(&del_url).send().await {
                 if resp.status().is_success() {
                     count += 1;
@@ -375,7 +374,7 @@ pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn get_sidecar_dir(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/dir", API_BASE);
+    let url = api::dir_url();
     let response = client.get(&url).send().await.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         let json: DirResponse = response.json().await.map_err(|e| e.to_string())?;
@@ -392,7 +391,7 @@ pub async fn set_sidecar_dir(
     path: String,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/dir", API_BASE);
+    let url = api::dir_url();
     let body = serde_json::json!({
         "mode": mode,
         "path": path

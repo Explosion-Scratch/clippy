@@ -1,5 +1,5 @@
 <template>
-  <div class="flex-1 flex flex-col border-r border-gray-200 min-w-[350px] max-w-[450px] bg-white">
+  <div class="flex-1 flex flex-col border-r border-gray-200 md:min-w-[350px] md:max-w-[450px] bg-white">
     <div 
       v-if="selectedIds.size > 0" 
       class="bg-blue-50/50 px-4 py-2 text-sm text-blue-700 flex items-center justify-between border-b border-blue-100 backdrop-blur-sm"

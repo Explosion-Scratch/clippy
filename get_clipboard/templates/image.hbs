@@ -10,7 +10,7 @@
 <body>
     <div class="content-wrapper">
         <div class="preview-container">
-            <div class="image-container" id="imageContainer">
+            <div class="image-container checkered_bg" id="imageContainer">
                 <img src="{{content}}" id="previewImage" draggable="false">
             </div>
 
@@ -65,8 +65,8 @@
 
         .dimensions-info {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
+            bottom: 0px;
+            right: 10px;
             color: #666;
             font-size: 12px;
             border-radius: 1000px;
@@ -81,6 +81,8 @@
             align-items: center;
             justify-content: center;
             cursor: default;
+            border-radius: 4px;
+            overflow: hidden;
         }
 
         #previewImage {

@@ -8,6 +8,7 @@ mod search;
 mod service;
 mod tui;
 mod util;
+pub mod website_fetcher;
 
 fn main() {
     let _ = color_eyre::install();
