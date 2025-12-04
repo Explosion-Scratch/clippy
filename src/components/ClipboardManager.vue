@@ -474,7 +474,7 @@ onMounted(async () => {
         </div>
 
         <div class="search-container">
-            <input autocapitalize="off" autocomplete="off" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" autofocus />
+            <input autocapitalize="off" autocomplete="off" autocorrect="off" :autofocus="true" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" autofocus />
         </div>
 
         <div class="content-area">
