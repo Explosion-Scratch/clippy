@@ -12,7 +12,7 @@
             <button 
               v-if="showBackButton"
               @click="$emit('back')"
-              class="md:hidden p-2 -ml-2 hover:bg-gray-100 rounded-lg text-gray-600"
+              class="p-2 -ml-2 hover:bg-gray-100 rounded-lg text-gray-600"
             >
               <PhArrowLeft :size="20" />
             </button>

@@ -164,7 +164,9 @@ const updateUrl = () => {
   
   if (selectedItem.value) params.set('item', selectedItem.value.id)
   if (searchQuery.value) params.set('q', searchQuery.value)
-  if (currentFilter.value !== 'all') params.set('filter', currentFilter.value)
+  if (selectedTypes.value.size > 0) params.set('filter', Array.from(selectedTypes.value).join(','))
+  if (sortBy.value !== 'date') params.set('sort', sortBy.value)
+  if (sortDirection.value !== 'desc') params.set('order', sortDirection.value)
   if (showStatsModal.value) params.set('modal', 'stats')
   if (showImportModal.value) params.set('modal', 'import')
   if (showSettingsModal.value) params.set('modal', 'settings')
@@ -178,7 +180,13 @@ const restoreState = async () => {
   const params = new URLSearchParams(window.location.search)
   
   if (params.has('q')) searchQuery.value = params.get('q')
-  if (params.has('filter')) setFilter(params.get('filter'))
+  if (params.has('filter')) {
+    const filters = params.get('filter').split(',').filter(Boolean)
+    selectedTypes.value.clear()
+    filters.forEach(f => selectedTypes.value.add(f))
+  }
+  if (params.has('sort')) sortBy.value = params.get('sort')
+  if (params.has('order')) sortDirection.value = params.get('order')
   
   const modal = params.get('modal')
   if (modal === 'stats') showStatsModal.value = true
@@ -194,7 +202,7 @@ const restoreState = async () => {
 }
 
 // Watchers for state sync
-watch([selectedItem, searchQuery, currentFilter, showStatsModal, showImportModal, showSettingsModal], () => {
+watch([selectedItem, searchQuery, () => selectedTypes.value.size, sortBy, sortDirection, showStatsModal, showImportModal, showSettingsModal], () => {
   updateUrl()
 })
 
