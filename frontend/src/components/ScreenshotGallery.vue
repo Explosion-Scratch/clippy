@@ -3,22 +3,22 @@ import { ref, onMounted } from 'vue'
 
 const slides = [
   {
-    image: '/images/app/color.png',
+    image: '/clippy/images/app/color.png',
     title: 'Sleek, Minimal, Usable',
     description: 'A distraction-free interface designed for focus and efficiency.'
   },
   {
-    image: '/images/app/files.png',
+    image: '/clippy/images/app/files.png',
     title: 'File Management',
     description: 'Handle files directly from your clipboard history.'
   },
   {
-    image: '/images/app/settings.png',
+    image: '/clippy/images/app/settings.png',
     title: 'Powerful Configuration',
     description: 'Customize every aspect of your experience.'
   },
   {
-    image: '/images/app/tray.png',
+    image: '/clippy/images/app/tray.png',
     title: 'Always Available',
     description: 'Access your clipboard instantly from the menu bar.'
   }

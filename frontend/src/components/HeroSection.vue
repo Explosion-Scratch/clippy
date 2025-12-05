@@ -11,24 +11,19 @@ onMounted(() => {
 
 const features = [
   {
-    icon: 'ph-lightning',
-    title: 'Lightning Fast',
-    description: 'Native performance with instant search across your entire clipboard history'
+    icon: 'ph-feather',
+    title: 'Tiny',
+    description: 'The full app comes in at 11.9 megabytes, including a fully featured CLI, dashboard and of course, the app itself.'
   },
   {
-    icon: 'ph-magnifying-glass',
-    title: 'Powerful Search',
-    description: 'Find any item instantly with regex support and smart filtering'
+    icon: 'ph-infinity',
+    title: 'Unlimited history',
+    description: 'All items are simply stored to the filesystem. Search and retrieval are fast'
   },
   {
-    icon: 'ph-clipboard-text',
-    title: 'Rich Content',
-    description: 'Full support for text, images, files, HTML, and RTF content'
-  },
-  {
-    icon: 'ph-terminal-window',
-    title: 'CLI Power',
-    description: 'Complete command-line interface for scripting and automation'
+    icon: 'ph-code',
+    title: 'API',
+    description: 'Comprehensive API and CLI useful for scripting'
   },
   {
     icon: 'ph-lock-key',
@@ -36,9 +31,14 @@ const features = [
     description: 'All data stored locally on your machine, never in the cloud'
   },
   {
+    icon: 'ph-file-text',
+    title: 'Format support',
+    description: 'Supports HTML, Text, Files, Images, RTF'
+  },
+  {
     icon: 'ph-paint-brush',
-    title: 'Beautiful UI',
-    description: 'Clean, minimal interface that stays out of your way'
+    title: 'Clean UI',
+    description: 'An minimal interface there when you need it and out of the way when you don\'t.'
   }
 ]
 </script>

@@ -1,27 +1,34 @@
-<div align=center><img width=128 src="./src-tauri/icons/icon.png"/></div>
+<div align=center><a href="https://explosion-scratch.github.io/clippy"><img width=128 src="./src-tauri/icons/icon.png"/></a></div>
 <div align=center><h1>Clippy</h1></div>
 
 A tiny MacOS clipboard manager built with Tauri and Rust. Clippy features interactive search, cycling through clipboard items, and a Mac native style interface. Clippy supports images, files, text and html clipboard types, and stores all items simply though the file system. This means items can be saved, restored, manipulated, analyzed, or merged with old saves simply by copy pasting items from folders. The full application comes in at 30MB. Clippy also comes bundled with a fully featured CLI called [get_clipboard](./get_clipboard/README.md) and a beautiful dashboard.
 
-## Small and minimal
-<p align="center">
-  <img src="frontend/public/images/app/color.png" width="400" />
-</p>
+## Screenshots
 
-## Lots of formats suported
-<p align="center">
-  <img src="frontend/public/images/app/files.png" width="400" />
-</p>
-
-## Configure wherever
-<p align="center">
-  <img src="frontend/public/images/app/settings.png" width="400" />
-</p>
-
-## Manage from the Tray
-<p align="center">
-  <img src="frontend/public/images/app/tray.png" width="400" />
-</p>
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="frontend/public/images/app/color.png" alt="Small and minimal" width="100%" />
+      <br />
+      <b>Small and minimal</b>
+    </td>
+    <td align="center" width="25%">
+      <img src="frontend/public/images/app/files.png" alt="Lots of formats supported" width="100%" />
+      <br />
+      <b>Lots of formats supported</b>
+    </td>
+    <td align="center" width="25%">
+      <img src="frontend/public/images/app/settings.png" alt="Configure wherever" width="100%" />
+      <br />
+      <b>Configure wherever</b>
+    </td>
+    <td align="center" width="25%">
+      <img src="frontend/public/images/app/tray.png" alt="Manage from the Tray" width="100%" />
+      <br />
+      <b>Manage from the Tray</b>
+    </td>
+  </tr>
+</table>
 
 ## Architecture
 

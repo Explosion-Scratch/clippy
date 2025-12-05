@@ -5,23 +5,23 @@ const currentSlide = ref(0)
 const slides = [
   {
     caption: 'Image preview',
-    image: '/images/dashboard/image.png'
+    image: '/clippy/images/dashboard/image.png'
   },
   {
     caption: 'File example',
-    image: '/images/dashboard/files.png'
+    image: '/clippy/images/dashboard/files.png'
   },
   {
     caption: 'A link',
-    image: '/images/dashboard/link.png'
+    image: '/clippy/images/dashboard/link.png'
   },
   {
     caption: 'Rich Content Previews',
-    image: '/images/dashboard/html.png'
+    image: '/clippy/images/dashboard/html.png'
   },
   {
     caption: 'Statistics',
-    image: '/images/dashboard/statistics.png'
+    image: '/clippy/images/dashboard/statistics.png'
   }
 ]
 

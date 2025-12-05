@@ -56,7 +56,7 @@ function setFormat(format) {
         <p>Select an item to preview</p>
       </div>
 
-      <div v-else-if="currentPreviewData" class="preview-html" v-html="currentPreviewData.html"></div>
+      <div v-else-if="currentPreviewData" class="preview-html" v-html="currentPreviewData.html.replaceAll(':root {', '.preview-html {').replaceAll('body {', '.preview-html {').replaceAll('html {', '.preview-html {')"></div>
 
       <div v-else class="empty-state">
         <span class="empty-icon">📋</span>
