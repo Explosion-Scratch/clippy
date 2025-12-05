@@ -83,8 +83,8 @@ function setFormat(format) {
 
 <style scoped>
 .preview-window {
-  width: 300px;
-  height: 200px;
+  height: 100%;
+  width: 100%;
   padding: 10px;
   box-sizing: border-box;
   display: flex;

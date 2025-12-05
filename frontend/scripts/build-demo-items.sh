@@ -49,7 +49,7 @@ for i in $(seq 0 $((item_count - 1))); do
         continue
     fi
     
-    preview_json=$(curl -sf "$API_URL/item/$id/preview?compact=true" || echo "{}")
+    preview_json=$(curl -sf "$API_URL/item/$id/preview?interactive=false" || echo "{}")
     
     if [ "$first" = true ]; then
         first=false

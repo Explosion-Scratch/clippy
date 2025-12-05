@@ -341,7 +341,7 @@ const features = [
 
 .preview-wrapper {
   width: 300px;
-  height: 200px;
+  height: 300px;
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
