@@ -1,43 +1,297 @@
 [
   {
     "index": 0,
-    "id": "df5f83f7d6d01da0f69e2eadb5a0bead9cba08d0e2cedaa38315bba0c7eb6f5e",
-    "date": "2025-12-05T18:01:34.000000000Z",
-    "firstDate": "2025-12-03T20:02:51.000000000Z",
-    "summary": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+    "id": "eda716953d9279a09a6c3266e97c1b0d9d0be36e7bb654b111f362a3e9461a6e",
+    "date": "2025-12-05T18:50:16.000000000Z",
+    "firstDate": "2025-12-05T18:50:16.000000000Z",
+    "summary": ".clipboard-demo and .preview-window should have the frosted glass not the container for them. Additionally only displ...",
     "type": "Text",
-    "size": 64,
-    "copyCount": 2,
+    "size": 440,
+    "copyCount": 1,
     "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
       "public.utf8-plain-text",
       "NSStringPboardType",
       "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
       "org.chromium.source-url"
     ],
     "sources": [],
-    "searchText": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
-    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/d/f5/f83f7d6d01da0f69e2eadb5a0bead9cba08d0e2cedaa38315bba0c7eb6f5e",
+    "searchText": ".clipboard-demo and .preview-window should have the frosted glass not the container for them. Additionally only display 10 items at once and allow pressing arrow keys to move between them\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">.clipboard-demo and .preview-window should have the frosted glass not the container for them. Additionally only display 10 items at once and allow pressing arrow keys to move between them</span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/e/da/716953d9279a09a6c3266e97c1b0d9d0be36e7bb654b111f362a3e9461a6e",
     "formats": [
       {
         "pluginId": "text",
         "kind": "text",
         "priority": 2,
         "entryKind": "Text",
-        "data": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+        "data": ".clipboard-demo and .preview-window should have the frosted glass not the container for them. Additionally only display 10 items at once and allow pressing arrow keys to move between them",
         "metadata": {
-          "length": 64,
+          "length": 187,
           "pluginId": "text",
           "pluginKind": "text",
           "storedFiles": [
             "text__content.txt"
           ],
-          "summary": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230"
+          "summary": ".clipboard-demo and .preview-window should have the frosted glass not the container for them. Additionally only displ..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">.clipboard-demo and .preview-window should have the frosted glass not the container for them. Additionally only display 10 items at once and allow pressing arrow keys to move between them</span>",
+        "metadata": {
+          "length": 253,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">.clipboard-demo and .preview-window should have the froste..."
         }
       }
     ]
   },
   {
     "index": 1,
+    "id": "58e957040b81636bf0483c97146f5ecd06ca756cbe82c4950c7f11ac27d3679c",
+    "date": "2025-12-05T18:45:44.000000000Z",
+    "firstDate": "2025-12-05T18:45:44.000000000Z",
+    "summary": "The page isn't scrollable, fix this, and",
+    "type": "Text",
+    "size": 148,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "The page isn't scrollable, fix this, and\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">The page isn't scrollable, fix this, and </span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/5/8e/957040b81636bf0483c97146f5ecd06ca756cbe82c4950c7f11ac27d3679c",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "The page isn't scrollable, fix this, and ",
+        "metadata": {
+          "length": 41,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "The page isn't scrollable, fix this, and"
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">The page isn't scrollable, fix this, and </span>",
+        "metadata": {
+          "length": 107,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">The page isn't scrollable, fix this, and </span>"
+        }
+      }
+    ]
+  },
+  {
+    "index": 2,
+    "id": "6bea7ee28f5a9548b0463323e9792b6b155af1d9109b30295774515a20776291",
+    "date": "2025-12-05T18:42:48.000000000Z",
+    "firstDate": "2025-12-05T18:42:48.000000000Z",
+    "summary": "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20",
+    "type": "Text",
+    "size": 52,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/6/be/a7ee28f5a9548b0463323e9792b6b155af1d9109b30295774515a20776291",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20",
+        "metadata": {
+          "length": 52,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20"
+        }
+      }
+    ]
+  },
+  {
+    "index": 3,
+    "id": "02b6fc9038008c6508078f254ea5846add0d2ff1c82686517040961a622f3d99",
+    "date": "2025-12-05T18:42:04.000000000Z",
+    "firstDate": "2025-12-05T18:39:28.000000000Z",
+    "summary": "@build-cli-examples.sh and @build-demo-items.sh should take an arbitrary amount of ids like ./build-cli-examples  1 c...",
+    "type": "Text",
+    "size": 2346,
+    "copyCount": 3,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "public.html",
+      "Apple HTML pasteboard type"
+    ],
+    "sources": [],
+    "searchText": "@build-cli-examples.sh and @build-demo-items.sh should take an arbitrary amount of ids like ./build-cli-examples  1 c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n\n<meta charset='utf-8'><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lexical-beautiful-mention-value=\"build-cli-examples.sh\" data-lexical-beautiful-mention-data=\"{&quot;data&quot;:&quot;{\\&quot;file\\&quot;:{\\&quot;numFiles\\&quot;:1,\\&quot;absoluteUri\\&quot;:\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit/clippy/frontend/scripts/build-cli-examples.sh\\&quot;,\\&quot;workspaceUrisToRelativePaths\\&quot;:{\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit\\&quot;:\\&quot;clippy/frontend/scripts/build-cli-examples.sh\\&quot;}}}&quot;,&quot;dataType&quot;:&quot;proto&quot;,&quot;trigger&quot;:&quot;@&quot;,&quot;optionType&quot;:&quot;item&quot;,&quot;displayTitle&quot;:&quot;build-cli-examples.sh&quot;,&quot;displayMetadata&quot;:&quot;clippy/frontend/scripts/&quot;,&quot;mentionText&quot;:&quot;build-cli-examples.sh&quot;}\">@build-cli-examples.sh</span><span style=\"white-space: pre-wrap;\"> and </span><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lexical-beautiful-mention-value=\"build-demo-items.sh\" data-lexical-beautiful-mention-data=\"{&quot;data&quot;:&quot;{\\&quot;file\\&quot;:{\\&quot;numFiles\\&quot;:1,\\&quot;absoluteUri\\&quot;:\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit/clippy/frontend/scripts/build-demo-items.sh\\&quot;,\\&quot;workspaceUrisToRelativePaths\\&quot;:{\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit\\&quot;:\\&quot;clippy/frontend/scripts/build-demo-items.sh\\&quot;}}}&quot;,&quot;dataType&quot;:&quot;proto&quot;,&quot;trigger&quot;:&quot;@&quot;,&quot;optionType&quot;:&quot;item&quot;,&quot;displayTitle&quot;:&quot;build-demo-items.sh&quot;,&quot;displayMetadata&quot;:&quot;clippy/frontend/scripts/&quot;,&quot;mentionText&quot;:&quot;build-demo-items.sh&quot;}\">@build-demo-items.sh</span><span style=\"white-space: pre-wrap;\"> should take an arbitrary amount of ids like ./build-cli-examples  1 c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20</span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/0/2b/6fc9038008c6508078f254ea5846add0d2ff1c82686517040961a622f3d99",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "@build-cli-examples.sh and @build-demo-items.sh should take an arbitrary amount of ids like ./build-cli-examples  1 c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20",
+        "metadata": {
+          "length": 227,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "@build-cli-examples.sh and @build-demo-items.sh should take an arbitrary amount of ids like ./build-cli-examples  1 c..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lexical-beautiful-mention-value=\"build-cli-examples.sh\" data-lexical-beautiful-mention-data=\"{&quot;data&quot;:&quot;{\\&quot;file\\&quot;:{\\&quot;numFiles\\&quot;:1,\\&quot;absoluteUri\\&quot;:\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit/clippy/frontend/scripts/build-cli-examples.sh\\&quot;,\\&quot;workspaceUrisToRelativePaths\\&quot;:{\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit\\&quot;:\\&quot;clippy/frontend/scripts/build-cli-examples.sh\\&quot;}}}&quot;,&quot;dataType&quot;:&quot;proto&quot;,&quot;trigger&quot;:&quot;@&quot;,&quot;optionType&quot;:&quot;item&quot;,&quot;displayTitle&quot;:&quot;build-cli-examples.sh&quot;,&quot;displayMetadata&quot;:&quot;clippy/frontend/scripts/&quot;,&quot;mentionText&quot;:&quot;build-cli-examples.sh&quot;}\">@build-cli-examples.sh</span><span style=\"white-space: pre-wrap;\"> and </span><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lexical-beautiful-mention-value=\"build-demo-items.sh\" data-lexical-beautiful-mention-data=\"{&quot;data&quot;:&quot;{\\&quot;file\\&quot;:{\\&quot;numFiles\\&quot;:1,\\&quot;absoluteUri\\&quot;:\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit/clippy/frontend/scripts/build-demo-items.sh\\&quot;,\\&quot;workspaceUrisToRelativePaths\\&quot;:{\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit\\&quot;:\\&quot;clippy/frontend/scripts/build-demo-items.sh\\&quot;}}}&quot;,&quot;dataType&quot;:&quot;proto&quot;,&quot;trigger&quot;:&quot;@&quot;,&quot;optionType&quot;:&quot;item&quot;,&quot;displayTitle&quot;:&quot;build-demo-items.sh&quot;,&quot;displayMetadata&quot;:&quot;clippy/frontend/scripts/&quot;,&quot;mentionText&quot;:&quot;build-demo-items.sh&quot;}\">@build-demo-items.sh</span><span style=\"white-space: pre-wrap;\"> should take an arbitrary amount of ids like ./build-cli-examples  1 c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20</span>",
+        "metadata": {
+          "length": 2119,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lex..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "id": "88b73329fccb379123d126858172cd81793abbdecd7fc8450c4bcb8eec1a8b8a",
+    "date": "2025-12-05T18:36:51.000000000Z",
+    "firstDate": "2025-12-05T18:15:51.000000000Z",
+    "summary": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review fr...",
+    "type": "Text",
+    "size": 149,
+    "copyCount": 2,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review frontend website to check that it",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/8/8b/73329fccb379123d126858172cd81793abbdecd7fc8450c4bcb8eec1a8b8a",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review frontend website to check that it ",
+        "metadata": {
+          "length": 149,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review fr..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 5,
+    "id": "df2b63487175ec9db15eb708e6075f3ecf7469ed68e9f75436578cbb96ae4d88",
+    "date": "2025-12-05T18:12:02.000000000Z",
+    "firstDate": "2025-12-05T18:12:02.000000000Z",
+    "summary": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review fr...",
+    "type": "Text",
+    "size": 1220,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review frontend website to check that it\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Comprehensively review </span><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lexical-beautiful-mention-value=\"API.md\" data-lexical-beautiful-mention-data=\"{&quot;data&quot;:&quot;{\\&quot;file\\&quot;:{\\&quot;numFiles\\&quot;:1,\\&quot;absoluteUri\\&quot;:\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit/clippy/get_clipboard/API.md\\&quot;,\\&quot;workspaceUrisToRelativePaths\\&quot;:{\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit\\&quot;:\\&quot;clippy/get_clipboard/API.md\\&quot;}}}&quot;,&quot;dataType&quot;:&quot;proto&quot;,&quot;trigger&quot;:&quot;@&quot;,&quot;optionType&quot;:&quot;item&quot;,&quot;displayTitle&quot;:&quot;API.md&quot;,&quot;displayMetadata&quot;:&quot;clippy/get_clipboard/&quot;,&quot;mentionText&quot;:&quot;API.md&quot;}\">@API.md</span><span style=\"white-space: pre-wrap;\"> and compare it to the actual code and make sure it's entirely accurate. Also review frontend website to check that it </span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/d/f2/b63487175ec9db15eb708e6075f3ecf7469ed68e9f75436578cbb96ae4d88",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review frontend website to check that it ",
+        "metadata": {
+          "length": 149,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Comprehensively review @API.md and compare it to the actual code and make sure it's entirely accurate. Also review fr..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Comprehensively review </span><span data-lexical-beautiful-mention=\"true\" data-lexical-beautiful-mention-trigger=\"@\" data-lexical-beautiful-mention-value=\"API.md\" data-lexical-beautiful-mention-data=\"{&quot;data&quot;:&quot;{\\&quot;file\\&quot;:{\\&quot;numFiles\\&quot;:1,\\&quot;absoluteUri\\&quot;:\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit/clippy/get_clipboard/API.md\\&quot;,\\&quot;workspaceUrisToRelativePaths\\&quot;:{\\&quot;file:///Users/tjs/.gemini/antigravity/playground/prime-spirit\\&quot;:\\&quot;clippy/get_clipboard/API.md\\&quot;}}}&quot;,&quot;dataType&quot;:&quot;proto&quot;,&quot;trigger&quot;:&quot;@&quot;,&quot;optionType&quot;:&quot;item&quot;,&quot;displayTitle&quot;:&quot;API.md&quot;,&quot;displayMetadata&quot;:&quot;clippy/get_clipboard/&quot;,&quot;mentionText&quot;:&quot;API.md&quot;}\">@API.md</span><span style=\"white-space: pre-wrap;\"> and compare it to the actual code and make sure it's entirely accurate. Also review frontend website to check that it </span>",
+        "metadata": {
+          "length": 1071,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Comprehensively review </span><span data-lexical-beautiful..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 6,
     "id": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
     "date": "2025-12-05T17:56:02.000000000Z",
     "firstDate": "2025-12-03T19:41:39.000000000Z",
@@ -90,7 +344,7 @@
     ]
   },
   {
-    "index": 2,
+    "index": 7,
     "id": "b80abf45a6ea980fa6ca45026d1366c51bdeb3024ab0955f567c412d705fd433",
     "date": "2025-12-05T17:55:35.000000000Z",
     "firstDate": "2025-12-05T16:46:41.000000000Z",
@@ -125,7 +379,7 @@
     ]
   },
   {
-    "index": 3,
+    "index": 8,
     "id": "60fd0cd8595e55e937bf0c3c60725180f8562c8b60872c3b2ca379056f5859bb",
     "date": "2025-12-05T17:53:14.000000000Z",
     "firstDate": "2025-12-05T17:53:14.000000000Z",
@@ -160,7 +414,7 @@
     ]
   },
   {
-    "index": 4,
+    "index": 9,
     "id": "834c81ff706871e1c6c0e979583b5f3bdd1dc0767f9206fd10e25d185a24b4f4",
     "date": "2025-12-05T16:56:57.000000000Z",
     "firstDate": "2025-12-05T16:56:57.000000000Z",
@@ -195,7 +449,7 @@
     ]
   },
   {
-    "index": 5,
+    "index": 10,
     "id": "71756cbaeb096c933ee8b01002e4e5999f4d4e1978de163990c0ae60111c45ab",
     "date": "2025-12-05T16:54:51.000000000Z",
     "firstDate": "2025-12-05T16:54:51.000000000Z",
@@ -252,7 +506,7 @@
     ]
   },
   {
-    "index": 6,
+    "index": 11,
     "id": "66ba92266de7095f6c8630400735b4ff39cdbb7e9adecdb5c32262346bc2c196",
     "date": "2025-12-05T16:49:59.000000000Z",
     "firstDate": "2025-12-05T16:49:59.000000000Z",
@@ -289,7 +543,7 @@
     ]
   },
   {
-    "index": 7,
+    "index": 12,
     "id": "62eefb367900fcb1fdd2f7dd81045d4f03346845186d37337280af4f3778fb35",
     "date": "2025-12-05T16:36:25.000000000Z",
     "firstDate": "2025-12-05T16:36:25.000000000Z",
@@ -340,6 +594,370 @@
             "html__content.html"
           ],
           "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a beautiful front end website for the application. ..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 13,
+    "id": "88cd99b4d24a650f00ba77f3af9a1e5a92cbac0b2b317890d2924e0c3a4424a9",
+    "date": "2025-12-05T16:35:41.000000000Z",
+    "firstDate": "2025-12-05T16:35:41.000000000Z",
+    "summary": "This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search an...",
+    "type": "Text",
+    "size": 931,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. This should also render color. So for instance scrape the interactive user demo.",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/8/8c/d99b4d24a650f00ba77f3af9a1e5a92cbac0b2b317890d2924e0c3a4424a9",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. This should also render color. So for instance scrape the interactive user demo.",
+        "metadata": {
+          "length": 931,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search an..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 13,
+    "id": "9668066b7ef2401170f9c501685db761f5b0bb7344268722d79e84a604509c26",
+    "date": "2025-12-05T16:35:41.000000000Z",
+    "firstDate": "2025-12-05T16:31:18.000000000Z",
+    "summary": "Create a",
+    "type": "Text",
+    "size": 84,
+    "copyCount": 3,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "Create a\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a </span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/9/66/8066b7ef2401170f9c501685db761f5b0bb7344268722d79e84a604509c26",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Create a ",
+        "metadata": {
+          "length": 9,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Create a"
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a </span>",
+        "metadata": {
+          "length": 75,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a </span>"
+        }
+      }
+    ]
+  },
+  {
+    "index": 15,
+    "id": "be6c817a1bbcb5df32378df8bd10d3ac1df1dcf10982d60d95ec52704cc7ada8",
+    "date": "2025-12-05T16:33:22.000000000Z",
+    "firstDate": "2025-12-05T16:33:22.000000000Z",
+    "summary": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built...",
+    "type": "Text",
+    "size": 386,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with VET and View. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user.",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/b/e6/c817a1bbcb5df32378df8bd10d3ac1df1dcf10982d60d95ec52704cc7ada8",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with VET and View. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user.",
+        "metadata": {
+          "length": 386,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "id": "96168fe4ab696791472fda886fbbf414bace39ea3e09253d7be096882d4205d3",
+    "date": "2025-12-05T16:10:27.000000000Z",
+    "firstDate": "2025-12-05T16:10:27.000000000Z",
+    "summary": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep...",
+    "type": "Text",
+    "size": 1962,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase. get_clipboard stats should also show these largest items in text format with their id (like history does). Make sure to use the same functions for rendering items to the CLI to avoid duplicating code\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase. get_clipboard stats should also show these largest items in text format with their id (like history does). Make sure to use the same functions for rendering items to the CLI to avoid duplicating code</span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/9/61/68fe4ab696791472fda886fbbf414bace39ea3e09253d7be096882d4205d3",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase. get_clipboard stats should also show these largest items in text format with their id (like history does). Make sure to use the same functions for rendering items to the CLI to avoid duplicating code",
+        "metadata": {
+          "length": 948,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase. get_clipboard stats should also show these largest items in text format with their id (like history does). Make sure to use the same functions for rendering items to the CLI to avoid duplicating code</span>",
+        "metadata": {
+          "length": 1014,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 17,
+    "id": "4c905da5cb7935e673fcaa0ce123ac77e7f075c1d3846cc7554d2220f22aa880",
+    "date": "2025-12-05T16:09:25.000000000Z",
+    "firstDate": "2025-12-05T16:09:25.000000000Z",
+    "summary": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep...",
+    "type": "Text",
+    "size": 1562,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase.\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase.</span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/4/c9/05da5cb7935e673fcaa0ce123ac77e7f075c1d3846cc7554d2220f22aa880",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase.",
+        "metadata": {
+          "length": 748,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths in the show command, this way get_clipboard history | grep thing greps the full text data for all items (as they stream). wheras get_clipboard history just shows each item truncated by the terminal width. Additionally add a get_clipboard stats command which outputs statistics (same stats as in the API). Then add a largeItems field to stats that lists the ids of the largest 20 items (by their storage size in the database). Currently it says that I'm using one gigabyte for my items but the folder holding them all is 77MB (much more reasonable) - figure out why this size error occurs and fix it. Size should be based solely on the storage that an item / items take up in the datgabase.</span>",
+        "metadata": {
+          "length": 814,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 18,
+    "id": "96346e4358fcf9d7ea7509c8113fdc77744fa5f88656e10d4087bd1346e4c9d9",
+    "date": "2025-12-05T16:06:08.000000000Z",
+    "firstDate": "2025-12-05T16:06:08.000000000Z",
+    "summary": "Detect if the output is a TTY before trimming line lengths in the show command, this way",
+    "type": "Text",
+    "size": 242,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "Detect if the output is a TTY before trimming line lengths in the show command, this way\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths in the show command, this way</span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/9/63/46e4358fcf9d7ea7509c8113fdc77744fa5f88656e10d4087bd1346e4c9d9",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Detect if the output is a TTY before trimming line lengths in the show command, this way",
+        "metadata": {
+          "length": 88,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Detect if the output is a TTY before trimming line lengths in the show command, this way"
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths in the show command, this way</span>",
+        "metadata": {
+          "length": 154,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Detect if the output is a TTY before trimming line lengths..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 19,
+    "id": "2c7fd722bd824fb3ef224436f6bcd9669f9a0f8a60ec9d1db3be5d4ec032a8ba",
+    "date": "2025-12-05T15:35:07.000000000Z",
+    "firstDate": "2025-12-05T15:35:07.000000000Z",
+    "summary": "https://kraa.io/about",
+    "type": "Text",
+    "size": 21,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "https://kraa.io/about",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/2/c7/fd722bd824fb3ef224436f6bcd9669f9a0f8a60ec9d1db3be5d4ec032a8ba",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "https://kraa.io/about",
+        "metadata": {
+          "length": 21,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "https://kraa.io/about"
+        }
+      }
+    ]
+  },
+  {
+    "index": 20,
+    "id": "6e4ec520edad6c9315543ac09cf9ccf0cc2eae07319a9f820d1680e113757377",
+    "date": "2025-12-05T15:32:38.000000000Z",
+    "firstDate": "2025-12-05T15:29:48.000000000Z",
+    "summary": "tjs ALL=(root) NOPASSWD: sha256:3c3873743037f2a511aa51c3628a9010027e380386a8fe8817323d0d17056a66 /opt/homebrew/bin/ya...",
+    "type": "Text",
+    "size": 130,
+    "copyCount": 2,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "tjs ALL=(root) NOPASSWD: sha256:3c3873743037f2a511aa51c3628a9010027e380386a8fe8817323d0d17056a66 /opt/homebrew/bin/yabai --load-sa",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/6/e4/ec520edad6c9315543ac09cf9ccf0cc2eae07319a9f820d1680e113757377",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "tjs ALL=(root) NOPASSWD: sha256:3c3873743037f2a511aa51c3628a9010027e380386a8fe8817323d0d17056a66 /opt/homebrew/bin/yabai --load-sa",
+        "metadata": {
+          "length": 130,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "tjs ALL=(root) NOPASSWD: sha256:3c3873743037f2a511aa51c3628a9010027e380386a8fe8817323d0d17056a66 /opt/homebrew/bin/ya..."
         }
       }
     ]

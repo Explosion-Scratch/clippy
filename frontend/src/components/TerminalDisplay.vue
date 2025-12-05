@@ -18,7 +18,9 @@ const props = defineProps({
       <span class="terminal-title">Terminal</span>
     </div>
     <div class="terminal-content">
-      <pre><code>{{ content }}</code></pre>
+      <slot>
+        <pre><code>{{ content }}</code></pre>
+      </slot>
     </div>
   </div>
 </template>
@@ -28,6 +30,7 @@ const props = defineProps({
   background: #fafafa;
   border-radius: 10px;
   overflow: hidden;
+  width: 100%;
   box-shadow: 
     0 0 0 1px rgba(0, 0, 0, 0.06),
     0 4px 12px rgba(0, 0, 0, 0.08);
@@ -68,19 +71,19 @@ const props = defineProps({
   min-height: 200px;
   max-height: 400px;
   overflow-y: auto;
+  line-height: 1;
   background: #fafafa;
 }
 
 .terminal-content pre {
   margin: 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+  white-space: pre;
+  overflow-x: auto;
 }
 
 .terminal-content code {
   font-family: 'Fira Code', 'SF Mono', 'Consolas', monospace;
-  font-size: 0.8125rem;
-  line-height: 1.6;
+  font-size: 0.75rem;
   color: #1a1a1a;
   font-feature-settings: "liga" 1, "calt" 1;
 }

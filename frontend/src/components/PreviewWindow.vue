@@ -50,7 +50,7 @@ function setFormat(format) {
       </button>
     </div>
 
-    <div class="preview-content">
+    <div class="preview-content compact">
       <div v-if="!item" class="empty-state">
         <span class="empty-icon">👆</span>
         <p>Select an item to preview</p>
@@ -83,69 +83,53 @@ function setFormat(format) {
 
 <style scoped>
 .preview-window {
-  width: 400px;
-  min-height: 400px;
-  background: var(--bg-primary);
-  border-radius: 0 12px 12px 0;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  width: 300px;
+  height: 200px;
+  padding: 10px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
   font-family: system-ui, sans-serif;
-  border-left: 1px solid var(--border-subtle);
+  background: transparent;
+  border-radius: 12px;
 }
 
 .format-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 12px 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.format-tab {
-  padding: 6px 12px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all var(--transition-fast);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.format-tab:hover {
-  color: var(--text-primary);
-}
-
-.format-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  display: none; /* Real app doesn't show tabs in the preview window code I read */
 }
 
 .preview-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding-bottom: 10px;
   position: relative;
 }
 
+.preview-content iframe {
+  border: none;
+  border-radius: 4px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  overflow-x: hidden;
+  width: 100%;
+  height: 100%;
+}
+
 .empty-state {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  min-height: 200px;
-  color: var(--text-muted);
-  text-align: center;
+  color: var(--text-secondary, #6b7280);
   gap: 10px;
   font-size: 12px;
 }
 
 .empty-icon {
   font-size: 2rem;
+  display: none; /* Real app doesn't have icon in empty state text */
 }
 
 .preview-html {
@@ -154,70 +138,20 @@ function setFormat(format) {
   color: var(--text-primary);
 }
 
-.preview-html :deep(pre) {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  background: var(--bg-secondary);
-  padding: 12px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 0;
-}
-
-.preview-html :deep(code) {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-}
-
-.preview-html :deep(a) {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.preview-html :deep(a:hover) {
-  text-decoration: underline;
-}
-
-.preview-html :deep(.file-list) {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-
-.preview-html :deep(.file-list li) {
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  border-radius: 4px;
-  margin-bottom: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-}
-
-.preview-html :deep(.image-preview) {
-  text-align: center;
-  padding: 40px 20px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-}
-
-.preview-html :deep(.placeholder) {
-  font-size: 1.5rem;
-}
-
 .footer {
   height: 24px;
-  background: var(--bg-tertiary);
-  border-top: 1px solid var(--border-subtle);
+  background-color: var(--bg-tertiary, #f3f4f6);
+  border-top: 1px solid var(--border-subtle, #e5e7eb);
   display: flex;
   align-items: center;
   justify-content: space-evenly;
   padding: 0 12px;
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-secondary, #6b7280);
   user-select: none;
   flex-shrink: 0;
   font-family: system-ui, sans-serif;
-  border-radius: 0 0 12px 0;
+  border-radius: 6px;
 }
 
 .shortcut-group {
@@ -232,25 +166,14 @@ function setFormat(format) {
 }
 
 .action-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   cursor: pointer;
-  transition: color var(--transition-fast);
+  transition: color 0.15s;
 }
 
 .action-button:hover {
   color: var(--text-primary);
-}
-
-@media (max-width: 900px) {
-  .preview-window {
-    width: 100%;
-    max-width: 400px;
-    border-radius: 0 0 12px 12px;
-    border-left: none;
-    border-top: 1px solid var(--border-subtle);
-  }
-  
-  .footer {
-    border-radius: 0 0 12px 12px;
-  }
 }
 </style>

@@ -11,9 +11,16 @@ ITEM_COUNT="${ITEM_COUNT:-8}"
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "Fetching clipboard items from API at $API_URL..."
 
-items=$(curl -sf "$API_URL/items?count=$ITEM_COUNT" || echo "[]")
+if [ "$#" -gt 0 ]; then
+    # Join arguments with comma
+    IDS=$(IFS=,; echo "$*")
+    echo "Fetching specific items: $IDS"
+    items=$(curl -sf "$API_URL/items?ids=$IDS" || echo "[]")
+else
+    echo "Fetching $ITEM_COUNT recent items..."
+    items=$(curl -sf "$API_URL/items?count=$ITEM_COUNT" || echo "[]")
+fi
 
 if [ -z "$items" ] || [ "$items" = "[]" ]; then
     echo "No items found or API not running at $API_URL"
@@ -42,7 +49,7 @@ for i in $(seq 0 $((item_count - 1))); do
         continue
     fi
     
-    preview_json=$(curl -sf "$API_URL/item/$id/preview" || echo "{}")
+    preview_json=$(curl -sf "$API_URL/item/$id/preview?compact=true" || echo "{}")
     
     if [ "$first" = true ]; then
         first=false

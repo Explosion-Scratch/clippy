@@ -1,0 +1,38 @@
+get_clipboard v0.1.0 — 100 items                                                                     
+                                                                                                     
+─────────────────────────────────────────────────────────────────────────────────────────────────────
+┌Search─────────────────────────────────────────────────────────────────────────────────────────────┐
+│Type to search clipboard history…                                                                  │
+└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐┌Preview────────────────────────────────────┐
+│  #32   Debug the size of the application at /... Text││calculate_hash() {                         │
+│  #33   https://supreme.justia.com/cases/feder... Text││    if command -v shasum &> /dev/null; then│
+│  #34   Berman v. Parker Text                         ││        HASHER="shasum -a 256"             │
+│  #35   Penn Central Transportation Co. v. Cit... Text││    else                                   │
+│  #36   United States v. Causby Text                  ││        HASHER="sha256sum"                 │
+│  #37   United States v. Causby, Penn Central ... Text││    fi                                     │
+│  #38   cargo bloat --release --crates Text           ││                                           │
+│  #39   cargo bloat --release -n 10 Text              ││    # Use fd to list all files, get their  │
+│  #40   cargo install cargo-bloat Text                ││modification times with stat, then hash    │
+│  #41   Hello world! This is a test of... Dict... Text││    fd --type f . "${TARGETS[@]}" --exec   │
+│  #42   /Users/tjs/Downloads/11944213.pptx Text       ││stat -f '%m %N' {} \; 2>/dev/null | \      │
+│  #43   Image 2096x1084 [403.7 KB - image/png] Image  ││        LC_ALL=C sort | \                  │
+│  #44   padding: 10px; Text                           ││        $HASHER | \                        │
+│  #45   Emitted preview-item event Showing pre... Text││        awk '{print $1}'                   │
+│  #46   background-image:       linear-gradien... Text││}                                          │
+│  #47   /Users/tjs/Downloads/11942023.pptx (32... File││                                           │
+│  #48   test Text                                     ││                                           │
+│  #49   <!DOCTYPE html> <html>  <head>     <st... Text││                                           │
+│  #50   <!DOCTYPE html> <html>  <head>     <st... Text││                                           │
+│  #51   <!DOCTYPE html> <html>  <head>     <st... Text││                                           │
+│  #52   6 Text                                        ││                                           │
+│  #53   --text-primary Text                           ││                                           │
+│  #54   html{line-height:1.15;-webkit-text-siz... Text││                                           │
+│  #55   body {     background-image:       lin... Text││Type Text                                  │
+│  #56   <div class="text-content">{{{content}}... Text││Copies 1                                   │
+│  #57   yabai scripting addition hash get... Text     ││First 2025-12-04 16:43:06                  │
+│  #58   fd --type f . "${TARGETS[@]}" --exec s... Text││Formats Text                               │
+│  #59   365583 Text                                   ││Version 0.1.0                              │
+│› #60   calculate_hash() {     if command -v s... Text││                                           │
+└──────────────────────────────────────────────────────┘└───────────────────────────────────────────┘
+─────────────────────────────────────────────────────────────────────────────────────────────────────

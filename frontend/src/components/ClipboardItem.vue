@@ -91,7 +91,6 @@ const hasImage = computed(() => props.item.type === 'image')
   border-radius: 4px;
   padding: 1px 5px;
   color: var(--text-primary);
-  transition: background var(--transition-fast);
 }
 
 .clipboard-item.has-image {

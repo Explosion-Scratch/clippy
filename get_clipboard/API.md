@@ -116,13 +116,13 @@ Full representation returned by `/item/:selector/data` including all content:
   "index": 0,
   "id": "a1b2c3d4e5f6...",
   "date": "2025-11-02T10:30:00Z",
-  "first_date": "2025-11-02T10:30:00Z",
+  "firstDate": "2025-11-02T10:30:00Z",
   "type": "text",
   "size": 1024,
   "dataPath": "2025/11/02/a1b2c3d4e5f6",
   "summary": "First 200 characters of content...",
-  "copy_count": 3,
-  "detected_formats": ["public.utf8-plain-text"],
+  "copyCount": 3,
+  "detectedFormats": ["public.utf8-plain-text"],
   "sources": ["clipboard"],
   "formats": [
     {
@@ -138,7 +138,11 @@ Full representation returned by `/item/:selector/data` including all content:
 ```
 
 **Additional Fields:**
+- `firstDate` (string, optional): ISO 8601 first seen timestamp
+- `copyCount` (number, optional): Times copied to clipboard
+- `detectedFormats` (array, optional): UTI format identifiers (e.g., `"public.utf8-plain-text"`)
 - `sources` (array): List of data source identifiers
+- `searchText` (string, optional): Text used for search indexing
 - `formats` (array of objects): Full plugin data with content
   - `id` (string): Plugin identifier (`"text"`, `"html"`, `"rtf"`, `"image"`, `"files"`)
   - `data` (any): Format-specific content (see Format Data below)
@@ -526,10 +530,12 @@ curl -X POST {{URL}}/item/0/copy
 Search clipboard history using full-text search.
 
 **Query Parameters:**
-- `query` (string, required): Search query text
+- `query` (string, optional): Search query text
 - `offset` (number, optional): Skip N results (default: 0)
 - `count` (number, optional): Maximum results to return (default: 50)
+- `formats` (string, optional): Comma-separated format filter (e.g., `text,image`)
 - `sort` (string, optional): Sort order (`date`, `copies`, `type`, `relevance`). Default: `relevance`
+- `order` (string, optional): Sort direction (`asc`, `desc`). Default: `desc`
 
 **Response:** Array of matching `ClipboardJsonItem` objects
 
@@ -797,6 +803,72 @@ curl -X POST {{URL}}/save \
 - Bulk data loading
 - Synchronization
 - External integrations
+
+---
+
+### Import/Export
+
+#### GET /export
+
+Export all clipboard items as a JSON file.
+
+**Response:**
+```json
+{
+  "version": "0.1.0",
+  "recommendedFileName": "clipboard-export-2025-11-02.json",
+  "data": "[...]"
+}
+```
+
+**Fields:**
+- `version` (string): API version
+- `recommendedFileName` (string): Suggested filename for saving
+- `data` (string): JSON string containing array of `ClipboardJsonFullItem` objects
+
+**Example:**
+```bash
+curl {{URL}}/export
+```
+
+---
+
+#### POST /import
+
+Import clipboard items from a JSON export.
+
+**Request Body:**
+```json
+{
+  "version": "0.1.0",
+  "data": "[...]"
+}
+```
+
+**Fields:**
+- `version` (string): Export version
+- `data` (string): JSON string containing array of `ClipboardJsonFullItem` objects
+
+**Response:**
+```json
+{
+  "imported": 10,
+  "skipped": 5,
+  "errors": 0
+}
+```
+
+**Fields:**
+- `imported` (number): Count of successfully imported items
+- `skipped` (number): Count of items skipped (duplicates)
+- `errors` (number): Count of items that failed to import
+
+**Example:**
+```bash
+curl -X POST {{URL}}/import \
+  -H "Content-Type: application/json" \
+  -d @export.json
+```
 
 ---
 

@@ -1,312 +1,152 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import TerminalDisplay from './TerminalDisplay.vue'
+import cliExamples from '../data/cli-examples.json'
 
 const selectedCommand = ref('history')
 const selectedSubcommand = ref(null)
 const selectedFlags = ref([])
 
-const commands = {
+const commandMeta = {
   history: {
     description: 'Show clipboard history',
     subcommands: null,
-    flags: ['--limit', '--query', '--from', '--to', '--sort', '--json', '--full', '--text', '--image', '--file'],
-    examples: {
-      default: `0 (0) [11:23 x3]   async function fetchUserData(userId) { ... }
-1 (1) [11:21 x1]   https://github.com/example/clippy
-2 (2) [11:18 x2]   [Image: 245.0K]
-3 (3) [11:15 x5]   The quick brown fox jumps over the lazy dog...
-4 (4) [11:10 x1]   [Files: 2 items]
-5 (5) [11:05 x2]   <div class="container">...</div>
-6 (6) [11:00 x4]   npm install @clippy/core --save-dev
-7 (7) [10:45 x1]   Remember to update the API documentation...`,
-      '--limit 3': `0 (0) [11:23 x3]   async function fetchUserData(userId) { ... }
-1 (1) [11:21 x1]   https://github.com/example/clippy
-2 (2) [11:18 x2]   [Image: 245.0K]`,
-      '--query api': `3 (3) [11:15 x5]   Remember to update the API documentation...
-7 (7) [10:45 x4]   npm install @clippy/core --save-dev`,
-      '--json --limit 2': `[
-  {
-    "hash": "a1b2c3d4",
-    "offset": 0,
-    "summary": "async function fetchUserData...",
-    "type": "text",
-    "byteSize": 142,
-    "copyCount": 3,
-    "lastSeen": "2024-01-15T11:23:45Z"
-  },
-  {
-    "hash": "e5f6g7h8",
-    "offset": 1,
-    "summary": "https://github.com/example/clippy",
-    "type": "text",
-    "byteSize": 35,
-    "copyCount": 1,
-    "lastSeen": "2024-01-15T11:21:30Z"
-  }
-]`,
-      '--text': `0 (0) [11:23 x3]   async function fetchUserData(userId) { ... }
-1 (1) [11:21 x1]   https://github.com/example/clippy
-2 (2) [11:15 x5]   The quick brown fox jumps over the lazy dog...
-3 (3) [11:00 x4]   npm install @clippy/core --save-dev`,
-      '--image': `0 (0) [11:18 x2]   [Image: 245.0K - Screenshot 2024-01-15.png]`,
-      '--sort copies': `0 (3) [11:15 x5]   The quick brown fox jumps over the lazy dog...
-1 (6) [11:00 x4]   npm install @clippy/core --save-dev
-2 (0) [11:23 x3]   async function fetchUserData(userId) { ... }
-3 (2) [11:18 x2]   [Image: 245.0K]`
-    }
+    flags: ['--limit', '--json', '--text', '--image', '--file', '--html', '--help']
   },
   show: {
     description: 'Show a specific clipboard item',
     subcommands: null,
-    flags: ['--json', '--text', '--image', '--file', '--html'],
-    examples: {
-      default: `async function fetchUserData(userId) {
-  const response = await fetch(\`/api/users/\${userId}\`);
-  return response.json();
-}
-
-──────────────────────────────────────────
-Type: text  Size: 142 bytes  Copies: 3
-First copied: 2024-01-15 11:23:45`,
-      '1': `https://github.com/example/clippy
-
-──────────────────────────────────────────
-Type: text  Size: 35 bytes  Copies: 1
-First copied: 2024-01-15 11:21:30`,
-      '--json 0': `{
-  "hash": "a1b2c3d4",
-  "offset": 0,
-  "summary": "async function fetchUserData(userId) {...}",
-  "type": "text",
-  "byteSize": 142,
-  "copyCount": 3,
-  "timestamp": "2024-01-15T10:15:30Z",
-  "lastSeen": "2024-01-15T11:23:45Z",
-  "data": {
-    "text": "async function fetchUserData(userId) {\\n  const response = await fetch(\`/api/users/\${userId}\`);\\n  return response.json();\\n}"
-  }
-}`
-    }
+    flags: ['--json', '--text', '--image', '--file', '--html', '--help']
   },
   search: {
     description: 'Search clipboard history',
     subcommands: null,
-    flags: ['--limit', '--regex', '--sort', '--json'],
-    examples: {
-      default: `Usage: get_clipboard search <QUERY> [OPTIONS]
-
-Search clipboard history by content.
-
-Arguments:
-  <QUERY>  Search query string
-
-Options:
-  -l, --limit <N>    Maximum number of results
-      --regex        Treat query as regex pattern
-      --sort <SORT>  Sort order: date, copies, type, relevance
-      --json         Output as JSON`,
-      'function': `0 (0) [11:23 x3]   async function fetchUserData(userId) { ... }`,
-      'api --sort relevance': `0 (3) [11:15 x5]   Remember to update the API documentation...
-1 (7) [10:45 x4]   npm install @clippy/core --save-dev`,
-      '"^https?://" --regex': `0 (1) [11:21 x1]   https://github.com/example/clippy`
-    }
+    flags: ['--limit', '--regex', '--sort', '--json', '--help']
   },
   copy: {
     description: 'Copy an item to the system clipboard',
     subcommands: null,
-    flags: [],
-    examples: {
-      default: `Copied: async function fetchUserData(userId) { ... }`,
-      '3': `Copied: The quick brown fox jumps over the lazy dog...`
-    }
+    flags: ['--help']
   },
   paste: {
     description: 'Copy an item and paste it',
     subcommands: null,
-    flags: [],
-    examples: {
-      default: `Copied: async function fetchUserData(userId) { ... }
-[Simulating Cmd+V...]`,
-      '2': `Copied: [Image: 245.0K]
-[Simulating Cmd+V...]`
-    }
+    flags: ['--help']
   },
   delete: {
     description: 'Delete an item from history',
     subcommands: null,
-    flags: [],
-    examples: {
-      default: `Deleted: async function fetchUserData(userId) { ... }`,
-      '5': `Deleted: <div class="container">...</div>`
-    }
+    flags: ['--help']
   },
   service: {
     description: 'Manage the clipboard watcher service',
     subcommands: ['status', 'start', 'stop', 'install', 'uninstall', 'logs'],
-    flags: [],
-    examples: {
-      'status': `Service: get_clipboard
-Status: running
-PID: 12345
-Uptime: 2h 34m 12s
-Installed: true`,
-      'start': `Starting clipboard service...
-Service started successfully.`,
-      'stop': `Stopping clipboard service...
-Service stopped.`,
-      'install': `Installing launchd service...
-Created: ~/Library/LaunchAgents/com.clippy.agent.plist
-Service installed successfully.`,
-      'uninstall': `Uninstalling launchd service...
-Removed: ~/Library/LaunchAgents/com.clippy.agent.plist
-Service uninstalled.`,
-      'logs': `[2024-01-15 11:23:45] INFO  Stored text entry: a1b2c3d4
-[2024-01-15 11:21:30] INFO  Stored text entry: e5f6g7h8
-[2024-01-15 11:18:22] INFO  Stored image entry: i9j0k1l2
-[2024-01-15 11:15:10] INFO  Stored text entry: m3n4o5p6
-[2024-01-15 11:10:05] INFO  Stored files entry: q7r8s9t0`,
-      'logs -n 3 --follow': `[2024-01-15 11:23:45] INFO  Stored text entry: a1b2c3d4
-[2024-01-15 11:21:30] INFO  Stored text entry: e5f6g7h8
-[2024-01-15 11:18:22] INFO  Stored image entry: i9j0k1l2
-[Watching for new entries...]`
-    }
+    flags: ['--help']
   },
   dir: {
     description: 'Manage data directory',
     subcommands: ['get', 'set', 'move'],
-    flags: [],
-    examples: {
-      'get': `/Users/demo/Library/Application Support/Clippy`,
-      'set /path/to/new/dir': `Data directory set to: /path/to/new/dir`,
-      'move /path/to/new/dir': `Moving data directory...
-Moved 847 items to: /path/to/new/dir
-Data directory updated.`
-    }
+    flags: ['--help']
   },
   stats: {
     description: 'Show clipboard statistics',
     subcommands: null,
-    flags: ['--json'],
-    examples: {
-      default: `Clipboard Statistics
-====================
-Total items:    847
-Reported size:  12.3 MB
-Storage size:   15.7 MB
-
-By type:
-  text       623
-  image      156
-  file        68
-
-Top 20 Largest Items (by storage):
-Index    Type       Size         Summary
-----------------------------------------------------------------------
-2        image      2.4M         Screenshot 2024-01-15 at 10.32.45 AM
-15       image      1.8M         Design mockup v3.png
-4        file       1.2M         [Files: 2 items]
-...`,
-      '--json': `{
-  "total_items": 847,
-  "total_size": 12890234,
-  "actual_storage_size": 16472891,
-  "type_counts": {
-    "text": 623,
-    "image": 156,
-    "file": 68
-  },
-  "largest_items": [
-    {
-      "hash": "i9j0k1l2",
-      "kind": "image",
-      "storage_size": 2516582,
-      "summary": "Screenshot 2024-01-15 at 10.32.45 AM"
-    }
-  ]
-}`
-    }
+    flags: ['--json', '--help']
   },
   export: {
     description: 'Export clipboard history',
     subcommands: null,
-    flags: [],
-    examples: {
-      'backup.json': `Exporting 847 items...
-  Processed 100/847 items
-  Processed 200/847 items
-  ...
-  Processed 847/847 items
-Exported 847 items to backup.json`
-    }
+    flags: ['--help']
   },
   import: {
     description: 'Import clipboard history',
     subcommands: null,
-    flags: [],
-    examples: {
-      'backup.json': `Importing from version 1.0.0 (847 items)...
-  [1/847] Imported: async function fetchUserData...
-  [2/847] Imported: https://github.com/example/clippy
-  ...
-  [523/847] Skipped (exists): npm install @clippy/core
-  ...
-Import complete: 324 imported, 523 skipped, 0 errors`
-    }
+    flags: ['--help']
   },
   interactive: {
     description: 'Launch the TUI (Terminal User Interface)',
     subcommands: null,
-    flags: ['--query'],
-    examples: {
-      default: `[See interactive.txt for TUI preview]`
-    }
+    flags: ['--help']
   },
   permissions: {
     description: 'Check or request accessibility permissions',
     subcommands: ['check', 'request'],
-    flags: [],
-    examples: {
-      'check': `Accessibility permissions granted`,
-      'request': `Opened System Settings to request permissions`
-    }
+    flags: ['--help']
   }
 }
 
-const commandNames = Object.keys(commands)
+const commands = computed(() => {
+  const result = {}
+  for (const [name, meta] of Object.entries(commandMeta)) {
+    result[name] = {
+      ...meta,
+      examples: cliExamples[name] || {}
+    }
+  }
+  return result
+})
+
+const commandNames = Object.keys(commandMeta)
 
 const currentExamples = computed(() => {
-  const cmd = commands[selectedCommand.value]
+  const cmd = commands.value[selectedCommand.value]
   if (!cmd) return {}
   return cmd.examples
 })
 
-const currentOutput = computed(() => {
-  const cmd = commands[selectedCommand.value]
-  if (!cmd) return ''
+const currentExample = computed(() => {
+  const cmd = commands.value[selectedCommand.value]
+  if (!cmd) return null
   
   let key = selectedSubcommand.value || 'default'
   if (selectedFlags.value.length > 0) {
-    const flagKey = selectedFlags.value.join(' ')
+    const flagKey = selectedFlags.value.join(' ').replace(/ /g, '_')
     if (cmd.examples[flagKey]) {
       key = flagKey
-    } else if (selectedSubcommand.value && cmd.examples[`${selectedSubcommand.value} ${flagKey}`]) {
-      key = `${selectedSubcommand.value} ${flagKey}`
+    } else if (selectedSubcommand.value && cmd.examples[`${selectedSubcommand.value}_${flagKey}`]) {
+      key = `${selectedSubcommand.value}_${flagKey}`
     }
   }
   
-  return cmd.examples[key] || cmd.examples.default || ''
+  return cmd.examples[key] || cmd.examples.default || null
+})
+
+const currentOutput = computed(() => {
+  const example = currentExample.value
+  if (!example) return ''
+
+  // Strip ANSI color escape codes (e.g., \u001b[32m, \u001b[0m)
+  const rawOutput = Array.isArray(example) ? example[1] : example
+  if (!rawOutput) return ''
+  
+  // Regex to match ANSI escape codes
+  // eslint-disable-next-line no-control-regex
+  return rawOutput.replace(/\x1b\[[0-9;]*m/g, '')
 })
 
 const currentCommandStr = computed(() => {
-  let str = `get_clipboard ${selectedCommand.value}`
-  if (selectedSubcommand.value) {
-    str += ` ${selectedSubcommand.value}`
+  if (!currentExample.value) {
+    // Fallback if no example found, though this shouldn't happen often
+    let str = `get_clipboard ${selectedCommand.value}`
+    if (selectedSubcommand.value) {
+      str += ` ${selectedSubcommand.value}`
+    }
+    if (selectedFlags.value.length > 0) {
+      str += ` ${selectedFlags.value.join(' ')}`
+    }
+    return str
   }
-  if (selectedFlags.value.length > 0) {
-    str += ` ${selectedFlags.value.join(' ')}`
+
+  let cmdStr = currentExample.value[0]
+
+  // If the user didn't select --limit, remove it from the display
+  // because we often use it internally for keeping examples short
+  if (!selectedFlags.value.includes('--limit')) {
+    // Remove --limit <number> and trim extra spaces
+    cmdStr = cmdStr.replace(/\s*--limit\s+\d+/, '')
   }
-  return str
+
+  return cmdStr.trim()
 })
 
 function selectCommand(cmd) {
@@ -321,11 +161,14 @@ function selectSubcommand(sub) {
 }
 
 function toggleFlag(flag) {
+  // Single flag selection logic:
+  // If the clicked flag is already selected, deselect it.
+  // Otherwise, select ONLY the clicked flag (clearing others).
   const idx = selectedFlags.value.indexOf(flag)
   if (idx >= 0) {
-    selectedFlags.value.splice(idx, 1)
+    selectedFlags.value = []
   } else {
-    selectedFlags.value.push(flag)
+    selectedFlags.value = [flag]
   }
 }
 </script>
@@ -356,7 +199,10 @@ function toggleFlag(flag) {
 
         <div class="command-detail">
           <div class="command-header">
-            <code class="current-command">$ {{ currentCommandStr }}</code>
+            <code class="current-command">
+              <span class="prompt">$</span> 
+              <span class="cmd-text">{{ currentCommandStr }}</span>
+            </code>
           </div>
 
           <div v-if="commands[selectedCommand]?.subcommands" class="subcommands">
@@ -383,7 +229,26 @@ function toggleFlag(flag) {
             </button>
           </div>
 
-          <TerminalDisplay :content="currentOutput" />
+          <div class="terminal-wrapper">
+             <TerminalDisplay v-if="!currentOutput && commands[selectedCommand]?.subcommands">
+               <div class="empty-state-actions">
+                 <p class="empty-hint">Select a subcommand to view usage examples:</p>
+                 <div class="quick-actions">
+                   <button 
+                     v-for="sub in commands[selectedCommand].subcommands" 
+                     :key="sub"
+                     @click="selectSubcommand(sub)"
+                     class="action-btn"
+                   >
+                    <span class="cmd-prefix">$ {{ selectedCommand }}</span>
+                     <span class="cmd-name">{{ sub }}</span>
+                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                   </button>
+                 </div>
+               </div>
+             </TerminalDisplay>
+             <TerminalDisplay v-else :content="currentOutput" />
+          </div>
         </div>
       </div>
     </div>
@@ -391,18 +256,24 @@ function toggleFlag(flag) {
 </template>
 
 <style scoped>
+.terminal-wrapper {
+  padding: 0 16px 16px 16px;
+  display: flex;
+  height: 100%;
+}
 .cli-demo-section {
   background: var(--bg-primary);
 }
 
 .cli-explorer {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 250px 1fr;
   gap: 32px;
   background: var(--bg-secondary);
   border-radius: 16px;
   padding: 24px;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), 0 6px 40px -5px var(--accent-transparent);
+  border: 2px solid var(--accent-transparent);
 }
 
 .command-sidebar h4 {
@@ -419,17 +290,17 @@ function toggleFlag(flag) {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .command-list li {
-  padding: 10px 12px;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all var(--transition-fast);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
 }
 
 .command-list li:hover {
@@ -437,7 +308,7 @@ function toggleFlag(flag) {
 }
 
 .command-list li.active {
-  background: var(--text-primary);
+  background: var(--accent);
   color: var(--bg-primary);
 }
 
@@ -451,18 +322,22 @@ function toggleFlag(flag) {
 
 .command-list code {
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
 }
 
 .command-desc {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .command-detail {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   gap: 16px;
 }
 
@@ -475,6 +350,19 @@ function toggleFlag(flag) {
 .current-command {
   font-family: var(--font-mono);
   font-size: 0.9375rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prompt {
+  color: var(--primary-color);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.cmd-text {
   color: var(--text-primary);
 }
 
@@ -511,7 +399,7 @@ function toggleFlag(flag) {
 
 .subcommands button.active,
 .flags button.active {
-  background: var(--text-primary);
+  background: var(--accent-dark);
   color: var(--bg-primary);
   border-color: var(--text-primary);
 }
@@ -537,4 +425,77 @@ function toggleFlag(flag) {
     display: none;
   }
 }
+
+.empty-state-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.empty-hint {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0;
+}
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.action-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.cmd-prefix, .cmd-name {
+  font-family: var(--font-mono);
+}
+
+.cmd-prefix {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.cmd-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.arrow-icon {
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.action-btn:hover .arrow-icon {
+  transform: translateX(3px);
+  color: var(--primary-color);
+}
+
 </style>
