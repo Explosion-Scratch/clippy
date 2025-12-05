@@ -1,0 +1,16 @@
+┌────────────────────────────────────────────────────────────────┐
+│  Search: _                                                     │
+├────────────────────────────────────────────────────────────────┤
+│  0  async function fetchUserData(userId) { const res...  11:23 │
+│▶ 1  https://github.com/example/clippy                    11:21 │
+│  2  [Image: 245.0K - Screenshot 2024-01-15.png]          11:18 │
+│  3  The quick brown fox jumps over the lazy dog...       11:15 │
+│  4  [Files: 2 items]                                     11:10 │
+│  5  <div class="container">...</div>                     11:05 │
+│  6  npm install @clippy/core --save-dev                  11:00 │
+│  7  Remember to update the API documentation...          10:45 │
+├────────────────────────────────────────────────────────────────┤
+│  ↑↓ Navigate  ⏎ Copy & Paste  ^⏎ Copy  q Quit                  │
+└────────────────────────────────────────────────────────────────┘
+
+[Please replace this with your own TUI screenshot or ASCII representation]

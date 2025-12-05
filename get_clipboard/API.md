@@ -76,58 +76,55 @@ Every clipboard item includes:
 
 ### ClipboardJsonItem (Summary)
 
-Compact representation of a clipboard item without full content data:
+Compact representation of a clipboard item returned by `/items` and `/item/:selector`:
 
 ```json
 {
-  "hash": "a1b2c3d4e5f6...",
-  "offset": 0,
-  "timestamp": "2025-11-02T10:30:00Z",
-  "lastSeen": "2025-11-02T10:30:00Z",
-  "copyCount": 0,
-  "kind": "text",
+  "index": 0,
+  "id": "a1b2c3d4e5f6...",
+  "date": "2025-11-02T10:30:00Z",
+  "firstDate": "2025-11-02T10:30:00Z",
+  "type": "text",
+  "size": 1024,
+  "dataPath": "2025/11/02/a1b2c3d4e5f6",
   "summary": "First 200 characters of content...",
-  "byteSize": 1024,
-  "sources": ["clipboard"],
-  "plugins": ["text", "html"],
-  "metadata": {
-    "text": {
-      "length": 1024,
-      "lines": 15
-    }
-  }
+  "copyCount": 3,
+  "detectedFormats": ["public.utf8-plain-text"],
+  "data": {}
 }
 ```
 
 **Fields:**
-- `hash` (string): Unique SHA-256 hash identifier
-- `offset` (number): Chronological position (0 = most recent)
-- `timestamp` (string): ISO 8601 creation timestamp
-- `lastSeen` (string): ISO 8601 last observation timestamp
-- `copyCount` (number): Times copied to clipboard
-- `kind` (string): Primary type - "text", "image", "file", or "other"
-- `summary` (string): Brief content preview
-- `byteSize` (number): Total size in bytes
-- `sources` (array): List of data source identifiers
-- `plugins` (array): Active plugin IDs for this item
-- `metadata` (object): Plugin-specific metadata
+- `index` (number): Chronological position (0 = most recent)
+- `id` (string): Unique SHA-256 hash identifier
+- `date` (string): ISO 8601 last seen timestamp
+- `firstDate` (string, optional): ISO 8601 first seen timestamp
+- `type` (string): Primary type - `"text"`, `"image"`, `"file"`, or `"other"`
+- `size` (number): Total size in bytes
+- `dataPath` (string): Relative path to item data directory
+- `summary` (string, optional): Brief content preview
+- `copyCount` (number, optional): Times copied to clipboard
+- `detectedFormats` (array, optional): UTI format identifiers (e.g., `"public.utf8-plain-text"`)
+- `data` (object): Plugin-specific metadata
 
 ### ClipboardJsonFullItem (Complete)
 
-Full representation including all content data:
+Full representation returned by `/item/:selector/data` including all content:
 
 ```json
 {
-  "hash": "a1b2c3d4e5f6...",
-  "offset": 0,
-  "timestamp": "2025-11-02T10:30:00Z",
-  "lastSeen": "2025-11-02T10:30:00Z",
-  "copyCount": 0,
-  "kind": "text",
+  "index": 0,
+  "id": "a1b2c3d4e5f6...",
+  "date": "2025-11-02T10:30:00Z",
+  "first_date": "2025-11-02T10:30:00Z",
+  "type": "text",
+  "size": 1024,
+  "dataPath": "2025/11/02/a1b2c3d4e5f6",
   "summary": "First 200 characters of content...",
-  "byteSize": 1024,
+  "copy_count": 3,
+  "detected_formats": ["public.utf8-plain-text"],
   "sources": ["clipboard"],
-  "plugins": [
+  "formats": [
     {
       "id": "text",
       "data": "Full text content here..."
@@ -141,9 +138,43 @@ Full representation including all content data:
 ```
 
 **Additional Fields:**
-- `plugins` (array of objects): Full plugin data with content
-  - `id` (string): Plugin identifier
-  - `data` (any): Format-specific data structure
+- `sources` (array): List of data source identifiers
+- `formats` (array of objects): Full plugin data with content
+  - `id` (string): Plugin identifier (`"text"`, `"html"`, `"rtf"`, `"image"`, `"files"`)
+  - `data` (any): Format-specific content (see Format Data below)
+
+### Format Data Structures
+
+**Text format (`id: "text"`):**
+```json
+{ "id": "text", "data": "Plain text content" }
+```
+
+**HTML format (`id: "html"`):**
+```json
+{ "id": "html", "data": "<p>HTML content</p>" }
+```
+
+**RTF format (`id: "rtf"`):**
+```json
+{ "id": "rtf", "data": "{\\rtf1\\ansi...}" }
+```
+
+**Image format (`id: "image"`):**
+```json
+{ "id": "image", "data": "data:image/png;base64,..." }
+```
+When fetched via `/item/:selector/data`, returns base64 data URL.
+
+**Files format (`id: "files"`):**
+```json
+{
+  "id": "files",
+  "data": {
+    "files": ["/path/to/file1.pdf", "/path/to/file2.txt"]
+  }
+}
+```
 
 ---
 
@@ -216,7 +247,8 @@ Retrieve a list of clipboard items with optional filtering.
 - `offset` (number, optional): Skip N most recent items (default: 0)
 - `count` (number, optional): Maximum items to return (default: all)
 - `ids` (string, optional): Comma-separated list of selectors to retrieve specific items
-- `sort` (string, optional): Sort order (`date`, `copies`, `type`). Default: `date`
+- `sort` (string, optional): Sort order: `date`, `copies`, `type` (default: `date`)
+- `order` (string, optional): Sort direction: `asc`, `desc` (default: `desc`)
 
 **Response:** Array of `ClipboardJsonItem` objects
 
@@ -232,7 +264,7 @@ Get items starting from offset 20:
 curl "{{URL}}/items?offset=20&count=10"
 ```
 
-Get specific items by hash or offset:
+Get specific items by ID or offset:
 ```bash
 curl "{{URL}}/items?ids=0,1,a1b2c3d4e5f6"
 ```
@@ -241,19 +273,17 @@ curl "{{URL}}/items?ids=0,1,a1b2c3d4e5f6"
 ```json
 [
   {
-    "hash": "abc123...",
-    "offset": 0,
-    "timestamp": "2025-11-02T10:30:00Z",
-    "lastSeen": "2025-11-02T10:30:00Z",
-    "copyCount": 0,
-    "kind": "text",
+    "index": 0,
+    "id": "abc123...",
+    "date": "2025-11-02T10:30:00Z",
+    "firstDate": "2025-11-02T10:30:00Z",
+    "type": "text",
+    "size": 23,
+    "dataPath": "2025/11/02/abc123",
     "summary": "Sample clipboard content",
-    "byteSize": 23,
-    "sources": ["clipboard"],
-    "plugins": ["text"],
-    "metadata": {
-      "text": {"length": 23, "lines": 1}
-    }
+    "copyCount": 1,
+    "detectedFormats": ["public.utf8-plain-text"],
+    "data": {}
   }
 ]
 ```
@@ -265,7 +295,10 @@ curl "{{URL}}/items?ids=0,1,a1b2c3d4e5f6"
 Retrieve metadata and summary for a single clipboard item.
 
 **Path Parameters:**
-- `selector` (string): Hash or offset identifier
+- `selector` (string): Item ID (hash) or offset index
+
+**Query Parameters:**
+- `formats` (string, optional): Comma-separated format filter (e.g., `text,image`)
 
 **Response:** `ClipboardJsonItem` object
 
@@ -276,7 +309,7 @@ Get most recent item:
 curl {{URL}}/item/0
 ```
 
-Get item by hash:
+Get item by ID:
 ```bash
 curl {{URL}}/item/abc123def456
 ```
@@ -331,12 +364,39 @@ curl {{URL}}/item/0/data
 
 #### GET /item/:selector/preview
 
-Retrieve an HTML preview for a single clipboard item.
+Retrieve preview data for a single clipboard item. Returns pre-rendered HTML for each available format.
 
 **Path Parameters:**
-- `selector` (string): Hash or offset identifier
+- `selector` (string): Item ID (hash) or offset index
 
-**Response:** HTML content (text/html)
+**Query Parameters:**
+- `interactive` (string, optional): Enable interactive features like link previews (default: `"true"`)
+
+**Response:** JSON object with preview data
+
+```json
+{
+  "kind": "text",
+  "formatsOrder": ["text", "html"],
+  "data": {
+    "text": {
+      "html": "<pre><code>async function example() {...}</code></pre>",
+      "text": "async function example() {...}"
+    },
+    "html": {
+      "html": "<div class='rendered'>...</div>",
+      "text": null
+    }
+  }
+}
+```
+
+**Fields:**
+- `kind` (string): Primary content type (`text`, `image`, `file`, `other`)
+- `formatsOrder` (array): Available formats in display priority order
+- `data` (object): Map of format ID to preview data
+  - `html` (string): Rendered HTML preview snippet
+  - `text` (string|null): Plain text content if available
 
 **Example:**
 ```bash
@@ -345,7 +405,30 @@ curl {{URL}}/item/0/preview
 
 **Use Cases:**
 - Displaying item previews in the dashboard
-- Embedding previews in other applications
+- Building custom clipboard viewers
+- Extracting plain text from items
+
+---
+
+#### POST /item/:selector/paste
+
+Copy an item to clipboard and simulate paste (Cmd+V). Increments copy count.
+
+**Path Parameters:**
+- `selector` (string): Item ID (hash) or offset index
+
+**Response:** `ClipboardJsonItem` object with updated copy count
+
+**Example:**
+```bash
+curl -X POST {{URL}}/item/0/paste
+```
+
+**Behavior:**
+- Copies item to system clipboard
+- Simulates Cmd+V keystroke
+- Increments `copyCount` field
+- Returns updated item metadata
 
 ---
 
@@ -354,7 +437,7 @@ curl {{URL}}/item/0/preview
 Delete a clipboard item from history.
 
 **Path Parameters:**
-- `selector` (string): Hash or offset identifier
+- `selector` (string): Item ID (hash) or offset index
 
 **Response:** 204 No Content (success), no body
 

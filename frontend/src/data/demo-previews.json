@@ -1,0 +1,86 @@
+{
+  "demo1a2b3c": {
+    "kind": "text",
+    "formatsOrder": ["text"],
+    "data": {
+      "text": {
+        "html": "<pre><code>async function fetchUserData(userId) {\n  const response = await fetch(`/api/users/${userId}`);\n  return response.json();\n}</code></pre>",
+        "text": "async function fetchUserData(userId) {\n  const response = await fetch(`/api/users/${userId}`);\n  return response.json();\n}"
+      }
+    }
+  },
+  "demo4d5e6f": {
+    "kind": "text",
+    "formatsOrder": ["text"],
+    "data": {
+      "text": {
+        "html": "<a href=\"https://github.com/example/clippy\" target=\"_blank\">https://github.com/example/clippy</a>",
+        "text": "https://github.com/example/clippy"
+      }
+    }
+  },
+  "demo7g8h9i": {
+    "kind": "image",
+    "formatsOrder": ["image"],
+    "data": {
+      "image": {
+        "html": "<div class=\"image-preview\"><span class=\"placeholder\">🖼️ Screenshot 2024-01-15 at 10.32.45 AM.png</span><br><small>1920 × 1080</small></div>",
+        "text": null
+      }
+    }
+  },
+  "demoj0k1l2": {
+    "kind": "text",
+    "formatsOrder": ["text"],
+    "data": {
+      "text": {
+        "html": "<p>The quick brown fox jumps over the lazy dog. This is a sample text that demonstrates clipboard history functionality with a longer piece of content.</p>",
+        "text": "The quick brown fox jumps over the lazy dog. This is a sample text that demonstrates clipboard history functionality with a longer piece of content."
+      }
+    }
+  },
+  "demom3n4o5": {
+    "kind": "file",
+    "formatsOrder": ["files"],
+    "data": {
+      "files": {
+        "html": "<ul class=\"file-list\"><li>📄 /Users/demo/Documents/report.pdf</li><li>📄 /Users/demo/Documents/data.csv</li></ul>",
+        "text": "2 files"
+      }
+    }
+  },
+  "demop6q7r8": {
+    "kind": "text",
+    "formatsOrder": ["html", "text"],
+    "data": {
+      "html": {
+        "html": "<div class=\"container\">\n  <h1>Hello World</h1>\n  <p>This is HTML content with styling</p>\n</div>",
+        "text": "Hello World\nThis is HTML content with styling"
+      },
+      "text": {
+        "html": "<p>Hello World<br>This is HTML content with styling</p>",
+        "text": "Hello World\nThis is HTML content with styling"
+      }
+    }
+  },
+  "demos9t0u1": {
+    "kind": "text",
+    "formatsOrder": ["text"],
+    "data": {
+      "text": {
+        "html": "<code>npm install @clippy/core --save-dev</code>",
+        "text": "npm install @clippy/core --save-dev"
+      }
+    }
+  },
+  "demov2w3x4": {
+    "kind": "text",
+    "formatsOrder": ["text"],
+    "data": {
+      "text": {
+        "html": "<p>Remember to update the API documentation with the new endpoints for v2.0 release. This includes the new search functionality and export/import features.</p>",
+        "text": "Remember to update the API documentation with the new endpoints for v2.0 release. This includes the new search functionality and export/import features."
+      }
+    }
+  }
+}

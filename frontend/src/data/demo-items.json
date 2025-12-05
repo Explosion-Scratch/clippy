@@ -1,0 +1,347 @@
+[
+  {
+    "index": 0,
+    "id": "df5f83f7d6d01da0f69e2eadb5a0bead9cba08d0e2cedaa38315bba0c7eb6f5e",
+    "date": "2025-12-05T18:01:34.000000000Z",
+    "firstDate": "2025-12-03T20:02:51.000000000Z",
+    "summary": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+    "type": "Text",
+    "size": 64,
+    "copyCount": 2,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/d/f5/f83f7d6d01da0f69e2eadb5a0bead9cba08d0e2cedaa38315bba0c7eb6f5e",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+        "metadata": {
+          "length": 64,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230"
+        }
+      }
+    ]
+  },
+  {
+    "index": 1,
+    "id": "c6bb7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+    "date": "2025-12-05T17:56:02.000000000Z",
+    "firstDate": "2025-12-03T19:41:39.000000000Z",
+    "summary": "{         key: \"runOnAll\",         type: \"boolean\",         label: \"Process All Audio Together\",         description:...",
+    "type": "Text",
+    "size": 2745,
+    "copyCount": 2,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "public.html",
+      "Apple HTML pasteboard type"
+    ],
+    "sources": [],
+    "searchText": "{\n        key: \"runOnAll\",\n        type: \"boolean\",\n        label: \"Process All Audio Together\",\n        description:\n          \"When enabled, processes all audio segments together for better context. When disabled, processes each segment individually.\",\n        default: false,\n        category: \"advanced\",\n      },\n\n<meta charset='utf-8'><div style=\"color: #a9b1d6;background-color: #1a1b26;font-family: Menlo, Monaco, 'Courier New', monospace;font-weight: normal;font-size: 12px;line-height: 18px;white-space: pre;\"><div><span style=\"color: #9abdf5;\">{</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">key</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">runOnAll</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">type</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">boolean</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">label</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">Process All Audio Together</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">description</span><span style=\"color: #89ddff;\">:</span></div><div><span style=\"color: #9abdf5;\">          </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">When enabled, processes all audio segments together for better context. When disabled, processes each segment individually.</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">default</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #ff9e64;\">false</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">category</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">advanced</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">      }</span><span style=\"color: #89ddff;\">,</span></div></div>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/c/6b/b7dcf80fc76dec8cbf5a7a5f27fdaf2f27a2b315b5fa4a655ec821835c230",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "{\n        key: \"runOnAll\",\n        type: \"boolean\",\n        label: \"Process All Audio Together\",\n        description:\n          \"When enabled, processes all audio segments together for better context. When disabled, processes each segment individually.\",\n        default: false,\n        category: \"advanced\",\n      },",
+        "metadata": {
+          "length": 317,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "{         key: \"runOnAll\",         type: \"boolean\",         label: \"Process All Audio Together\",         description:..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><div style=\"color: #a9b1d6;background-color: #1a1b26;font-family: Menlo, Monaco, 'Courier New', monospace;font-weight: normal;font-size: 12px;line-height: 18px;white-space: pre;\"><div><span style=\"color: #9abdf5;\">{</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">key</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">runOnAll</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">type</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">boolean</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">label</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">Process All Audio Together</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">description</span><span style=\"color: #89ddff;\">:</span></div><div><span style=\"color: #9abdf5;\">          </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">When enabled, processes all audio segments together for better context. When disabled, processes each segment individually.</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">default</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #ff9e64;\">false</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">        </span><span style=\"color: #73daca;\">category</span><span style=\"color: #89ddff;\">:</span><span style=\"color: #9abdf5;\"> </span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #9ece6a;\">advanced</span><span style=\"color: #89ddff;\">\"</span><span style=\"color: #89ddff;\">,</span></div><div><span style=\"color: #9abdf5;\">      }</span><span style=\"color: #89ddff;\">,</span></div></div>",
+        "metadata": {
+          "length": 2428,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><div style=\"color: #a9b1d6;background-color: #1a1b26;font-family: Menlo, Monaco, 'Courier New',..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 2,
+    "id": "b80abf45a6ea980fa6ca45026d1366c51bdeb3024ab0955f567c412d705fd433",
+    "date": "2025-12-05T17:55:35.000000000Z",
+    "firstDate": "2025-12-05T16:46:41.000000000Z",
+    "summary": "/Users/tjs/Documents/ClipboardItems",
+    "type": "Text",
+    "size": 35,
+    "copyCount": 3,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "/Users/tjs/Documents/ClipboardItems",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/b/80/abf45a6ea980fa6ca45026d1366c51bdeb3024ab0955f567c412d705fd433",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "/Users/tjs/Documents/ClipboardItems",
+        "metadata": {
+          "length": 35,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "/Users/tjs/Documents/ClipboardItems"
+        }
+      }
+    ]
+  },
+  {
+    "index": 3,
+    "id": "60fd0cd8595e55e937bf0c3c60725180f8562c8b60872c3b2ca379056f5859bb",
+    "date": "2025-12-05T17:53:14.000000000Z",
+    "firstDate": "2025-12-05T17:53:14.000000000Z",
+    "summary": "https://chromewebstore.google.com/detail/antigravity-browser-exten/eeijfnjmjelapkebgockoeaadonbchdd",
+    "type": "Text",
+    "size": 99,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "https://chromewebstore.google.com/detail/antigravity-browser-exten/eeijfnjmjelapkebgockoeaadonbchdd",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/6/0f/d0cd8595e55e937bf0c3c60725180f8562c8b60872c3b2ca379056f5859bb",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "https://chromewebstore.google.com/detail/antigravity-browser-exten/eeijfnjmjelapkebgockoeaadonbchdd",
+        "metadata": {
+          "length": 99,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "https://chromewebstore.google.com/detail/antigravity-browser-exten/eeijfnjmjelapkebgockoeaadonbchdd"
+        }
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "id": "834c81ff706871e1c6c0e979583b5f3bdd1dc0767f9206fd10e25d185a24b4f4",
+    "date": "2025-12-05T16:56:57.000000000Z",
+    "firstDate": "2025-12-05T16:56:57.000000000Z",
+    "summary": "http://localhost:5173/",
+    "type": "Text",
+    "size": 22,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType"
+    ],
+    "sources": [],
+    "searchText": "http://localhost:5173/",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/8/34/c81ff706871e1c6c0e979583b5f3bdd1dc0767f9206fd10e25d185a24b4f4",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "http://localhost:5173/",
+        "metadata": {
+          "length": 22,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "http://localhost:5173/"
+        }
+      }
+    ]
+  },
+  {
+    "index": 5,
+    "id": "71756cbaeb096c933ee8b01002e4e5999f4d4e1978de163990c0ae60111c45ab",
+    "date": "2025-12-05T16:54:51.000000000Z",
+    "firstDate": "2025-12-05T16:54:51.000000000Z",
+    "summary": "mkdir -p frontend && cd frontend && npx -y create-vite@latest . --template vue",
+    "type": "Text",
+    "size": 9573,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "dyn.ah62d4rv4gu8y63n2nuuhg5pbsm4ca6dbsr4gnkduqf31k3pcr7u1e3basv61a3k",
+      "NeXT smart paste pasteboard type",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "mkdir -p frontend && cd frontend && npx -y create-vite@latest . --template vue\n\n<meta charset='utf-8'><div class=\"flex grow items-center justify-between px-2 py-1 cursor-default\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); display: flex; flex-grow: 1; cursor: default; align-items: center; justify-content: space-between; padding: 0.25rem 0.5rem; color: rgb(120, 124, 153); font-family: -apple-system, &quot;system-ui&quot;, sans-serif; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(22, 22, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;\"><pre class=\"whitespace-pre-wrap break-all font-mono text-sm\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); font-family: &quot;SF Mono&quot;, Monaco, Menlo, Courier, monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, &quot;Liberation Mono&quot;, &quot;Courier New&quot;, monospace; font-feature-settings: normal; font-variation-settings: normal; font-size: 0.75rem; margin: 0px; white-space: pre-wrap; word-break: break-all;\">mkdir -p frontend &amp;&amp; cd frontend &amp;&amp; npx -y create-vite@latest . --template vue</pre><button type=\"button\" data-tooltip-id=\":rq3:\" class=\"flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p-1 text-white opacity-50 hover:opacity-100\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); font-family: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-size: 12px; font-weight: inherit; line-height: inherit; letter-spacing: inherit; color: rgb(255, 255, 255); margin: 0px; padding: 0.25rem; text-transform: none; appearance: button; background-color: rgb(66, 70, 85); background-image: none; cursor: pointer; display: flex; height: 1.25rem; width: 1.25rem; align-items: center; justify-content: center; border-radius: 0.125rem; --tw-bg-opacity: 1; --tw-text-opacity: 1; opacity: 0.5;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-copy h-4 w-4\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path></svg></button></div><div style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); color: rgb(120, 124, 153); font-family: -apple-system, &quot;system-ui&quot;, sans-serif; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(22, 22, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;\"><div class=\"relative overflow-hidden\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); position: relative; overflow: hidden;\"><br class=\"Apple-interchange-newline\">",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/7/17/56cbaeb096c933ee8b01002e4e5999f4d4e1978de163990c0ae60111c45ab",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "mkdir -p frontend && cd frontend && npx -y create-vite@latest . --template vue\n\n",
+        "metadata": {
+          "length": 80,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "mkdir -p frontend && cd frontend && npx -y create-vite@latest . --template vue"
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><div class=\"flex grow items-center justify-between px-2 py-1 cursor-default\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); display: flex; flex-grow: 1; cursor: default; align-items: center; justify-content: space-between; padding: 0.25rem 0.5rem; color: rgb(120, 124, 153); font-family: -apple-system, &quot;system-ui&quot;, sans-serif; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(22, 22, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;\"><pre class=\"whitespace-pre-wrap break-all font-mono text-sm\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); font-family: &quot;SF Mono&quot;, Monaco, Menlo, Courier, monospace, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, &quot;Liberation Mono&quot;, &quot;Courier New&quot;, monospace; font-feature-settings: normal; font-variation-settings: normal; font-size: 0.75rem; margin: 0px; white-space: pre-wrap; word-break: break-all;\">mkdir -p frontend &amp;&amp; cd frontend &amp;&amp; npx -y create-vite@latest . --template vue</pre><button type=\"button\" data-tooltip-id=\":rq3:\" class=\"flex h-5 w-5 cursor-pointer items-center justify-center rounded-sm bg-gray-800 p-1 text-white opacity-50 hover:opacity-100\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); font-family: inherit; font-feature-settings: inherit; font-variation-settings: inherit; font-size: 12px; font-weight: inherit; line-height: inherit; letter-spacing: inherit; color: rgb(255, 255, 255); margin: 0px; padding: 0.25rem; text-transform: none; appearance: button; background-color: rgb(66, 70, 85); background-image: none; cursor: pointer; display: flex; height: 1.25rem; width: 1.25rem; align-items: center; justify-content: center; border-radius: 0.125rem; --tw-bg-opacity: 1; --tw-text-opacity: 1; opacity: 0.5;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-copy h-4 w-4\"><rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"></rect><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"></path></svg></button></div><div style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); color: rgb(120, 124, 153); font-family: -apple-system, &quot;system-ui&quot;, sans-serif; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-align: start; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(22, 22, 30); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial;\"><div class=\"relative overflow-hidden\" style=\"--tw-border-spacing-x: 0; --tw-border-spacing-y: 0; --tw-translate-x: 0; --tw-translate-y: 0; --tw-rotate: 0; --tw-skew-x: 0; --tw-skew-y: 0; --tw-scale-x: 1; --tw-scale-y: 1; --tw-pan-x: ; --tw-pan-y: ; --tw-pinch-zoom: ; --tw-scroll-snap-strictness: proximity; --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; --tw-ordinal: ; --tw-slashed-zero: ; --tw-numeric-figure: ; --tw-numeric-spacing: ; --tw-numeric-fraction: ; --tw-ring-inset: ; --tw-ring-offset-width: 0px; --tw-ring-offset-color: #fff; --tw-ring-color: rgba(67, 128, 180, 0.5); --tw-ring-offset-shadow: 0 0 rgba(0,0,0,0); --tw-ring-shadow: 0 0 rgba(0,0,0,0); --tw-shadow: 0 0 rgba(0,0,0,0); --tw-shadow-colored: 0 0 rgba(0,0,0,0); --tw-blur: ; --tw-brightness: ; --tw-contrast: ; --tw-grayscale: ; --tw-hue-rotate: ; --tw-invert: ; --tw-saturate: ; --tw-sepia: ; --tw-drop-shadow: ; --tw-backdrop-blur: ; --tw-backdrop-brightness: ; --tw-backdrop-contrast: ; --tw-backdrop-grayscale: ; --tw-backdrop-hue-rotate: ; --tw-backdrop-invert: ; --tw-backdrop-opacity: ; --tw-backdrop-saturate: ; --tw-backdrop-sepia: ; --tw-contain-size: ; --tw-contain-layout: ; --tw-contain-paint: ; --tw-contain-style: ; box-sizing: border-box; border-width: 0px; border-style: solid; border-color: rgb(192, 193, 198); position: relative; overflow: hidden;\"><br class=\"Apple-interchange-newline\">",
+        "metadata": {
+          "length": 9493,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><div class=\"flex grow items-center justify-between px-2 py-1 cursor-default\" style=\"--tw-border..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 6,
+    "id": "66ba92266de7095f6c8630400735b4ff39cdbb7e9adecdb5c32262346bc2c196",
+    "date": "2025-12-05T16:49:59.000000000Z",
+    "firstDate": "2025-12-05T16:49:59.000000000Z",
+    "summary": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built...",
+    "type": "Text",
+    "size": 1417,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.nspasteboard.source",
+      "org.nspasteboard.TransientType"
+    ],
+    "sources": [],
+    "searchText": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with Vite and Vue. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. For interactive mode just show the contents of interactive.txt (place this wherever, I'll fill it in with a copied text version of the TUI, this is not interactive in the website).",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/6/6b/a92266de7095f6c8630400735b4ff39cdbb7e9adecdb5c32262346bc2c196",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with Vite and Vue. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. For interactive mode just show the contents of interactive.txt (place this wherever, I'll fill it in with a copied text version of the TUI, this is not interactive in the website).",
+        "metadata": {
+          "length": 1417,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built..."
+        }
+      }
+    ]
+  },
+  {
+    "index": 7,
+    "id": "62eefb367900fcb1fdd2f7dd81045d4f03346845186d37337280af4f3778fb35",
+    "date": "2025-12-05T16:36:25.000000000Z",
+    "firstDate": "2025-12-05T16:36:25.000000000Z",
+    "summary": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built...",
+    "type": "Text",
+    "size": 2900,
+    "copyCount": 1,
+    "detectedFormats": [
+      "public.html",
+      "Apple HTML pasteboard type",
+      "public.utf8-plain-text",
+      "NSStringPboardType",
+      "org.chromium.internal.source-rfh-token",
+      "org.chromium.web-custom-data",
+      "org.chromium.source-url"
+    ],
+    "sources": [],
+    "searchText": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with Vite and Vue. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. For interactive mode just show the contents of interactive.txt (place this wherever, I'll fill it in with a copied text version of the TUI, this is not interactive in the website).\n\n<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with Vite and Vue. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. For interactive mode just show the contents of interactive.txt (place this wherever, I'll fill it in with a copied text version of the TUI, this is not interactive in the website).</span>",
+    "dataPath": "/Users/tjs/Documents/ClipboardItems/2025/12/6/2e/efb367900fcb1fdd2f7dd81045d4f03346845186d37337280af4f3778fb35",
+    "formats": [
+      {
+        "pluginId": "text",
+        "kind": "text",
+        "priority": 2,
+        "entryKind": "Text",
+        "data": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with Vite and Vue. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. For interactive mode just show the contents of interactive.txt (place this wherever, I'll fill it in with a copied text version of the TUI, this is not interactive in the website).",
+        "metadata": {
+          "length": 1417,
+          "pluginId": "text",
+          "pluginKind": "text",
+          "storedFiles": [
+            "text__content.txt"
+          ],
+          "summary": "Create a beautiful front end website for the application. This should be in a new frontend folder and should be built..."
+        }
+      },
+      {
+        "pluginId": "html",
+        "kind": "html",
+        "priority": 3,
+        "entryKind": "Text",
+        "data": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a beautiful front end website for the application. This should be in a new frontend folder and should be built with Vite and Vue. In this website, show the clippy app icon about the app and a list of the features of the app. This website should be very minimal, notion like themed, and beautiful. Import the clipboard manager component to create an interactive demo for the user This demo should function exactly like the Clippy app, but with placeholder items. This means the users can search and it should show the preview window. Simply copy the components from Clipy and then strip them of actual functionality and implement placeholder state. Similarly, add a section about the command line and have an interactive demo for the CLI. This interactive demo should have all commands of the get clipboard binary. But with placeholder data. This means just hard code example data for each of the commands and all their subcommands, along with the combinations of flags. Create a build clipboard get clipboard example script that runs actual get clipboard to build the examples for every combination. Terminal like display into the website. This should be done with light theme and should use Fira code as the font with ligatures. For interactive mode just show the contents of interactive.txt (place this wherever, I'll fill it in with a copied text version of the TUI, this is not interactive in the website).</span>",
+        "metadata": {
+          "length": 1483,
+          "pluginId": "html",
+          "pluginKind": "html",
+          "storedFiles": [
+            "html__content.html"
+          ],
+          "summary": "<meta charset='utf-8'><span style=\"white-space: pre-wrap;\">Create a beautiful front end website for the application. ..."
+        }
+      }
+    ]
+  }
+]
