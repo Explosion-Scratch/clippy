@@ -100,28 +100,10 @@ watch(searchQuery, () => {
   scrollOffset.value = 0
 })
 
-const features = [
-  {
-    icon: 'ph-lightning',
-    title: 'Lightning Fast',
-    description: 'Native performance with instant search across your entire clipboard history'
-  },
-  {
-    icon: 'ph-magnifying-glass',
-    title: 'Powerful Search',
-    description: 'Find any item instantly with regex support and smart filtering'
-  },
-  {
-    icon: 'ph-file-text',
-    title: 'Rich Content',
-    description: 'Full support for text, images, files, HTML, and RTF content'
-  },
-  {
-    icon: 'ph-terminal-window',
-    title: 'CLI Power',
-    description: 'Complete command-line interface for scripting and automation'
-  }
-]
+const demoDescription = {
+  title: 'You get what you see',
+  description: 'Fully featured, open source, private, and fast. Easy to use, free forever. (Note: This demo doesn\'t have some bells and whistles that the actual app has)'
+}
 </script>
 
 <template>
@@ -180,14 +162,9 @@ const features = [
       </div>
 
       <div class="demo-right">
-        <div class="features-list">
-          <div v-for="feature in features" :key="feature.title" class="feature-item">
-            <i :class="['ph', feature.icon, 'feature-icon']"></i>
-            <div>
-              <h3 class="feature-title">{{ feature.title }}</h3>
-              <p class="feature-description">{{ feature.description }}</p>
-            </div>
-          </div>
+        <div class="demo-description">
+          <h2 class="demo-title">{{ demoDescription.title }}</h2>
+          <p class="demo-text">{{ demoDescription.description }}</p>
         </div>
       </div>
     </div>
@@ -209,6 +186,7 @@ const features = [
   grid-template-columns: 1.2fr 1fr;
   gap: 40px;
   align-items: center;
+  padding-right: 60px;
 }
 
 .demo-left {
@@ -359,49 +337,43 @@ const features = [
   opacity: 0.7;
 }
 
-.features-list {
+.demo-description {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 16px;
 }
 
-.feature-item {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-}
-
-.feature-icon {
-  font-size: 24px;
-  color: var(--accent-dark);
-  padding: 12px;
-  background: var(--bg-primary);
-  border-radius: 12px;
-}
-
-.feature-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 6px;
+.demo-title {
+  font-size: 3rem;
+  font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.2;
+  width: fit-content;
 }
 
-.feature-description {
-  font-size: 0.95rem;
+.demo-title::after {
+  content: none;
+}
+
+.demo-text {
+  font-size: 1.1rem;
   color: var(--text-secondary);
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 @media (max-width: 1024px) {
   .demo-container {
     grid-template-columns: 1fr;
     gap: 40px;
+    padding-right: 20px;
   }
   
   .clipboard-demo-section {
     background: linear-gradient(to bottom, var(--accent-transparent), var(--bg-secondary));
   }
-  
+}
+
+@media (max-width: 400px) {
   .demo-wrapper {
     flex-direction: column;
     height: auto;

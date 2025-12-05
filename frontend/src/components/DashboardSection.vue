@@ -46,11 +46,13 @@ const prevSlide = () => {
         <div class="dashboard-gallery-wrapper">
           <div class="dashboard-gallery">
             <div class="gallery-frame">
-              <img 
-                :src="slides[currentSlide].image" 
-                :alt="slides[currentSlide].caption"
-                class="gallery-image"
-              >
+              <a :href="slides[currentSlide].image" target="_blank" rel="noopener noreferrer">
+                <img 
+                  :src="slides[currentSlide].image" 
+                  :alt="slides[currentSlide].caption"
+                  class="gallery-image"
+                >
+              </a>
             </div>
             <div class="gallery-controls">
               <button class="nav-btn prev" @click="prevSlide" aria-label="Previous slide">
@@ -128,6 +130,7 @@ const prevSlide = () => {
   height: 100%;
   object-fit: cover;
   display: block;
+  cursor: pointer;
   /* Visual fallback for broken images during development */
   background: linear-gradient(45deg, var(--bg-secondary) 25%, var(--bg-tertiary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 50%, var(--bg-secondary) 75%, var(--bg-tertiary) 75%, var(--bg-tertiary) 100%);
   background-size: 20px 20px;

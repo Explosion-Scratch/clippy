@@ -247,13 +247,46 @@ section {
 
   .features-grid {
     grid-template-columns: 1fr;
-    gap: 24px;
-    text-align: center;
+    gap: 12px;
+    max-width: 400px;
+    text-align: left;
   }
   
   .feature-card {
-    max-width: 320px;
-    margin: 0 auto;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+    background: var(--bg-primary);
+    border-radius: 12px;
+    border: 2px solid #0001;
+    max-width: none;
+    margin: 0;
+  }
+
+  .feature-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0;
+    flex-shrink: 0;
+    color: var(--accent-dark);
+  }
+
+  .feature-title {
+    font-size: 0.9rem;
+    margin-bottom: 2px;
+  }
+
+  .feature-description {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+  }
+}
+
+@media (max-width: 715px) {
+  .waves {
+    display: none;
   }
 }
 </style>

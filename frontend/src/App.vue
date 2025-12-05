@@ -8,7 +8,7 @@ import FooterSection from './components/FooterSection.vue'
 </script>
 
 <template>
-  <div class="app subtle-grain">
+  <div class="app">
     <HeroSection />
     <ClipboardDemo />
     <DashboardSection />
@@ -22,6 +22,8 @@ import FooterSection from './components/FooterSection.vue'
 .app {
   height: 100vh;
   overflow-y: scroll;
+  width: 100vw;
+  overflow-x: hidden;
 }
 * {
   box-sizing: border-box;
