@@ -717,6 +717,91 @@ curl -X POST {{URL}}/save \
 
 ---
 
+#### GET /export
+
+Export all clipboard items as JSON for backup or transfer.
+
+**Response:**
+```json
+{
+  "version": "0.1.0",
+  "recommendedFileName": "clipboard-export-2025-12-05.json",
+  "data": "[{...}, {...}]"
+}
+```
+
+**Fields:**
+- `version` (string): API version that created the export
+- `recommendedFileName` (string): Suggested filename for saving
+- `data` (string): JSON-encoded array of `ClipboardJsonFullItem` objects
+
+**Example:**
+```bash
+# Export all items
+curl {{URL}}/export > backup.json
+
+# Extract just the data
+curl {{URL}}/export | jq -r '.data' | jq '.' > items.json
+```
+
+**Use Cases:**
+- Full history backup
+- Data migration between systems
+- Archiving clipboard history
+
+---
+
+#### POST /import
+
+Import clipboard items from a previously exported JSON file.
+
+**Request Body:**
+```json
+{
+  "version": "0.1.0",
+  "data": "[{...}, {...}]"
+}
+```
+
+**Fields:**
+- `version` (string): Version of the export (for compatibility)
+- `data` (string): JSON-encoded array of `ClipboardJsonFullItem` objects
+
+**Response:**
+```json
+{
+  "imported": 45,
+  "skipped": 10,
+  "errors": 2
+}
+```
+
+**Fields:**
+- `imported` (number): Successfully imported items
+- `skipped` (number): Items skipped (already exist)
+- `errors` (number): Items that failed to import
+
+**Example:**
+```bash
+# Import from a backup
+curl -X POST {{URL}}/import \
+  -H "Content-Type: application/json" \
+  -d @backup.json
+```
+
+**Behavior:**
+- Skips items that already exist (based on content hash)
+- Preserves original timestamps and metadata
+- Does not overwrite existing items
+- Reports counts for each outcome
+
+**Use Cases:**
+- Restoring from backup
+- Merging clipboard history from another device
+- Bulk data import
+
+---
+
 ## Error Handling
 
 The API uses standard HTTP status codes and returns JSON error objects.

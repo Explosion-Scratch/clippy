@@ -142,7 +142,7 @@ impl ClipboardPlugin for TextPlugin {
 
         let is_url = !is_svg && !is_color && (trimmed.starts_with("http://") || trimmed.starts_with("https://"));
 
-        Ok(json!({
+        let mut result = json!({
             "content": content,
             "raw_text": text_content,
             "is_svg": is_svg,
@@ -150,7 +150,25 @@ impl ClipboardPlugin for TextPlugin {
             "color_value": if is_color { trimmed } else { "" },
             "is_url": is_url,
             "url": if is_url { trimmed } else { "" }
-        }))
+        });
+
+        if is_url {
+            if let Ok(url) = url::Url::parse(trimmed) {
+                if let Ok(preview) = crate::website_fetcher::fetch_website_data(&url) {
+                    if let Some(obj) = result.as_object_mut() {
+                        obj.insert("link_preview".to_string(), json!({
+                            "title": preview.title,
+                            "description": preview.description,
+                            "image": preview.og_image,
+                            "favicon": preview.favicon,
+                            "url": trimmed
+                        }));
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 

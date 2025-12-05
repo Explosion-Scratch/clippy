@@ -32,10 +32,8 @@ use crate::data::store::{
 use crate::search::SearchOptions;
 use crate::util::paste;
 use crate::util::time::format_iso;
-use crate::website_fetcher;
 
 use tokio::net::TcpListener;
-use tokio::task;
 
 const API_DOCS: &str = include_str!("../../API.md");
 
@@ -440,29 +438,6 @@ async fn preview_item(
         let mut template_ctx = format.data.clone();
         if let Some(obj) = template_ctx.as_object_mut() {
             obj.insert("interactive".to_string(), json!(interactive));
-        }
-
-        if format.plugin_id == "text" {
-            if let Some(url_str) = format.data.get("url").and_then(|v| v.as_str()) {
-                if !url_str.is_empty() {
-                    if let Ok(url) = url::Url::parse(url_str) {
-                        let url_clone = url.clone();
-                        if let Ok(Ok(preview)) = task::spawn_blocking(move || {
-                            website_fetcher::fetch_website_data(&url_clone)
-                        }).await {
-                            if let Some(obj) = template_ctx.as_object_mut() {
-                                obj.insert("link_preview".to_string(), json!({
-                                    "title": preview.title,
-                                    "description": preview.description,
-                                    "image": preview.og_image,
-                                    "favicon": preview.favicon,
-                                    "url": url_str
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         if let Ok(html) = HANDLEBARS.render(&format.template_name, &template_ctx) {

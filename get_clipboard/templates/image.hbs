@@ -4,6 +4,87 @@
 <head>
     <style>
         {{>style.css}}
+
+        .image-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: grab;
+        }
+        .image-container:not(.compact *){
+            height: 100%;
+        }
+        .image-container:active {
+            cursor: grabbing;
+        }
+
+        .image-container img {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: var(--shadow-lg);
+            border-radius: var(--radius-lg);
+            transition: transform 0.1s ease-out;
+        }
+
+        .dimensions-info {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            padding: 0 0.5rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            white-space: nowrap;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 0.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            box-shadow: var(--shadow-lg);
+            z-index: 10;
+        }
+
+        .zoom-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .zoom-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .zoom-level {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            min-width: 48px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .zoom-divider {
+            width: 1px;
+            height: 16px;
+            background: var(--border-color);
+            margin: 0 0.25rem;
+        }
     </style>
 </head>
 
