@@ -2,6 +2,7 @@
 import HeroSection from './components/HeroSection.vue'
 import ClipboardDemo from './components/ClipboardDemo.vue'
 import DashboardSection from './components/DashboardSection.vue'
+import ScreenshotGallery from './components/ScreenshotGallery.vue'
 import CliDemo from './components/CliDemo.vue'
 import FooterSection from './components/FooterSection.vue'
 </script>
@@ -11,6 +12,7 @@ import FooterSection from './components/FooterSection.vue'
     <HeroSection />
     <ClipboardDemo />
     <DashboardSection />
+    <ScreenshotGallery />
     <CliDemo />
     <FooterSection />
   </div>
