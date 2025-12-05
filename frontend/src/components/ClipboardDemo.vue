@@ -199,6 +199,9 @@ const features = [
   background: linear-gradient(to right, var(--accent-dark) 0%, var(--bg-primary) 100%);
   padding: 100px 0;
   color: var(--text-primary);
+  height: 100vh;
+  display: grid;
+  place-items: center;
 }
 
 .demo-container {

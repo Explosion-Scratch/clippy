@@ -127,8 +127,8 @@ section {
   margin: 0 auto;
   margin-bottom: 12px;
   color: var(--text-primary);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 800;
+  letter-spacing: 0.02em;
   display: block !important;
   width: fit-content;
 }
