@@ -11,11 +11,9 @@
         </div>
         <p class="footer-tagline">A minimal yet powerful clipboard manager for macOS</p>
         <div class="footer-links">
-          <a href="https://github.com" target="_blank">GitHub</a>
+          <a href="https://github.com/Explosion-Scratch/clippy" target="_blank">GitHub</a>
           <span class="divider">·</span>
-          <a href="#demo">Demo</a>
-          <span class="divider">·</span>
-          <a href="#cli">CLI Docs</a>
+          <a href="https://github.com/Explosion-Scratch" target="_blank">@Explosion-Scratch</a>
         </div>
         <p class="footer-copyright">Built with ❤️ for clipboard power users</p>
       </div>
