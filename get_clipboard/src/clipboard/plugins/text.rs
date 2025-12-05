@@ -29,6 +29,10 @@ impl ClipboardPlugin for TextPlugin {
         2
     }
 
+    fn get_preview_format_order(&self) -> u8 {
+        3
+    }
+
     fn entry_kind(&self) -> EntryKind {
         EntryKind::Text
     }

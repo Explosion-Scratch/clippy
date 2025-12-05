@@ -4,16 +4,24 @@ import { ref } from 'vue'
 const currentSlide = ref(0)
 const slides = [
   {
-    caption: 'Comprehensive Clipboard History',
-    image: '/screenshots/dashboard-main.png'
+    caption: 'Image preview',
+    image: '/images/dashboard/image.png'
   },
   {
-    caption: 'Advanced Search & Filtering',
-    image: '/screenshots/dashboard-search.png'
+    caption: 'File example',
+    image: '/images/dashboard/files.png'
+  },
+  {
+    caption: 'A link',
+    image: '/images/dashboard/link.png'
   },
   {
     caption: 'Rich Content Previews',
-    image: '/screenshots/dashboard-preview.png'
+    image: '/images/dashboard/html.png'
+  },
+  {
+    caption: 'Statistics',
+    image: '/images/dashboard/statistics.png'
   }
 ]
 

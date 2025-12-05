@@ -28,6 +28,10 @@ impl ClipboardPlugin for HtmlPlugin {
         3
     }
 
+    fn get_preview_format_order(&self) -> u8 {
+        2
+    }
+
     fn entry_kind(&self) -> EntryKind {
         EntryKind::Text
     }

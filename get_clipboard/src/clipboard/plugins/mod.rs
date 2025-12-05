@@ -47,7 +47,7 @@ pub trait ClipboardPlugin: Sync + Send {
         format!("{}.hbs", self.id())
     }
 
-    fn get_preview_priority(&self) -> u8 {
+    fn get_preview_format_order(&self) -> u8 {
         self.priority()
     }
 
@@ -554,7 +554,7 @@ pub fn build_preview_formats(
         previews.push(PreviewFormat {
             plugin_id: plugin.id().to_string(),
             template_name: plugin.preview_template_name(),
-            priority: plugin.get_preview_priority(),
+            priority: plugin.get_preview_format_order(),
             data,
             text,
         });
