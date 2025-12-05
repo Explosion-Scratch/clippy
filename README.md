@@ -3,11 +3,25 @@
 
 A tiny MacOS clipboard manager built with Tauri and Rust. Clippy features interactive search, cycling through clipboard items, and a Mac native style interface. Clippy supports images, files, text and html clipboard types, and stores all items simply though the file system. This means items can be saved, restored, manipulated, analyzed, or merged with old saves simply by copy pasting items from folders. The full application comes in at 30MB. Clippy also comes bundled with a fully featured CLI called [get_clipboard](./get_clipboard/README.md) and a beautiful dashboard.
 
-## Screenshots
+## Small and minimal
+<p align="center">
+  <img src="frontend/public/images/app/color.png" width="400" />
+</p>
 
+## Lots of formats suported
+<p align="center">
+  <img src="frontend/public/images/app/files.png" width="400" />
+</p>
 
-TODO
+## Configure wherever
+<p align="center">
+  <img src="frontend/public/images/app/settings.png" width="400" />
+</p>
 
+## Manage from the Tray
+<p align="center">
+  <img src="frontend/public/images/app/tray.png" width="400" />
+</p>
 
 ## Architecture
 
