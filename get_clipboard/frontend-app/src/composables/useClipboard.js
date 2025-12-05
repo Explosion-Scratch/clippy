@@ -297,16 +297,18 @@ export function useClipboard() {
   const handleImport = async (data) => {
     try {
       const itemsToImport = Array.isArray(data) ? data : [data]
-      let count = 0
-      for (const item of itemsToImport) {
-        await fetch(`${API_BASE}/save`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(item)
-        })
-        count++
-      }
-      showToast('Imported', `${count} items imported`)
+      const importData = JSON.stringify(itemsToImport)
+      
+      const res = await fetch(`${API_BASE}/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: '1.0', data: importData })
+      })
+      
+      if (!res.ok) throw new Error('Import failed')
+      const result = await res.json()
+      
+      showToast('Imported', `${result.imported} imported, ${result.skipped} skipped`)
       refreshAll()
       showImportModal.value = false
     } catch (e) {
@@ -316,15 +318,20 @@ export function useClipboard() {
 
   const exportAll = async () => {
     try {
-      const exportData = items.value
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const res = await fetch(`${API_BASE}/export`)
+      if (!res.ok) throw new Error('Export failed')
+      const exportData = await res.json()
+      
+      const blob = new Blob([exportData.data], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `clippith-export-${new Date().toISOString()}.json`
+      a.download = exportData.recommendedFileName || `clipboard-export-${new Date().toISOString().split('T')[0]}.json`
       a.click()
       URL.revokeObjectURL(url)
-      showToast('Exported', `${items.value.length} items exported`)
+      
+      const count = JSON.parse(exportData.data).length
+      showToast('Exported', `${count} items exported`)
     } catch (e) {
       showToast('Error', 'Export failed', 'error')
     }

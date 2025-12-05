@@ -126,6 +126,16 @@ impl ClipboardPlugin for TextPlugin {
         ])
     }
 
+    fn get_summary(&self, is_tty: bool, ctx: &PluginContext<'_>) -> Option<String> {
+        if is_tty {
+            ctx.metadata.summary.clone()
+        } else {
+            read_text(ctx).ok().map(|text| {
+                text.replace('\n', " ").replace('\r', " ")
+            })
+        }
+    }
+
     fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
         let text_content = read_text(ctx)?;
         let trimmed = text_content.trim();

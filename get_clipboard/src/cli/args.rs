@@ -66,6 +66,7 @@ pub enum Command {
     Import {
         path: PathBuf,
     },
+    Stats,
     Permissions {
         #[command(subcommand)]
         subcommand: PermissionsCmd,

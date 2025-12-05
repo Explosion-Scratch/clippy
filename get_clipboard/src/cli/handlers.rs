@@ -90,6 +90,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         }
         Command::Export { path } => export_command(&path),
         Command::Import { path } => import_command(&path),
+        Command::Stats => run_stats(&cli.json),
         Command::Permissions { subcommand } => match subcommand {
             PermissionsCmd::Check => {
                 if permissions::check_accessibility() {
@@ -361,6 +362,156 @@ fn import_command(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn run_stats(json: &bool) -> Result<()> {
+    use std::collections::HashMap;
+    use serde::Serialize;
+    use std::fs;
+
+    #[derive(Serialize)]
+    struct StatsOutput {
+        total_items: usize,
+        total_size: u64,
+        actual_storage_size: u64,
+        type_counts: HashMap<String, usize>,
+        largest_items: Vec<LargeItem>,
+    }
+
+    #[derive(Serialize, Clone)]
+    struct LargeItem {
+        hash: String,
+        kind: String,
+        storage_size: u64,
+        summary: Option<String>,
+    }
+
+    refresh_index()?;
+    let index = load_index()?;
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+
+    let total_items = index.len();
+    let total_size: u64 = index.values().map(|r| r.byte_size).sum();
+
+    let mut type_counts: HashMap<String, usize> = HashMap::new();
+    let mut items_with_storage: Vec<(String, String, u64, Option<String>, usize)> = Vec::new();
+    let mut actual_storage_size: u64 = 0;
+
+    // Build ordered index to get offsets
+    let mut ordered: Vec<_> = index.values().collect();
+    ordered.sort_by(|a, b| b.last_seen.cmp(&a.last_seen));
+    let offsets: HashMap<String, usize> = ordered
+        .iter()
+        .enumerate()
+        .map(|(idx, record)| (record.hash.clone(), idx))
+        .collect();
+
+    for record in index.values() {
+        let kind_str = match record.kind {
+            crate::data::model::EntryKind::Text => "text",
+            crate::data::model::EntryKind::Image => "image",
+            crate::data::model::EntryKind::File => "file",
+            crate::data::model::EntryKind::Other => "other",
+        };
+        *type_counts.entry(kind_str.to_string()).or_insert(0) += 1;
+
+        let item_dir = data_dir.join(&record.relative_path);
+        let storage_bytes = compute_dir_storage(&item_dir);
+        actual_storage_size += storage_bytes;
+
+        let summary = record.summary.clone();
+        let offset = offsets.get(&record.hash).copied().unwrap_or(0);
+        items_with_storage.push((
+            record.hash.clone(),
+            kind_str.to_string(),
+            storage_bytes,
+            summary,
+            offset,
+        ));
+    }
+
+    items_with_storage.sort_by(|a, b| b.2.cmp(&a.2));
+    let largest: Vec<(LargeItem, usize)> = items_with_storage
+        .into_iter()
+        .take(20)
+        .map(|(hash, kind, storage_size, summary, offset)| {
+            (LargeItem {
+                hash,
+                kind,
+                storage_size,
+                summary,
+            }, offset)
+        })
+        .collect();
+
+    if *json {
+        let output = StatsOutput {
+            total_items,
+            total_size,
+            actual_storage_size,
+            type_counts,
+            largest_items: largest.iter().map(|(item, _)| item.clone()).collect(),
+        };
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("Clipboard Statistics");
+        println!("====================");
+        println!("Total items:    {}", total_items);
+        println!("Reported size:  {}", human_size(total_size));
+        println!("Storage size:   {}", human_size(actual_storage_size));
+        println!();
+        println!("By type:");
+        for (type_name, count) in &type_counts {
+            println!("  {:10} {}", type_name, count);
+        }
+        println!();
+        println!("Top 20 Largest Items (by storage):");
+        println!("{:<8} {:<10} {:<12} {}", "Index", "Type", "Size", "Summary");
+        println!("{}", "-".repeat(70));
+        for (item, offset) in largest.iter() {
+            let summary = item.summary.as_deref().unwrap_or("(no summary)");
+            let truncated = if summary.len() > 40 {
+                format!("{}...", &summary[..37])
+            } else {
+                summary.to_string()
+            }.replace('\n', " ");
+            println!(
+                "{:<8} {:<10} {:<12} {}",
+                offset,
+                item.kind,
+                human_size(item.storage_size),
+                truncated
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn compute_dir_storage(path: &Path) -> u64 {
+    use std::fs;
+
+    if !path.exists() {
+        return 0;
+    }
+    
+    if path.is_file() {
+        return fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    }
+    
+    let mut total = 0u64;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_file() {
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            } else if entry_path.is_dir() {
+                total += compute_dir_storage(&entry_path);
+            }
+        }
+    }
+    total
+}
+
 fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
@@ -475,9 +626,17 @@ fn output_single_item(item: &HistoryItem, mode: OutputMode) -> Result<bool> {
 
             let timestamp = format_history_timestamp(item.metadata.last_seen);
             let copies = item.metadata.copy_count;
+            
+            let config = load_config()?;
+            let data_dir = ensure_data_dir(&config)?;
+            let item_dir = data_dir.join(&item.metadata.relative_path);
+            
+            let raw_summary = plugins::build_summary(&item.metadata, &item_dir, is_interactive)
+                .unwrap_or_else(|| item.summary.clone());
+            
             let summary = if is_interactive {
                 clip_summary_to_width(
-                    &item.summary,
+                    &raw_summary,
                     terminal_width,
                     item.offset,
                     &timestamp,
@@ -485,7 +644,7 @@ fn output_single_item(item: &HistoryItem, mode: OutputMode) -> Result<bool> {
                     item.global_offset,
                 )
             } else {
-                clean_summary(&item.summary)
+                clean_summary(&raw_summary)
             };
             let line = format!(
                 "{} ({}) [{} x{}]   {}",
@@ -546,12 +705,20 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
                 usize::MAX
             };
 
+            let config = load_config()?;
+            let data_dir = ensure_data_dir(&config)?;
+
             for item in items {
+                let item_dir = data_dir.join(&item.metadata.relative_path);
                 let timestamp = format_history_timestamp(item.metadata.last_seen);
                 let copies = item.metadata.copy_count;
+                
+                let raw_summary = plugins::build_summary(&item.metadata, &item_dir, is_interactive)
+                    .unwrap_or_else(|| item.summary.clone());
+                
                 let summary = if is_interactive {
                     clip_summary_to_width(
-                        &item.summary,
+                        &raw_summary,
                         terminal_width,
                         item.offset,
                         &timestamp,
@@ -559,7 +726,7 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
                         item.global_offset,
                     )
                 } else {
-                    clean_summary(&item.summary)
+                    clean_summary(&raw_summary)
                 };
                 let line = format!(
                     "{} ({}) [{} x{}]   {}",

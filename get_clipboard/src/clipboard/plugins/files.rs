@@ -65,7 +65,7 @@ impl ClipboardPlugin for FilesPlugin {
             bytes: joined.as_bytes().to_vec(),
         }];
 
-        let byte_size = snapshot.files.iter().map(|record| record.size).sum();
+        let byte_size = files.iter().map(|f| f.bytes.len() as u64).sum();
         let sources = snapshot.sources();
 
         Some(PluginCapture {
@@ -174,6 +174,8 @@ impl ClipboardPlugin for FilesPlugin {
             bytes: joined.clone().into_bytes(),
         }];
 
+        let byte_size: u64 = files.iter().map(|f| f.bytes.len() as u64).sum();
+
         let mut capture = PluginCapture {
             plugin_id: self.id(),
             kind: self.kind(),
@@ -185,7 +187,7 @@ impl ClipboardPlugin for FilesPlugin {
             metadata: json!({
                 "entries": records,
             }),
-            byte_size: total_size,
+            byte_size,
             sources: paths.clone(),
         };
         capture.finalize_metadata();

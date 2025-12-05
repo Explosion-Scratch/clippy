@@ -54,6 +54,10 @@ pub trait ClipboardPlugin: Sync + Send {
     fn get_preview_data(&self, _ctx: &PluginContext<'_>) -> Result<Value> {
         Ok(Value::Object(serde_json::Map::new()))
     }
+
+    fn get_summary(&self, _is_tty: bool, ctx: &PluginContext<'_>) -> Option<String> {
+        ctx.metadata.summary.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -323,6 +327,30 @@ pub fn build_display_content_with_preference(
     }
 
     Ok(DisplayContent::Empty)
+}
+
+pub fn build_summary(metadata: &EntryMetadata, item_dir: &Path, is_tty: bool) -> Option<String> {
+    let (order, map) = match extract_plugin_meta(metadata) {
+        Ok(Some(result)) => result,
+        _ => return metadata.summary.clone(),
+    };
+
+    for plugin_id in order {
+        let Some(plugin_meta) = map.get(&plugin_id) else {
+            continue;
+        };
+        let Some(plugin) = plugin_by_id(&plugin_id) else {
+            continue;
+        };
+        let Ok(instance) = PluginInstance::new(plugin, metadata, item_dir, plugin_meta) else {
+            continue;
+        };
+        if let Some(summary) = plugin.get_summary(is_tty, &instance.context()) {
+            return Some(summary);
+        }
+    }
+
+    metadata.summary.clone()
 }
 
 fn display_with_plugin(
