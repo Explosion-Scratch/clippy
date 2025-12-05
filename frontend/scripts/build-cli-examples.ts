@@ -1,10 +1,11 @@
 import { spawn } from "bun";
 import {readFileSync} from "fs";
+import { resolve } from "path";
 
 const OUTPUT_PATH = "src/data/cli-examples.json";
 
 // CLI command to run (assumed to be in PATH)
-const CLI = "get_clipboard";
+const CLI = resolve("../../get_clipboard/target/release/get_clipboard");
 
 // Mock responses for commands that shouldn't be run or are interactive
 const MOCKS: Record<string, string> = {
