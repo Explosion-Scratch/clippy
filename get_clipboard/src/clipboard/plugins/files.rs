@@ -208,6 +208,23 @@ impl ClipboardPlugin for FilesPlugin {
             ("entries".into(), entries.to_string()),
         ])
     }
+
+    fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
+        let entries = collect_entries(ctx)?;
+        let mut file_items = Vec::new();
+        for entry in entries {
+            let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            let size_bytes = entry.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+            let source_path = entry.get("source_path").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+
+            file_items.push(json!({
+                "name": name,
+                "size": crate::clipboard::snapshot::human_kb(size_bytes),
+                "path": source_path
+            }));
+        }
+        Ok(json!({ "files": file_items }))
+    }
 }
 
 fn collect_entries(ctx: &PluginContext<'_>) -> Result<Vec<serde_json::Value>> {

@@ -42,6 +42,18 @@ pub trait ClipboardPlugin: Sync + Send {
     ) -> Option<String> {
         capture.summary.clone()
     }
+
+    fn preview_template_name(&self) -> String {
+        format!("{}.hbs", self.id())
+    }
+
+    fn get_preview_priority(&self) -> u8 {
+        self.priority()
+    }
+
+    fn get_preview_data(&self, _ctx: &PluginContext<'_>) -> Result<Value> {
+        Ok(Value::Object(serde_json::Map::new()))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +219,15 @@ pub struct ClipboardJsonImport {
 pub struct PluginImport {
     pub capture: PluginCapture,
     pub clipboard_contents: Vec<ClipboardContent>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreviewFormat {
+    pub plugin_id: String,
+    pub template_name: String,
+    pub priority: u8,
+    pub data: Value,
+    pub text: Option<String>,
 }
 
 static REGISTRY: Lazy<Vec<&'static dyn ClipboardPlugin>> = Lazy::new(|| {
@@ -466,6 +487,53 @@ pub fn build_full_json_item(
         data_path: Some(item_path.to_string_lossy().to_string()),
         formats,
     })
+}
+
+pub fn build_preview_formats(
+    metadata: &EntryMetadata,
+    item_dir: &Path,
+) -> Result<Vec<PreviewFormat>> {
+    let mut previews = Vec::new();
+
+    let (order, map) = extract_plugin_meta(metadata)?
+        .ok_or_else(|| anyhow!("Missing plugin metadata for {}", metadata.hash))?;
+
+    for plugin_id in order {
+        let Some(plugin_meta) = map.get(&plugin_id) else {
+            continue;
+        };
+        let Some(plugin) = plugin_by_id(&plugin_id) else {
+            continue;
+        };
+        let instance = PluginInstance::new(plugin, metadata, item_dir, plugin_meta)?;
+        let data = plugin.get_preview_data(&instance.context())?;
+
+        let text = if plugin.id() == "text" {
+            data.get("raw_text").and_then(|v| v.as_str()).map(String::from)
+        } else if plugin.id() == "files" {
+            data.get("files")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|f| f.get("path").and_then(|p| p.as_str()))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                })
+        } else {
+            None
+        };
+
+        previews.push(PreviewFormat {
+            plugin_id: plugin.id().to_string(),
+            template_name: plugin.preview_template_name(),
+            priority: plugin.get_preview_priority(),
+            data,
+            text,
+        });
+    }
+
+    previews.sort_by_key(|p| p.priority);
+    Ok(previews)
 }
 
 pub fn prepare_import(item: &ClipboardJsonFullItem) -> Result<ClipboardJsonImport> {

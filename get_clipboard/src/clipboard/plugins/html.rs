@@ -128,6 +128,14 @@ impl ClipboardPlugin for HtmlPlugin {
             ("length".into(), length.to_string()),
         ])
     }
+
+    fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
+        let html_content = read_html(ctx)?;
+        let escaped = html_escape::encode_double_quoted_attribute(&html_content).to_string();
+        Ok(json!({
+            "content": escaped
+        }))
+    }
 }
 
 fn read_html(ctx: &PluginContext<'_>) -> Result<String> {

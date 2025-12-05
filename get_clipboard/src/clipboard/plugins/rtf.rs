@@ -128,6 +128,14 @@ impl ClipboardPlugin for RtfPlugin {
             ("bytes".into(), bytes.to_string()),
         ])
     }
+
+    fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
+        let rtf_content = read_rtf(ctx)?;
+        let escaped = html_escape::encode_text(&rtf_content).to_string();
+        Ok(json!({
+            "content": escaped
+        }))
+    }
 }
 
 fn read_rtf(ctx: &PluginContext<'_>) -> Result<String> {

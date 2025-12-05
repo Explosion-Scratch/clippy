@@ -60,6 +60,12 @@ pub enum Command {
         #[arg(default_value = "0")]
         selector: String,
     },
+    Export {
+        path: PathBuf,
+    },
+    Import {
+        path: PathBuf,
+    },
     Permissions {
         #[command(subcommand)]
         subcommand: PermissionsCmd,

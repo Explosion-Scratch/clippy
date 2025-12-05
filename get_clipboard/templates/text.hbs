@@ -26,7 +26,12 @@
                         <div class="link-preview-info">
                             <div class="link-preview-title">{{link_preview.title}}</div>
                             <div class="link-preview-description">{{link_preview.description}}</div>
-                            <div class="link-preview-url">{{link_preview.url}}</div>
+                            <div class="link-preview-url-row">
+                                {{#if link_preview.favicon}}
+                                <img class="link-preview-favicon" src="{{link_preview.favicon}}" alt="" />
+                                {{/if}}
+                                <span class="link-preview-url">{{link_preview.url}}</span>
+                            </div>
                         </div>
                     </div>
                 {{else}}
@@ -114,10 +119,22 @@
             overflow: hidden;
         }
 
+        .link-preview-url-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .link-preview-favicon {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+
         .link-preview-url {
             font-size: 11px;
             color: var(--text-tertiary);
-            margin-top: 4px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;

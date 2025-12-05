@@ -236,6 +236,30 @@ impl ClipboardPlugin for ImagePlugin {
             ("mime".into(), mime.into()),
         ])
     }
+
+    fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
+        let src = self.export_json(ctx)?;
+        let width = ctx
+            .plugin_meta
+            .get("width")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let height = ctx
+            .plugin_meta
+            .get("height")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let dimensions = if width > 0 && height > 0 {
+            format!("{} x {} px", width, height)
+        } else {
+            String::new()
+        };
+
+        Ok(json!({
+            "content": src,
+            "dimensions": dimensions
+        }))
+    }
 }
 
 fn primary_file<'a>(ctx: &'a PluginContext<'a>) -> Result<&'a StoredFile> {

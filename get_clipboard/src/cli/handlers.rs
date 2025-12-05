@@ -88,6 +88,8 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             paste::simulate_paste()?;
             Ok(())
         }
+        Command::Export { path } => export_command(&path),
+        Command::Import { path } => import_command(&path),
         Command::Permissions { subcommand } => match subcommand {
             PermissionsCmd::Check => {
                 if permissions::check_accessibility() {
@@ -251,6 +253,112 @@ fn run_dir(command: DirCommand) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn export_command(path: &Path) -> Result<()> {
+    use crate::data::store::store_json_item;
+    use serde::{Deserialize, Serialize};
+    use std::fs::File;
+    use std::io::Write;
+
+    #[derive(Serialize)]
+    struct ExportData {
+        version: String,
+        items: Vec<plugins::ClipboardJsonFullItem>,
+    }
+
+    refresh_index()?;
+    let index = load_index()?;
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+
+    let mut options = SearchOptions::default();
+    options.limit = None;
+
+    let (items, _) = load_history_items(&index, &options)?;
+    let mut export_items = Vec::new();
+
+    println!("Exporting {} items...", items.len());
+
+    for (i, item) in items.iter().enumerate() {
+        let item_dir = data_dir.join(&item.metadata.relative_path);
+        match plugins::build_full_json_item(&item.metadata, &item_dir, Some(item.offset), None) {
+            Ok(full_item) => {
+                export_items.push(full_item);
+                if (i + 1) % 100 == 0 {
+                    println!("  Processed {}/{} items", i + 1, items.len());
+                }
+            }
+            Err(e) => {
+                eprintln!("  Warning: Failed to export item {}: {}", item.metadata.hash, e);
+            }
+        }
+    }
+
+    let export_data = ExportData {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        items: export_items,
+    };
+
+    let json = serde_json::to_string_pretty(&export_data)?;
+    let mut file = File::create(path)?;
+    file.write_all(json.as_bytes())?;
+
+    println!("Exported {} items to {}", export_data.items.len(), path.display());
+    Ok(())
+}
+
+fn import_command(path: &Path) -> Result<()> {
+    use crate::data::store::store_json_item;
+    use serde::Deserialize;
+    use std::fs;
+
+    #[derive(Deserialize)]
+    struct ImportData {
+        version: String,
+        items: Vec<plugins::ClipboardJsonFullItem>,
+    }
+
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+
+    let import_data: ImportData = serde_json::from_str(&content)
+        .with_context(|| "Failed to parse import file")?;
+
+    println!("Importing from version {} ({} items)...", import_data.version, import_data.items.len());
+
+    let mut success_count = 0;
+    let mut skip_count = 0;
+    let mut error_count = 0;
+
+    for (i, item) in import_data.items.iter().enumerate() {
+        let summary = item.summary.as_deref().unwrap_or("(no summary)");
+        let truncated = if summary.len() > 50 {
+            format!("{}...", &summary[..47])
+        } else {
+            summary.to_string()
+        }.replace('\n', " ");
+
+        match store_json_item(item) {
+            Ok(_metadata) => {
+                success_count += 1;
+                println!("  [{}/{}] Imported: {}", i + 1, import_data.items.len(), truncated);
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("already exists") || err_str.contains("duplicate") {
+                    skip_count += 1;
+                    println!("  [{}/{}] Skipped (exists): {}", i + 1, import_data.items.len(), truncated);
+                } else {
+                    error_count += 1;
+                    eprintln!("  [{}/{}] Failed: {} - {}", i + 1, import_data.items.len(), truncated, e);
+                }
+            }
+        }
+    }
+
+    println!("\nImport complete: {} imported, {} skipped, {} errors", success_count, skip_count, error_count);
+    Ok(())
 }
 
 fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {

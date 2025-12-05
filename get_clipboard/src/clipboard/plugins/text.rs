@@ -125,6 +125,33 @@ impl ClipboardPlugin for TextPlugin {
             ("length".into(), length.to_string()),
         ])
     }
+
+    fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<serde_json::Value> {
+        let text_content = read_text(ctx)?;
+        let trimmed = text_content.trim();
+        let is_svg = trimmed.starts_with("<svg") && trimmed.ends_with("</svg>");
+
+        let color_re = regex::Regex::new(r"(?i)^#([0-9a-f]{3}|[0-9a-f]{6})$|^rgb\s*\(|^rgba\s*\(|^hsl\s*\(|^hsla\s*\(").unwrap();
+        let is_color = color_re.is_match(trimmed);
+
+        let content = if is_svg {
+            text_content.clone()
+        } else {
+            html_escape::encode_text(&text_content).to_string()
+        };
+
+        let is_url = !is_svg && !is_color && (trimmed.starts_with("http://") || trimmed.starts_with("https://"));
+
+        Ok(json!({
+            "content": content,
+            "raw_text": text_content,
+            "is_svg": is_svg,
+            "is_color": is_color,
+            "color_value": if is_color { trimmed } else { "" },
+            "is_url": is_url,
+            "url": if is_url { trimmed } else { "" }
+        }))
+    }
 }
 
 fn read_text(ctx: &PluginContext<'_>) -> Result<String> {

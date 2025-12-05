@@ -107,6 +107,8 @@ fn router() -> Router {
         .route("/dir", get(get_dir).post(update_dir))
         .route("/copy", post(copy_payload))
         .route("/save", post(save_payload))
+        .route("/export", get(export_items))
+        .route("/import", post(import_items))
 }
 
 async fn get_docs() -> impl IntoResponse {
@@ -426,173 +428,53 @@ async fn preview_item(
     let metadata = load_metadata(&hash).map_err(ApiError::from)?;
     let item_dir = data_dir.join(&metadata.relative_path);
 
-    let mut data = HashMap::new();
-    let mut formats_order: Vec<String> = Vec::new();
-
     let interactive = params.interactive.as_deref().unwrap_or("true") == "true";
 
-    // Use build_full_json_item to get data for all formats
-    let full_item = plugins::build_full_json_item(&metadata, &item_dir, None, None)
+    let preview_formats = plugins::build_preview_formats(&metadata, &item_dir)
         .map_err(ApiError::from)?;
 
-    for format in full_item.formats {
-        match format.plugin_id.as_str() {
-            "text" => {
-                if let Some(text_content) = format.data.as_str() {
-                    let trimmed = text_content.trim();
-                    let is_svg = trimmed.starts_with("<svg") && trimmed.ends_with("</svg>");
-                    
-                    // Simple color detection
-                    let color_re = regex::Regex::new(r"(?i)^#([0-9a-f]{3}|[0-9a-f]{6})$|^rgb\s*\(|^rgba\s*\(|^hsl\s*\(|^hsla\s*\(").unwrap();
-                    let is_color = color_re.is_match(trimmed);
+    let mut data = HashMap::new();
+    let mut formats_order = Vec::new();
 
-                    let content = if is_svg {
-                        text_content.to_string()
-                    } else {
-                        html_escape::encode_text(text_content).to_string()
-                    };
+    for format in preview_formats {
+        let mut template_ctx = format.data.clone();
+        if let Some(obj) = template_ctx.as_object_mut() {
+            obj.insert("interactive".to_string(), json!(interactive));
+        }
 
-                    let mut template_ctx = json!({
-                        "interactive": interactive,
-                        "content": content,
-                        "is_svg": is_svg,
-                        "is_color": is_color,
-                        "color_value": if is_color { trimmed } else { "" }
-                    });
-
-                    // Check for link preview
-                    if !is_svg && !is_color && (trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
-                         if let Ok(url) = url::Url::parse(trimmed) {
-                             let url_clone = url.clone();
-                             if let Ok(Ok(preview)) = task::spawn_blocking(move || {
-                                 website_fetcher::fetch_website_data(&url_clone)
-                             }).await {
-                                if let Some(obj) = template_ctx.as_object_mut() {
-                                    obj.insert("link_preview".to_string(), json!({
-                                        "title": preview.title,
-                                        "description": preview.description,
-                                        "image": preview.og_image,
-                                        "favicon": preview.favicon,
-                                        "url": trimmed
-                                    }));
-                                }
-                             }
-                         }
-                    }
-                    
-                    if let Ok(html) = HANDLEBARS.render("text.hbs", &template_ctx) {
-                         data.insert(
-                            "text".to_string(),
-                            PreviewData {
-                                html,
-                                text: Some(text_content.to_string()),
-                            },
-                        );
-                    }
-                }
-            }
-            "image" => {
-                if let Some(src) = format.data.as_str() {
-                    // Extract dimensions from metadata
-                    let width = format.metadata.get("width").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let height = format.metadata.get("height").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let dimensions = if width > 0 && height > 0 {
-                        format!("{} x {} px", width, height)
-                    } else {
-                        String::new()
-                    };
-
-                    let template_ctx = json!({
-                        "interactive": interactive,
-                        "content": src,
-                        "dimensions": dimensions,
-                    });
-
-                    if let Ok(html) = HANDLEBARS.render("image.hbs", &template_ctx) {
-                        data.insert(
-                            "image".to_string(),
-                            PreviewData {
-                                html,
-                                text: None,
-                            },
-                        );
-                    }
-                }
-            }
-            "files" => {
-                if let Some(arr) = format.data.as_array() {
-                    let mut file_items = Vec::new();
-                    for file_obj in arr {
-                        let name = file_obj.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                        let size_bytes = file_obj.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let source_path = file_obj.get("source_path").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                        
-                        file_items.push(json!({
-                            "name": name,
-                            "size": crate::data::store::human_size(size_bytes),
-                            "path": source_path
-                        }));
-                    }
-
-                    if !file_items.is_empty() {
-                        let copy_text = file_items.iter()
-                            .filter_map(|f| f.get("path").and_then(|p| p.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-
-                        let template_ctx = json!({
-                            "interactive": interactive,
-                            "files": file_items,
-                        });
-
-                        if let Ok(html) = HANDLEBARS.render("file.hbs", &template_ctx) {
-                            data.insert(
-                                "files".to_string(),
-                                PreviewData {
-                                    html,
-                                    text: Some(copy_text),
-                                },
-                            );
+        if format.plugin_id == "text" {
+            if let Some(url_str) = format.data.get("url").and_then(|v| v.as_str()) {
+                if !url_str.is_empty() {
+                    if let Ok(url) = url::Url::parse(url_str) {
+                        let url_clone = url.clone();
+                        if let Ok(Ok(preview)) = task::spawn_blocking(move || {
+                            website_fetcher::fetch_website_data(&url_clone)
+                        }).await {
+                            if let Some(obj) = template_ctx.as_object_mut() {
+                                obj.insert("link_preview".to_string(), json!({
+                                    "title": preview.title,
+                                    "description": preview.description,
+                                    "image": preview.og_image,
+                                    "favicon": preview.favicon,
+                                    "url": url_str
+                                }));
+                            }
                         }
                     }
                 }
             }
-            "html" => {
-                if let Some(html_content) = format.data.as_str() {
-                    let template_ctx = json!({
-                        "interactive": interactive,
-                        "content": html_escape::encode_double_quoted_attribute(html_content),
-                    });
-
-                    if let Ok(html) = HANDLEBARS.render("html.hbs", &template_ctx) {
-                        data.insert(
-                            "html".to_string(),
-                            PreviewData {
-                                html,
-                                text: None,
-                            },
-                        );
-                    }
-                }
-            }
-            _ => {}
         }
-    }
 
-    // Determine formats order (files > html > text > image)
-    let mut formats_order = Vec::new();
-    
-    if data.contains_key("files") {
-        formats_order.push("files".to_string());
-    }
-    if data.contains_key("html") {
-        formats_order.push("html".to_string());
-    }
-    if data.contains_key("text") {
-        formats_order.push("text".to_string());
-    }
-    if data.contains_key("image") {
-        formats_order.push("image".to_string());
+        if let Ok(html) = HANDLEBARS.render(&format.template_name, &template_ctx) {
+            formats_order.push(format.plugin_id.clone());
+            data.insert(
+                format.plugin_id.clone(),
+                PreviewData {
+                    html,
+                    text: format.text,
+                },
+            );
+        }
     }
 
     let kind_str = match metadata.kind {
@@ -863,6 +745,92 @@ async fn save_payload(
     let item = plugins::build_full_json_item(&metadata, &item_dir, offset, None)
         .map_err(ApiError::from)?;
     Ok(Json(item))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportResponse {
+    version: String,
+    recommended_file_name: String,
+    data: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportRequest {
+    version: String,
+    data: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportResponse {
+    imported: usize,
+    skipped: usize,
+    errors: usize,
+}
+
+async fn export_items() -> Result<Json<ExportResponse>, ApiError> {
+    let index = load_fresh_index()?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+
+    let mut options = crate::search::SearchOptions::default();
+    options.limit = None;
+
+    let (items, _) = load_history_items(&index, &options).map_err(ApiError::from)?;
+    let mut export_items = Vec::new();
+
+    for item in items {
+        let item_dir = data_dir.join(&item.metadata.relative_path);
+        if let Ok(full_item) = plugins::build_full_json_item(&item.metadata, &item_dir, Some(item.offset), None) {
+            export_items.push(full_item);
+        }
+    }
+
+    let data = serde_json::to_string(&export_items).map_err(|e| ApiError::Internal(e.into()))?;
+
+    let now = time::OffsetDateTime::now_utc();
+    let recommended_file_name = format!(
+        "clipboard-export-{}.json",
+        now.format(&time::format_description::parse("[year]-[month]-[day]").unwrap()).unwrap_or_default()
+    );
+
+    Ok(Json(ExportResponse {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        recommended_file_name,
+        data,
+    }))
+}
+
+async fn import_items(
+    Json(payload): Json<ImportRequest>,
+) -> Result<Json<ImportResponse>, ApiError> {
+    let items: Vec<plugins::ClipboardJsonFullItem> = serde_json::from_str(&payload.data)
+        .map_err(|e| ApiError::bad_request(format!("Invalid import data: {}", e)))?;
+
+    let mut imported = 0;
+    let mut skipped = 0;
+    let mut errors = 0;
+
+    for item in items {
+        match store_json_item(&item) {
+            Ok(_) => imported += 1,
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("already exists") || err_str.contains("duplicate") {
+                    skipped += 1;
+                } else {
+                    errors += 1;
+                }
+            }
+        }
+    }
+
+    Ok(Json(ImportResponse {
+        imported,
+        skipped,
+        errors,
+    }))
 }
 
 fn items_by_selectors(
