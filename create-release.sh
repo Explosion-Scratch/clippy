@@ -28,11 +28,8 @@ TAURI_VERSION=$(grep '"version"' src-tauri/tauri.conf.json | head -1 | sed 's/.*
 if [ "$TAURI_VERSION" != "$APP_VERSION" ]; then
     echo "⚠️  Warning: tauri.conf.json version ($TAURI_VERSION) differs from Cargo.toml ($APP_VERSION)"
     echo "   Updating tauri.conf.json to match..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$APP_VERSION\"/" src-tauri/tauri.conf.json
-    else
-        sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$APP_VERSION\"/" src-tauri/tauri.conf.json
-    fi
+    awk -v ver="$APP_VERSION" '{gsub(/"version": "[0-9.]+"/, "\"version\": \"" ver "\"")} 1' src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.tmp
+    mv src-tauri/tauri.conf.json.tmp src-tauri/tauri.conf.json
     echo "   ✓ Updated tauri.conf.json"
 fi
 echo ""

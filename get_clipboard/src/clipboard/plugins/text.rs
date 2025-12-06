@@ -135,7 +135,8 @@ impl ClipboardPlugin for TextPlugin {
             ctx.metadata.summary.clone()
         } else {
             read_text(ctx).ok().map(|text| {
-                text.replace('\n', " ").replace('\r', " ")
+                let cleaned = text.replace('\n', " ").replace('\r', " ");
+                cleaned.chars().take(4000).collect()
             })
         }
     }
