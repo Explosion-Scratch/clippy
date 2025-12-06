@@ -103,6 +103,7 @@ section {
 }
 .hero {
   padding: 100px 0 80px;
+  padding-bottom: 30px;
   text-align: center;
   position: relative;
 }

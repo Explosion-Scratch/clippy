@@ -373,7 +373,7 @@ const demoDescription = {
   }
 }
 
-@media (max-width: 400px) {
+@media (max-width: 700px) {
   .demo-wrapper {
     flex-direction: column;
     height: auto;
