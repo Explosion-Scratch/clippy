@@ -1,237 +1,290 @@
-# Clippith - Clipboard Manager
+# get_clipboard
 
-A powerful, modern clipboard manager with a beautiful web dashboard built with Rust and Vue.js.
+A fast, local-first clipboard manager CLI for macOS with a built-in web dashboard.
 
-## Features
+📥 **[Download Latest Release](https://github.com/Explosion-Scratch/clippy/releases/latest)**
 
-- 📋 **Clipboard History** - Automatically tracks all clipboard items
-- 🔍 **Fast Search** - Full-text search across all clipboard content
-- 🎨 **Beautiful Dashboard** - Modern Vue.js interface with Notion-like design
-- 📊 **Statistics** - Interactive charts showing clipboard usage over time
-- 🎯 **Multi-Format** - Supports text, images, HTML, RTF, and files
-- ⚡ **Fast API** - RESTful API built with Rust and Axum
-- 🔐 **Local First** - All data stored locally, no cloud required
+## Installation
+
+```bash
+# Download and extract
+curl -LO https://github.com/Explosion-Scratch/clippy/releases/latest/download/get_clipboard
+chmod +x get_clipboard
+mv get_clipboard ~/.local/bin
+```
 
 ## Quick Start
 
-### Prerequisites
-
-- Rust (latest stable)
-- Node.js 16+ and npm
-- macOS (currently macOS-only)
-
-### Installation
-
-1. Clone the repository
-2. Build the frontend:
-   ```bash
-   ./build-frontend.sh
-   ```
-3. Run the server:
-   ```bash
-   cargo run -- serve --port 3000
-   ```
-4. Open http://127.0.0.1:3000/dashboard/ in your browser
-
-## Usage
-
-### Command Line
-
 ```bash
-# Start the API server
-cargo run -- serve --port 3000
+# Start the background service (monitors clipboard)
+get_clipboard service install
+get_clipboard service start
 
-# List recent clipboard items
-cargo run -- list
-
-# Search clipboard history
-cargo run -- search "query"
-
-# Copy an item by index
-cargo run -- copy 0
-
-# Show detailed item info
-cargo run -- show 0
+# Open dashboard at http://127.0.0.1:3016/dashboard/
+get_clipboard api # --port ___
 ```
 
-### Web Dashboard
+---
 
-Access the dashboard at http://127.0.0.1:3000/dashboard/
+## Storage
+
+Items are stored in `~/Library/Application Support/clippith/data/` organized by date and content hash:
+
+```
+data/
+├── 2025/12/
+│   ├── a1/b2/                          # First 4 chars of hash (2+2)
+│   │   └── a1b2c3d4e5f6.../            # Full SHA-256 hash
+│   │       ├── metadata.json           # Item metadata
+│   │       ├── text.txt                # Plain text
+│   │       ├── html.html               # HTML content (if copied)
+│   │       └── image.png               # Image (if applicable)
+```
+
+**Hash computation**: SHA-256 of all clipboard content (text + HTML + RTF + image bytes + file paths/sizes). This deduplicates identical copies—copying the same text twice updates `copy_count` and `last_seen` rather than creating duplicates.
+
+---
+
+## Commands
+
+### Core
+
+| Command | Description |
+|---------|-------------|
+| `history` | List clipboard items (default command) |
+| `search <query>` | Full-text search |
+| `show <selector>` | Display item details |
+| `copy <selector>` | Copy item to clipboard |
+| `paste <selector>` | Copy + simulate Cmd+V |
+| `delete <selector>` | Remove item |
+| `interactive` | TUI mode with live filtering |
+
+**Selectors**: Use index (`0` = most recent) or hash (`a1b2c3...`, min 6 chars).
+
+### Service
+
+```bash
+get_clipboard service install    # Create launchd plist
+get_clipboard service start      # Start background monitor
+get_clipboard service stop       # Stop monitor
+get_clipboard service status     # Check if running
+get_clipboard service logs -f    # Tail logs
+get_clipboard service uninstall  # Remove plist
+```
+
+### Data Management
+
+```bash
+get_clipboard dir get                        # Print data directory
+get_clipboard dir set /path/to/new           # Change directory (no move)
+get_clipboard dir move /path/to/new          # Move data to new location
+get_clipboard export ./backup.json           # Export all items
+get_clipboard import ./backup.json           # Import items
+get_clipboard stats                          # Storage statistics
+```
+
+### API & Dashboard
+
+```bash
+get_clipboard api --port 3016    # Start REST API + dashboard
+```
+Dashboard: `http://127.0.0.1:3016/dashboard/`
+
+### Permissions
+
+```bash
+get_clipboard permissions check     # Verify accessibility access
+get_clipboard permissions request   # Open System Settings
+```
+
+---
+
+## Usage Examples
+
+### Basic
+
+```bash
+# Show last 10 items
+get_clipboard history -l 10
+
+# Copy most recent item
+get_clipboard copy 0
+
+# Show 5th most recent
+get_clipboard show 4
+
+# Delete by hash
+get_clipboard delete a1b2c3d4
+```
+
+### Search & Filtering
+
+```bash
+# Search text content
+get_clipboard search "meeting notes"
+
+# Regex search
+get_clipboard search --regex "^\d{4}-\d{2}-\d{2}"
+
+# Search by shortcut - @email, @link, @image, @file, @html, @color, @path supported
+get_clipboard search "@link"
+
+# Filter by type
+get_clipboard history --text        # Text only
+get_clipboard history --image       # Images only
+get_clipboard history --file        # Files only
+get_clipboard history --html        # HTML only
+
+# Date range
+get_clipboard history --from 2025-12-01 --to 2025-12-05
+
+# Sort options
+get_clipboard history --sort copies   # Most copied first
+get_clipboard search "api" --sort relevance
+```
+
+### JSON Output
+
+```bash
+# Simple JSON (metadata only)
+get_clipboard history --json
+
+# Full JSON (includes content)
+get_clipboard history --json --full
+
+# Pipe to jq
+get_clipboard history --json | jq '.[0].id'
+
+# Export specific items
+get_clipboard show 0 --json > item.json
+```
+
+### Interactive TUI
+
+```bash
+# Open interactive mode
+get_clipboard interactive
+
+# Pre-filter with query
+get_clipboard interactive -q "password"
+```
+
+**TUI Controls:**
+- `↑/↓` Navigate items
+- `Enter` Copy selected
+- `Ctrl+D` Delete
+- `/` Focus search
+- `q/Esc` Quit
+
+### Scripting
+
+```bash
+# Get latest text item content directly
+get_clipboard show 0 2>/dev/null | head -n -10
+
+# Find items containing URLs
+get_clipboard search --regex "https?://" --json | jq -r '.[].id'
+
+# Auto-copy most copied item
+get_clipboard history --sort copies --json | jq -r '.[0].id' | xargs get_clipboard copy
+
+# Grep through all text items
+get_clipboard history --text --full --json | jq -r '.[] | select(.formats[]?.data | strings | test("TODO"))'
+
+# Monitor clipboard changes
+get_clipboard watch
+
+# Pipe clipboard to file
+get_clipboard show 0 > /tmp/clipboard.txt
+```
+
+### Statistics
+
+```bash
+get_clipboard stats
+
+# Output:
+# Clipboard Statistics
+# ====================
+# Total items:    1523
+# Reported size:  45.2 MB
+# Storage size:   52.1 MB
+#
+# By type:
+#   text       1203
+#   image      245
+#   file       75
+#
+# Top 20 Largest Items (by storage):
+# Index    Type       Size         Summary
+# ----------------------------------------------------------------------
+# 42       image      2.34 MB      Image 2096x1084
+# 156      file       1.87 MB      3 files in ~/Downloads
+```
+
+---
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON |
+| `--text` | Filter to text items |
+| `--image` | Filter to images |
+| `--file` | Filter to files |
+| `--html` | Filter to HTML |
+| `--rtf` | Filter to RTF |
+
+---
+
+## Dashboard
+
+Start with `get_clipboard api --port 3016`, then open `http://127.0.0.1:3016/dashboard/`.
 
 **Features:**
-- Browse all clipboard items with infinite scroll
-- Search with live results
-- Multi-select with Cmd/Ctrl+Click
-- View different formats per item
-- Statistics with interactive graphs
-- Import/export clipboard data
+- Browse/search all clipboard items
+- View different formats (text, HTML, image, files)
+- Multi-select with Cmd+Click
+- Statistics with charts
+- Import/export data
 - Configure data directory
 
-**Keyboard Shortcuts:**
-- `/` - Focus search
-- `Esc` - Clear selection / Close modals
+**Keyboard shortcuts:**
+- `/` Focus search
+- `Esc` Clear selection
 
-## Architecture
+---
 
-```
-┌─────────────────────────────────────┐
-│    Vue.js Dashboard (Frontend)      │
-│  - Vite + Vue 3 Composition API     │
-│  - TailwindCSS for styling          │
-│  - Phosphor Icons                   │
-│  - Chart.js for statistics          │
-└──────────────┬──────────────────────┘
-               │ REST API
-┌──────────────▼──────────────────────┐
-│    Rust Backend (Axum)              │
-│  - RESTful API server               │
-│  - Static file serving              │
-│  - Clipboard monitoring             │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────▼──────────────────────┐
-│    Data Layer                       │
-│  - File-based storage               │
-│  - SHA-256 content addressing       │
-│  - JSON metadata index              │
-│  - Plugin-based format handling     │
-└─────────────────────────────────────┘
-```
+## API
 
-## Project Structure
+REST API served on the same port as dashboard. See [API.md](API.md) for full documentation.
 
-```
-.
-├── src/                    # Rust backend source
-│   ├── api/               # API endpoints
-│   ├── clipboard/         # Clipboard integration
-│   ├── data/              # Data storage
-│   └── search/            # Search functionality
-├── frontend-app/          # Vue.js frontend source
-│   ├── src/
-│   │   ├── components/   # Vue components
-│   │   ├── composables/  # Vue composables
-│   │   └── App.vue       # Root component
-│   └── vite.config.js    # Vite configuration
-├── frontend-dist/         # Built frontend (static files)
-├── API.md                 # API documentation
-├── DEPLOYMENT.md          # Deployment guide
-├── FRONTEND.md            # Frontend architecture docs
-└── build-frontend.sh      # Frontend build script
-```
-
-## Documentation
-
-- **[API.md](API.md)** - Complete API reference with examples
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Deployment and build guide
-- **[FRONTEND.md](FRONTEND.md)** - Frontend architecture and components
-
-## Development
-
-### Frontend Development
-
+Quick reference:
 ```bash
-cd frontend-app
-npm run dev
+curl localhost:3016/items?count=10              # List items
+curl localhost:3016/item/0                      # Get item metadata
+curl localhost:3016/item/0/data                 # Get full item data
+curl localhost:3016/search?query=test           # Search
+curl -X POST localhost:3016/item/0/copy         # Copy to clipboard
+curl -X DELETE localhost:3016/item/a1b2c3       # Delete item
 ```
 
-Opens dev server at http://localhost:5173 with HMR and API proxying.
+---
 
-### Backend Development
+## Formats Supported
 
-```bash
-cargo watch -x 'run -- serve --port 3000'
-```
+| Format | Storage | Searchable |
+|--------|---------|------------|
+| Plain text | `text.txt` | ✓ |
+| HTML | `html.html` | ✓ |
+| RTF | `rtf.rtf` | ✓ |
+| Images | `image.png` | — |
+| Files | `files.json` | Paths only |
 
-### Full Build
+Items can contain multiple formats simultaneously (e.g., copying from a browser gives both text and HTML).
 
-```bash
-./build-frontend.sh
-cargo build --release
-```
-
-## API Endpoints
-
-- `GET /` - API documentation
-- `GET /dashboard/` - Web dashboard
-- `GET /items` - List clipboard items
-- `GET /item/:selector` - Get single item
-- `GET /item/:selector/data` - Get item with all formats
-- `GET /search?query=...` - Search items
-- `GET /stats` - Get statistics
-- `POST /item/:selector/copy` - Copy item to clipboard
-- `DELETE /item/:selector` - Delete item
-- `POST /save` - Save new item
-- `GET /dir` - Get data directory
-- `POST /dir` - Update data directory
-
-See [API.md](API.md) for complete documentation.
-
-## Data Storage
-
-Clipboard items are stored in:
-```
-~/Library/Application Support/clippith/data/
-├── index.json              # Metadata index
-└── items/                  # Content files
-    ├── a1b2c3.../         # Item directory (by hash)
-    │   ├── metadata.json  # Item metadata
-    │   └── formats/       # Format data
-    │       ├── text.txt
-    │       ├── html.html
-    │       └── image.png
-    └── ...
-```
-
-## Technologies
-
-**Backend:**
-- Rust 2024 Edition
-- Axum (web framework)
-- Tower-HTTP (static file serving)
-- Serde (JSON serialization)
-- Tokio (async runtime)
-- clipboard-rs (clipboard access)
-
-**Frontend:**
-- Vue 3 with Composition API
-- Vite (build tool)
-- Tailwind CSS (styling)
-- Phosphor Icons
-- Chart.js (statistics)
-
-## Performance
-
-- **Frontend Bundle:** ~378KB JS (125KB gzipped), ~27KB CSS (5.5KB gzipped)
-- **Startup Time:** <100ms
-- **Search:** Full-text search across thousands of items in <50ms
-- **Memory:** Minimal memory footprint with efficient indexing
-
-## Roadmap
-
-- [ ] Arrow key navigation in item list
-- [ ] Dark mode
-- [ ] Cross-platform support (Linux, Windows)
-- [ ] Custom themes
-- [ ] Plugin system for custom formats
-- [ ] Encryption at rest
-- [ ] Cloud sync (optional)
-- [ ] Mobile app
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Follow the existing code style
-2. Keep functions pure and minimal (KISS/DRY)
-3. Update documentation
-4. Test thoroughly
+---
 
 ## License
 
-[Your License Here]
-
-## Author
-
-Built with ❤️ for managing clipboard history efficiently.
-
+MIT

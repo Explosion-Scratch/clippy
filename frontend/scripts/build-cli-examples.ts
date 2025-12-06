@@ -148,7 +148,13 @@ async function runCommand(cmd: string): Promise<string> {
 }
 
 async function main() {
-  console.log("Building CLI examples...");
+  const helpOnly = process.argv.includes("--help-only");
+  
+  if (helpOnly) {
+    console.log("Building CLI examples (--help only)...");
+  } else {
+    console.log("Building CLI examples...");
+  }
   
   const results: Record<string, Record<string, [string, string]>> = {};
 
@@ -157,9 +163,15 @@ async function main() {
     results[subcommand] = {};
     
     for (const [key, cmdString] of Object.entries(variations)) {
+      if (helpOnly && key !== "--help") {
+        continue;
+      }
+      
       process.stdout.write(`  - ${key}... `);
       const output = await runCommand(cmdString);
-      results[subcommand][key] = [cmdString, output];
+      const displayCmd = cmdString.replace(CLI, "get_clipboard");
+      const displayOutput = output.replace(new RegExp(CLI.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), "get_clipboard");
+      results[subcommand][key] = [displayCmd, displayOutput];
       console.log("Done");
     }
   }

@@ -32,19 +32,18 @@ enum OutputMode {
 }
 
 pub fn dispatch(cli: Cli) -> Result<()> {
-    let filters = cli.filters.clone();
-    let json = cli.json;
     let command = cli
         .command
         .unwrap_or(Command::History(HistoryArgs::default()));
     match command {
-        Command::Interactive { query } => {
-            ensure_filters_unsupported(&cli.filters, cli.json, "interactive")?;
-            run_interactive(query)
-        }
-        Command::Copy { selector } => copy_entry(&selector, &filters),
-        Command::Delete { selector } => delete_item(&selector, &filters),
-        Command::Show { selector } => {
+        Command::Interactive { query } => run_interactive(query),
+        Command::Copy { selector, filters } => copy_entry(&selector, &filters),
+        Command::Delete { selector, filters } => delete_item(&selector, &filters),
+        Command::Show {
+            selector,
+            filters,
+            json,
+        } => {
             let mode = if json {
                 OutputMode::JsonFull
             } else {
@@ -54,12 +53,9 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         }
         Command::Watch => watch::run_watch(None),
         Command::Service(args) => run_service(args.action),
-        Command::Dir(args) => {
-            ensure_filters_unsupported(&cli.filters, cli.json, "dir")?;
-            run_dir(args.command)
-        }
+        Command::Dir(args) => run_dir(args.command),
         Command::Search(args) => {
-            let mode = if json {
+            let mode = if args.json {
                 if args.full {
                     OutputMode::JsonFull
                 } else {
@@ -68,11 +64,11 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             } else {
                 OutputMode::Text
             };
-            run_search(args, &filters, mode)
+            run_search(args, mode)
         }
         Command::Api(args) => run_api(args),
         Command::History(args) => {
-            let mode = if json {
+            let mode = if args.json {
                 if args.full {
                     OutputMode::JsonFull
                 } else {
@@ -81,16 +77,16 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             } else {
                 OutputMode::Text
             };
-            print_history(args, &filters, mode)
+            print_history(args, mode)
         }
-        Command::Paste { selector } => {
+        Command::Paste { selector, filters } => {
             copy_entry(&selector, &filters)?;
             paste::simulate_paste()?;
             Ok(())
         }
         Command::Export { path } => export_command(&path),
         Command::Import { path } => import_command(&path),
-        Command::Stats => run_stats(&cli.json),
+        Command::Stats { json } => run_stats(&json),
         Command::Permissions { subcommand } => match subcommand {
             PermissionsCmd::Check => {
                 if permissions::check_accessibility() {
@@ -107,17 +103,6 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             }
         },
     }
-}
-
-// ... rest of the file remains the same as previously outputted ...
-fn ensure_filters_unsupported(filters: &FilterFlags, json: bool, command: &str) -> Result<()> {
-    if json {
-        bail!("--json is not supported for {command} command");
-    }
-    if !filters.is_empty() {
-        bail!("Format filters are not supported for {command} command");
-    }
-    Ok(())
 }
 
 fn run_interactive(query: Option<String>) -> Result<()> {
@@ -512,7 +497,7 @@ fn compute_dir_storage(path: &Path) -> u64 {
     total
 }
 
-fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
+fn print_history(args: HistoryArgs, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
     let HistoryArgs {
@@ -522,12 +507,13 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
         from: from_str,
         to: to_str,
         sort,
+        filters,
         ..
     } = args;
 
     let from = from_str.map(|value| parse_date(&value)).transpose()?;
     let to = to_str.map(|value| parse_date(&value)).transpose()?;
-    let selection_filter = build_selection_filter(filters, kind.clone());
+    let selection_filter = build_selection_filter(&filters, kind.clone());
 
     let mut options = SearchOptions::default();
     let is_interactive = io::stdout().is_terminal();
@@ -554,7 +540,7 @@ fn print_history(args: HistoryArgs, filters: &FilterFlags, mode: OutputMode) -> 
     }
 }
 
-fn run_search(args: SearchArgs, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
+fn run_search(args: SearchArgs, mode: OutputMode) -> Result<()> {
     refresh_index()?;
     let index = load_index()?;
     let SearchArgs {
@@ -562,13 +548,13 @@ fn run_search(args: SearchArgs, filters: &FilterFlags, mode: OutputMode) -> Resu
         limit,
         sort,
         regex,
+        filters,
         ..
     } = args;
 
     let (query, is_regex, mut selection_filter) = crate::search::parse_search_query(&query, regex);
-    let extra_filter = build_selection_filter(filters, None);
+    let extra_filter = build_selection_filter(&filters, None);
 
-    // Merge filters
     if extra_filter.include_text {
         selection_filter.include_text = true;
     }

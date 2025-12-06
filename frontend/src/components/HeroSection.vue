@@ -53,7 +53,7 @@ const features = [
         
         <h1 class="hero-title">Clippy</h1>
         <p class="hero-tagline">
-          A minimal yet powerful clipboard manager for macOS
+          Tiny but powerful clipboard manager for macOS
         </p>
         
         <div class="hero-cta">

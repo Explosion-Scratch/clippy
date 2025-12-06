@@ -9,7 +9,7 @@
           <img src="/icon.png" alt="Clippy" class="footer-icon" />
           <span class="footer-name">Clippy</span>
         </div>
-        <p class="footer-tagline">A minimal yet powerful clipboard manager for macOS</p>
+        <p class="footer-tagline">Tiny but powerful clipboard manager for macOS</p>
         <div class="footer-links">
           <a href="https://github.com/Explosion-Scratch/clippy" target="_blank">GitHub</a>
           <span class="divider">·</span>

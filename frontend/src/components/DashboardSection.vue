@@ -69,15 +69,15 @@ const prevSlide = () => {
           <ul>
             <li>
               <h3>Advanced Search</h3>
-              <p>Filter by type, date, and content with regex support.</p>
+              <p>Filter by type, date, content with regex support.</p>
             </li>
             <li>
               <h3>Bulk Actions</h3>
-              <p>Select multiple items to delete or export.</p>
+              <p>Quickly manage all items - delete, import, export.</p>
             </li>
             <li>
               <h3>Detailed Previews</h3>
-              <p>Inspect HTML, images, and file contents in detail.</p>
+              <p>Show previews of HTML, images, files, links, colors, and more.</p>
             </li>
           </ul>
         </div>

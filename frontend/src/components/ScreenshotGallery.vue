@@ -5,22 +5,22 @@ const slides = [
   {
     image: '/clippy/images/app/color.png',
     title: 'Sleek, Minimal, Usable',
-    description: 'A distraction-free interface designed for focus and efficiency.'
+    description: 'Simple easy to use interface without distractions'
   },
   {
     image: '/clippy/images/app/files.png',
     title: 'File Management',
-    description: 'Handle files directly from your clipboard history.'
+    description: 'Copy paste files directly (stored only by path)'
   },
   {
     image: '/clippy/images/app/settings.png',
-    title: 'Powerful Configuration',
-    description: 'Customize every aspect of your experience.'
+    title: 'Simple settings',
+    description: 'Change the directory of history, manage database'
   },
   {
     image: '/clippy/images/app/tray.png',
     title: 'Always Available',
-    description: 'Access your clipboard instantly from the menu bar.'
+    description: 'See and paste recent items quickly'
   }
 ]
 

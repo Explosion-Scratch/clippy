@@ -178,7 +178,10 @@ function toggleFlag(flag) {
     <div class="container">
       <div class="section-title">
         <h2>Command Line Interface</h2>
-        <p>Full-featured CLI for scripting and power users. Explore all commands below.</p>
+        <p>
+          The core of Clippy is through its CLI. Script, grep, automate, whatever! It's all private, fast and open source.
+          <a href="https://github.com/explosion-scratch/clippy/tree/main/get_clipboard/README.md">(See docs)</a>
+        </p>
       </div>
 
       <div class="cli-explorer">
