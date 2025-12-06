@@ -86,7 +86,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
         tauri::WebviewUrl::App("/settings".into()),
     )
     .title("Clippy Settings")
-    .inner_size(400.0, 450.0)
+    .inner_size(400.0, 600.0)
     .resizable(false)
     .minimizable(true)
     .maximizable(false)
@@ -132,19 +132,6 @@ fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or("Failed to get main window")?;
 
-    // Apply vibrancy
-
-    #[cfg(target_os = "macos")]
-    {
-        apply_vibrancy(
-            &preview_window,
-            NSVisualEffectMaterial::HudWindow,
-            None,
-            None,
-        )
-        .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS")
-    }
-
     // Get main window position and size
     let main_pos = main_window
         .outer_position()
@@ -176,6 +163,22 @@ fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
     preview_window
         .show()
         .map_err(|e| format!("Failed to show preview window: {}", e))?;
+
+    // Apply vibrancy after showing on macOS (must be on main thread)
+    #[cfg(target_os = "macos")]
+    {
+        let app_clone = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(preview_window) = app_clone.get_webview_window("preview") {
+                let _ = apply_vibrancy(
+                    &preview_window,
+                    NSVisualEffectMaterial::HudWindow,
+                    None,
+                    None,
+                );
+            }
+        });
+    }
 
     println!("Showing preview for item: {}", id);
 
@@ -302,23 +305,25 @@ pub fn run() {
             let tray_items: TrayClipboardItems = Arc::new(Mutex::new(Vec::new()));
 
             // Create system tray menu with dynamic stats
-            let show_item = MenuItemBuilder::with_id("show", "Show Clippy").build(app)?;
+            let show_item = MenuItemBuilder::with_id("show", "Show Clippy")
+                .accelerator("CmdOrCtrl+Return")
+                .build(app)?;
             let dashboard_item =
-                MenuItemBuilder::with_id("dashboard", "Show dashboard").build(app)?;
-            // Add Cmd+, accelerator to Settings menu item (only works when tray menu is open)
+                MenuItemBuilder::with_id("dashboard", "Show dashboard")
+                .accelerator("CmdOrCtrl+Shift+Return")
+                .build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "Settings")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit")
+                .accelerator("CmdOrCtrl+Q")
+                .build(app)?;
 
-            // Create initial stats item
+            // Create stats item (shown at bottom with clipboard items count)
             let stats_item =
-                MenuItemBuilder::with_id("stats", "clippy v0.1.0 - Running").build(app)?;
+                MenuItemBuilder::with_id("stats", "clippy v0.1.0").enabled(false).build(app)?;
 
-            // Create separator
-            let separator = PredefinedMenuItem::separator(app)?;
-
-            // Create clipboard item menu entries (initially empty, will be populated)
+            // Create clipboard item menu entries (initially hidden)
             let clip_items: Vec<tauri::menu::MenuItem<tauri::Wry>> = (0..10)
                 .map(|i| {
                     let key = if i == 9 {
@@ -326,7 +331,7 @@ pub fn run() {
                     } else {
                         (i + 1).to_string()
                     };
-                    MenuItemBuilder::with_id(format!("clip_{}", i), format!("{}. (empty)", key))
+                    MenuItemBuilder::with_id(format!("clip_{}", i), "")
                         .accelerator(format!("CmdOrCtrl+{}", key))
                         .enabled(false)
                         .build(app)
@@ -334,13 +339,8 @@ pub fn run() {
                 })
                 .collect();
 
-            // Build menu with all items
-            let mut menu_builder = MenuBuilder::new(app)
-                .item(&stats_item)
-                .item(&show_item)
-                .item(&dashboard_item)
-                .item(&settings_item)
-                .item(&separator);
+            // Build menu: clipboard items first, then nav items at bottom
+            let mut menu_builder = MenuBuilder::new(app);
 
             // Add clipboard items
             for clip_item in &clip_items {
@@ -348,6 +348,11 @@ pub fn run() {
             }
 
             let menu = menu_builder
+                .item(&PredefinedMenuItem::separator(app)?)
+                .item(&stats_item)
+                .item(&show_item)
+                .item(&dashboard_item)
+                .item(&settings_item)
                 .item(&PredefinedMenuItem::separator(app)?)
                 .item(&quit_item)
                 .build()?;
@@ -366,73 +371,84 @@ pub fn run() {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
                     // Update stats
-                    if let Ok(response) = client.get(&stats_url).send().await {
-                        if let Ok(json) = response.json::<serde_json::Value>().await {
-                            let count = json["totalItems"].as_u64().unwrap_or(0);
-                            let size = json["totalSize"].as_u64().unwrap_or(0);
+                    match client.get(&stats_url).send().await {
+                        Ok(response) => {
+                            if let Ok(json) = response.json::<serde_json::Value>().await {
+                                let count = json["totalItems"].as_u64().unwrap_or(0);
+                                let size = json["totalSize"].as_u64().unwrap_or(0);
 
-                            let size_str = if size < 1024 {
-                                format!("{}b", size)
-                            } else if size < 1024 * 1024 {
-                                format!("{:.0}kb", size as f64 / 1024.0)
-                            } else {
-                                format!("{:.1}mb", size as f64 / (1024.0 * 1024.0))
-                            };
+                                let size_str = if size < 1024 {
+                                    format!("{}b", size)
+                                } else if size < 1024 * 1024 {
+                                    format!("{:.0}kb", size as f64 / 1024.0)
+                                } else {
+                                    format!("{:.1}mb", size as f64 / (1024.0 * 1024.0))
+                                };
 
-                            let text = format!("clippy v0.1.0 - {} items {}", count, size_str);
-                            let _ = stats_item_handle.set_text(text);
+                                let text = format!("clippy v0.1.0 · {} items · {}", count, size_str);
+                                let _ = stats_item_handle.set_text(text);
+                            }
+                        }
+                        Err(_) => {
+                            let _ = stats_item_handle.set_text("clippy v0.1.0 · ⚠ API not connected");
                         }
                     }
 
                     // Update clipboard items in tray
-                    if let Ok(response) = client.get(&items_url).send().await {
-                        if let Ok(items) = response.json::<Vec<serde_json::Value>>().await {
-                            let mut tray_items_lock = tray_items_clone.lock().await;
-                            tray_items_lock.clear();
+                    match client.get(&items_url).send().await {
+                        Ok(response) => {
+                            if let Ok(items) = response.json::<Vec<serde_json::Value>>().await {
+                                let mut tray_items_lock = tray_items_clone.lock().await;
+                                tray_items_lock.clear();
 
-                            for (i, item) in items.iter().take(10).enumerate() {
-                                let id = item["hash"]
-                                    .as_str()
-                                    .or(item["id"].as_str())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let summary = item["summary"].as_str().unwrap_or("").to_string();
+                                let item_count = items.len().min(10);
 
-                                // Truncate summary for menu display
-                                let display_summary = if summary.len() > 40 {
-                                    format!("{}...", &summary[..37])
-                                } else {
-                                    summary.clone()
-                                };
+                                for (i, item) in items.iter().take(10).enumerate() {
+                                    let id = item["hash"]
+                                        .as_str()
+                                        .or(item["id"].as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let summary = item["summary"].as_str().unwrap_or("").to_string();
 
-                                // Update menu item text
-                                let key = if i == 9 {
-                                    "0".to_string()
-                                } else {
-                                    (i + 1).to_string()
-                                };
-                                let menu_text =
-                                    format!("{}. {}", key, display_summary.replace('\n', " "));
+                                    // Truncate summary for menu display
+                                    let display_summary = if summary.len() > 40 {
+                                        format!("{}...", &summary[..37])
+                                    } else {
+                                        summary.clone()
+                                    };
 
-                                if let Some(menu_item) = clip_items_handles.get(i) {
-                                    let _ = menu_item.set_text(&menu_text);
-                                    let _ = menu_item.set_enabled(true);
-                                }
-
-                                tray_items_lock.push((id, summary));
-                            }
-
-                            // Disable unused menu items
-                            for i in items.len()..10 {
-                                if let Some(menu_item) = clip_items_handles.get(i) {
+                                    // Update menu item text
                                     let key = if i == 9 {
                                         "0".to_string()
                                     } else {
                                         (i + 1).to_string()
                                     };
-                                    let _ = menu_item.set_text(&format!("{}. (empty)", key));
-                                    let _ = menu_item.set_enabled(false);
+                                    let menu_text =
+                                        format!("{}. {}", key, display_summary.replace('\n', " "));
+
+                                    if let Some(menu_item) = clip_items_handles.get(i) {
+                                        let _ = menu_item.set_text(&menu_text);
+                                        let _ = menu_item.set_enabled(true);
+                                    }
+
+                                    tray_items_lock.push((id, summary));
                                 }
+
+                                // Hide unused menu items (set empty text to effectively hide them)
+                                for i in item_count..10 {
+                                    if let Some(menu_item) = clip_items_handles.get(i) {
+                                        let _ = menu_item.set_text("");
+                                        let _ = menu_item.set_enabled(false);
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // On error, hide all clipboard items
+                            for menu_item in &clip_items_handles {
+                                let _ = menu_item.set_text("");
+                                let _ = menu_item.set_enabled(false);
                             }
                         }
                     }
