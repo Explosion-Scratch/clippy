@@ -113,6 +113,9 @@ get_clipboard copy 0
 # Show 5th most recent
 get_clipboard show 4
 
+# Pipe
+get_clipboard show --image 0 > img.png
+
 # Delete by hash
 get_clipboard delete deadbeef
 ```
@@ -172,9 +175,11 @@ get_clipboard interactive -q "password"
 **TUI Controls:**
 - `↑/↓` Navigate items
 - `Enter` Copy selected
-- `Ctrl+D` Delete
-- `/` Focus search
-- `q/Esc` Quit
+- `Shift+Enter` Copy selected and stay open
+- `Alt+Delete` / `Alt+Backspace` Delete item
+- `Ctrl+C` Quit
+- `Esc` Clear filter / Reset
+- Type to search automatically
 
 ### Scripting
 
