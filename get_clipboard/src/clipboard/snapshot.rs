@@ -334,12 +334,14 @@ pub(crate) fn human_kb(size: u64) -> String {
 }
 
 pub(crate) fn truncate_summary(input: &str) -> String {
-    let mut snippet = input.trim().replace('\n', " ").replace('\r', " ");
-    if snippet.len() > 120 {
-        snippet.truncate(117);
-        snippet.push_str("...");
+    let snippet = input.trim().replace('\n', " ").replace('\r', " ");
+    let char_count = snippet.chars().count();
+    if char_count > 120 {
+        let truncated: String = snippet.chars().take(117).collect();
+        format!("{}...", truncated)
+    } else {
+        snippet
     }
-    snippet
 }
 
 pub(crate) fn format_file_summary(files: &[FileRecord]) -> String {

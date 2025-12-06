@@ -805,12 +805,14 @@ pub fn human_size(bytes: u64) -> String {
 }
 
 fn truncate_for_preview(text: &str, max_len: usize) -> String {
-    let mut clean = text.trim().replace('\r', "");
-    if clean.len() > max_len {
-        clean.truncate(max_len.saturating_sub(3));
-        clean.push_str("...");
+    let clean = text.trim().replace('\r', "");
+    let char_count = clean.chars().count();
+    if char_count > max_len {
+        let truncated: String = clean.chars().take(max_len.saturating_sub(3)).collect();
+        format!("{}...", truncated)
+    } else {
+        clean
     }
-    clean
 }
 
 fn read_text_preview(path: &Path) -> Option<String> {

@@ -272,12 +272,14 @@ fn preview_text_for_state(
 
 fn copy_status(snippet: &str) -> String {
     let clean = snippet.trim().replace('\n', " ").replace('\r', " ");
-    let mut status = format!("Copied {}", clean);
-    if status.len() > 70 {
-        status.truncate(67);
-        status.push_str("...");
+    let status = format!("Copied {}", clean);
+    let char_count = status.chars().count();
+    if char_count > 70 {
+        let truncated: String = status.chars().take(67).collect();
+        format!("{}...", truncated)
+    } else {
+        status
     }
-    status
 }
 
 fn event_loop(

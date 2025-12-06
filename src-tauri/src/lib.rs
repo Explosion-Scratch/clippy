@@ -411,11 +411,15 @@ pub fn run() {
                                         .to_string();
                                     let summary = item["summary"].as_str().unwrap_or("").to_string();
 
-                                    // Truncate summary for menu display
-                                    let display_summary = if summary.len() > 40 {
-                                        format!("{}...", &summary[..37])
-                                    } else {
-                                        summary.clone()
+                                    // Truncate summary for menu display (character-safe)
+                                    let display_summary = {
+                                        let char_count = summary.chars().count();
+                                        if char_count > 40 {
+                                            let truncated: String = summary.chars().take(37).collect();
+                                            format!("{}...", truncated)
+                                        } else {
+                                            summary.clone()
+                                        }
                                     };
 
                                     // Update menu item text

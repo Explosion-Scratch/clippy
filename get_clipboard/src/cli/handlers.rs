@@ -320,10 +320,14 @@ fn import_command(path: &Path) -> Result<()> {
 
     for (i, item) in import_data.items.iter().enumerate() {
         let summary = item.summary.as_deref().unwrap_or("(no summary)");
-        let truncated = if summary.len() > 50 {
-            format!("{}...", &summary[..47])
-        } else {
-            summary.to_string()
+        let truncated = {
+            let char_count = summary.chars().count();
+            if char_count > 50 {
+                let chars: String = summary.chars().take(47).collect();
+                format!("{}...", chars)
+            } else {
+                summary.to_string()
+            }
         }.replace('\n', " ");
 
         match store_json_item(item) {
@@ -455,10 +459,14 @@ fn run_stats(json: &bool) -> Result<()> {
         println!("{}", "-".repeat(70));
         for (item, offset) in largest.iter() {
             let summary = item.summary.as_deref().unwrap_or("(no summary)");
-            let truncated = if summary.len() > 40 {
-                format!("{}...", &summary[..37])
-            } else {
-                summary.to_string()
+            let truncated = {
+                let char_count = summary.chars().count();
+                if char_count > 40 {
+                    let chars: String = summary.chars().take(37).collect();
+                    format!("{}...", chars)
+                } else {
+                    summary.to_string()
+                }
             }.replace('\n', " ");
             println!(
                 "{:<8} {:<10} {:<12} {}",
