@@ -57,3 +57,12 @@ install-app:
 # Install the binary
 install-binary:
     cd get_clipboard && just install-binary
+
+# Create a GitHub release with version from Cargo.toml
+release:
+    ./create-release.sh
+
+# Show current versions
+version:
+    @echo "Clippy App:    v$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = \"\(.*\)\"/\1/')"
+    @echo "get_clipboard: v$(grep '^version' get_clipboard/Cargo.toml | head -1 | sed 's/version = \"\(.*\)\"/\1/')"

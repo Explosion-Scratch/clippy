@@ -145,8 +145,3 @@ code {
     transform: translateY(0);
   }
 }
-
-
-.gradient-bg {
-  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%);
-}

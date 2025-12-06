@@ -21,7 +21,19 @@
     "core:window:allow-set-size",
     "core:menu:allow-get",
     "core:menu:allow-items",
-    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "get_clipboard",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-spawn",
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
     "shell:allow-open",
     "opener:default",
     "opener:allow-open-path",

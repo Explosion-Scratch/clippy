@@ -44,7 +44,7 @@ const features = [
 </script>
 
 <template>
-  <section class="hero gradient-bg" :class="{ 'fade-in': isVisible }">
+  <section class="hero" :class="{ 'fade-in': isVisible }">
     <div class="container">
       <div class="hero-content">
         <div class="hero-icon-wrapper">
@@ -90,6 +90,7 @@ section {
   --height: 160px;
   overflow: visible;
   position: relative;
+  background: white;
 }
 .waves {
   --scale-y: 0.5;
