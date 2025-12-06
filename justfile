@@ -62,6 +62,36 @@ install-binary:
 release:
     ./create-release.sh
 
+# Increment patch version in all Cargo.toml files and tauri.conf.json
+increment-version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    bump_cargo_version() {
+        local file="$1"
+        local current=$(grep '^version' "$file" | head -1 | perl -pe 's/version = "(.*)"/\1/')
+        local major=$(echo "$current" | cut -d. -f1)
+        local minor=$(echo "$current" | cut -d. -f2)
+        local patch=$(echo "$current" | cut -d. -f3)
+        local new_patch=$((patch + 1))
+        local new_version="${major}.${minor}.${new_patch}"
+        perl -i -pe "s/^version = \"${current}\"/version = \"${new_version}\"/" "$file"
+        echo "$new_version"
+    }
+    
+    APP_VERSION=$(bump_cargo_version "src-tauri/Cargo.toml")
+    SIDECAR_VERSION=$(bump_cargo_version "get_clipboard/Cargo.toml")
+    
+    # Update tauri.conf.json to match app version
+    perl -i -pe "s/\"version\": \"[0-9.]+\"/\"version\": \"${APP_VERSION}\"/" src-tauri/tauri.conf.json
+    
+    echo "✅ Versions incremented:"
+    echo "   • Clippy App:      v${APP_VERSION}"
+    echo "   • get_clipboard:   v${SIDECAR_VERSION}"
+
+# Increment version, build everything, and create a GitHub release
+publish: increment-version build release
+
 # Show current versions
 version:
     @echo "Clippy App:    v$(grep '^version' src-tauri/Cargo.toml | head -1 | sed 's/version = \"\(.*\)\"/\1/')"
