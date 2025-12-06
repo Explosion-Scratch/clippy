@@ -148,6 +148,7 @@ fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<
     let data_dir = ensure_data_dir(&config)?;
     let item_dir = data_dir.join(&metadata.relative_path);
     let preferred_plugin = preferred_display_plugin(filters);
+    let is_tty = io::stdout().is_terminal();
 
     match mode {
         OutputMode::JsonFull => {
@@ -177,7 +178,7 @@ fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<
                 &item_dir,
                 preferred_plugin,
             )?;
-            render_display(content)?;
+            render_display(content, is_tty)?;
             log_item_details(&metadata, &item_dir)?;
         }
     }
@@ -728,7 +729,7 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
     Ok(())
 }
 
-fn render_display(content: DisplayContent) -> Result<()> {
+fn render_display(content: DisplayContent, is_tty: bool) -> Result<()> {
     match content {
         DisplayContent::Text(text) => {
             if !write_text_block(&text)? {
@@ -744,12 +745,21 @@ fn render_display(content: DisplayContent) -> Result<()> {
             }
             Ok(())
         }
-        DisplayContent::Image(image) => render_image(&image),
+        DisplayContent::Image(image) => render_image(&image, is_tty),
         DisplayContent::Empty => Ok(()),
     }
 }
 
-fn render_image(image: &ImageDisplay) -> Result<()> {
+fn render_image(image: &ImageDisplay, is_tty: bool) -> Result<()> {
+    if !is_tty {
+        let bytes = std::fs::read(&image.path)
+            .with_context(|| format!("Failed to read image file: {}", image.path.display()))?;
+        let mut stdout = io::stdout();
+        stdout.write_all(&bytes)?;
+        stdout.flush()?;
+        return Ok(());
+    }
+
     if terminal_supports_images() {
         let mut config = ViuerConfig::default();
         config.restore_cursor = false;

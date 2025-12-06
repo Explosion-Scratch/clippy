@@ -20,8 +20,8 @@ const MOCKS: Record<string, string> = {
 
   [`${CLI} service start`]: "Starting clipboard service...\nService started successfully (PID: 12345)",
   [`${CLI} service stop`]: "Stopping clipboard service...\nService stopped",
-  [`${CLI} service install`]: "Installing launchd service...\nCreated: ~/Library/LaunchAgents/com.clippith.get_clipboard.plist\nService installed successfully",
-  [`${CLI} service uninstall`]: "Uninstalling launchd service...\nRemoved: ~/Library/LaunchAgents/com.clippith.get_clipboard.plist\nService uninstalled",
+  [`${CLI} service install`]: "Installing launchd service...\nCreated: ~/Library/LaunchAgents/com.clippy.get_clipboard.plist\nService installed successfully",
+  [`${CLI} service uninstall`]: "Uninstalling launchd service...\nRemoved: ~/Library/LaunchAgents/com.clippy.get_clipboard.plist\nService uninstalled",
   // logs might hang, so mock it
   [`${CLI} service logs`]: "=== Clipboard Change Detected ===\nAll formats (8 total):\n  • public.html: \"<meta charset='utf-8'><div data-v-8ac1771b=\"\" class=\"command-header\" style=\"box-sizing: border-box; margin: 0px; padd...\"\n  • Apple HTML pasteboard type: \"<meta charset='utf-8'><div data-v-8ac1771b=\"\" class=\"command-header\" style=\"box-sizing: border-box; margin: 0px; padd...\"\n  • public.utf8-plain-text: \"get_clipboard history --query --from --to --sort --json --text --full --image --file --limit --help\"\n  • NSStringPboardType: \"get_clipboard history --query --from --to --sort --json --text --full --image --file --limit --help\"\n  • dyn.ah62d4rv4gu8y63n2nuuhg5pbsm4ca6dbsr4gnkduqf31k3pcr7u1e3basv61a3k: <empty>\n  • NeXT smart paste pasteboard type: <empty>\n  • org.chromium.internal.source-rfh-token: <binary data, 24 bytes>\n  • org.chromium.source-url: \"http://localhost:5173/#demo\"\n================================\n\nStored clipboard item: get_clipboard history --query --from --to --sort --json --text --full --image --file --limit --help [1 copies]\n\n=== Clipboard Change Detected ===\nAll formats (7 total):\n  • public.html: \"<meta charset='utf-8'><div style=\"color: #a9b1d6;background-color: #1a1b26;font-family: Menlo, Monaco, 'Courier New',...\"\n  • Apple HTML pasteboard type: \"<meta charset='utf-8'><div style=\"color: #a9b1d6;background-color: #1a1b26;font-family: Menlo, Monaco, 'Courier New',...\"\n  • public.utf8-plain-text: \"frontend/src/data\"\n  • NSStringPboardType: \"frontend/src/data\"\n  • org.chromium.internal.source-rfh-token: <binary data, 24 bytes>\n  • org.chromium.web-custom-data: <binary data, 776 bytes>\n  • org.chromium.source-url: \"vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/w...\"\n================================\n\nStored clipboard item: frontend/src/data [1 copies]\n\n=== Clipboard Change Detected ===\nAll formats (4 total):\n  • public.utf8-plain-text: \"bun run scripts/build-cli-examples.ts\"\n  • NSStringPboardType: \"bun run scripts/build-cli-examples.ts\"\n  • org.chromium.internal.source-rfh-token: <binary data, 24 bytes>\n  • org.chromium.source-url: \"vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/out/vs/code/electron-browser/workbench/w...\"\n================================\n\nStored clipboard item: bun run scripts/build-cli-examples.ts [1 copies]",
 
@@ -156,11 +156,23 @@ async function main() {
     console.log("Building CLI examples...");
   }
   
-  const results: Record<string, Record<string, [string, string]>> = {};
+  let results: Record<string, Record<string, [string, string]>> = {};
+  
+  if (helpOnly) {
+    try {
+      const existingData = await Bun.file(OUTPUT_PATH).text();
+      results = JSON.parse(existingData);
+      console.log("Loaded existing data from", OUTPUT_PATH);
+    } catch (e) {
+      console.warn("Could not read existing data file, starting fresh");
+    }
+  }
 
   for (const [subcommand, variations] of Object.entries(CONFIG)) {
     console.log(`Processing subcommand: ${subcommand}`);
-    results[subcommand] = {};
+    if (!results[subcommand]) {
+      results[subcommand] = {};
+    }
     
     for (const [key, cmdString] of Object.entries(variations)) {
       if (helpOnly && key !== "--help") {

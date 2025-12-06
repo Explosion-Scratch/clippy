@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const TASK_NAME: &str = "ClippithGetClipboard";
+const TASK_NAME: &str = "ClippyGetClipboard";
 
 pub fn install_agent() -> Result<()> {
     let exe = std::env::current_exe()?;

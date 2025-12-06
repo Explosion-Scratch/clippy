@@ -7,7 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const LABEL: &str = "com.clippith.get_clipboard";
+const LABEL: &str = "com.clippy.get_clipboard";
 
 pub fn install_agent() -> Result<()> {
     let plist_path = agent_plist_path()?;
@@ -139,7 +139,7 @@ fn agent_plist_path() -> Result<PathBuf> {
     Ok(dirs
         .home_dir()
         .join("Library/LaunchAgents")
-        .join("com.clippith.get_clipboard.plist"))
+        .join("com.clippy.get_clipboard.plist"))
 }
 
 fn build_plist() -> Result<String> {

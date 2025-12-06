@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🎨 Building Clippith Dashboard..."
+echo "🎨 Building Clippy Dashboard..."
 cd frontend-app
 bun install
 bun run build

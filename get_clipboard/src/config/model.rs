@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use time::{Duration, OffsetDateTime};
 
 const APP_NAME: &str = "get_clipboard";
-const ORGANIZATION: &str = "clippith";
+const ORGANIZATION: &str = "clippy";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {

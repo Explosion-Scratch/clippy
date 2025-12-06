@@ -2,7 +2,7 @@
 
 A fast, local-first clipboard manager CLI for macOS with a built-in web dashboard.
 
-📥 **[Download Latest Release](https://github.com/Explosion-Scratch/clippy/releases/latest)**
+**[Download Latest Release](https://github.com/Explosion-Scratch/clippy/releases/latest)**
 
 ## Installation
 
@@ -28,7 +28,7 @@ get_clipboard api # --port ___
 
 ## Storage
 
-Items are stored in `~/Library/Application Support/clippith/data/` organized by date and content hash:
+Items are stored in `~/Library/Application Support/clippy/data/` organized by date and content hash:
 
 ```
 data/
@@ -114,7 +114,7 @@ get_clipboard copy 0
 get_clipboard show 4
 
 # Delete by hash
-get_clipboard delete a1b2c3d4
+get_clipboard delete deadbeef
 ```
 
 ### Search & Filtering
