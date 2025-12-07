@@ -67,18 +67,23 @@ const props = defineProps({
 }
 
 .terminal-content {
-  padding: 16px 20px;
+  padding: 0;
   min-height: 200px;
   max-height: 400px;
-  overflow-y: auto;
+  overflow: hidden;
   line-height: 1;
   background: #fafafa;
+  display: flex;
+  flex-direction: column;
 }
 
 .terminal-content pre {
   margin: 0;
+  padding: 16px 20px;
   white-space: pre;
-  overflow-x: auto;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .terminal-content code {
