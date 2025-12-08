@@ -118,11 +118,11 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
     Ok(())
 }
 
-// Command to show preview for an item
-// Command to show preview for an item
+// Command to show preview window for an item
+// Only shows if main window is visible. Width-based inline preview logic is handled by frontend.
 #[tauri::command]
 fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    use tauri::{LogicalSize, Manager};
+    use tauri::Manager;
 
     let preview_window = app
         .get_webview_window("preview")
@@ -132,13 +132,27 @@ fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
         .get_webview_window("main")
         .ok_or("Failed to get main window")?;
 
+    // Check if main window is visible
+    let is_visible = main_window
+        .is_visible()
+        .map_err(|e| format!("Failed to check main window visibility: {}", e))?;
+    println!("is_visible: {}", is_visible);
+    if !is_visible {
+        // Main window not visible, hide preview and return
+        let _ = preview_window.hide();
+        return Ok(());
+    }
+
     // Get main window position and size
     let main_pos = main_window
         .outer_position()
         .map_err(|e| format!("Failed to get main window position: {}", e))?;
     let main_size = main_window
         .outer_size()
-        .map_err(|e| format!("Failed to get main window size: {}", e))?;
+        .map_err(|e: tauri::Error| format!("Failed to get main window size: {}", e))?;
+
+    println!("main_size.width: {}", main_size.width);
+    println!("Previewing item: {}", id);
 
     // Calculate preview position (right of main window)
     // We use physical coordinates for set_position
@@ -189,6 +203,16 @@ fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
 
     println!("Emitted preview-item event");
 
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_preview(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(preview_window) = app.get_webview_window("preview") {
+        preview_window
+            .hide()
+            .map_err(|e| format!("Failed to hide preview window: {}", e))?;
+    }
     Ok(())
 }
 
@@ -258,6 +282,17 @@ pub fn run() {
                     }
                 }
             }
+            // Hide preview window when main window loses focus or is hidden
+            if window.label() == "main" {
+                match event {
+                    tauri::WindowEvent::Focused(false) | tauri::WindowEvent::Destroyed => {
+                        if let Some(preview) = window.app_handle().get_webview_window("preview") {
+                            let _ = preview.hide();
+                        }
+                    }
+                    _ => {}
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -265,6 +300,7 @@ pub fn run() {
             register_main_shortcut,
             open_settings,
             preview_item,
+            hide_preview,
             get_preview_content,
             open_in_dashboard,
             sidecar::init_service,
@@ -284,6 +320,7 @@ pub fn run() {
             sidecar::get_sidecar_dir,
             sidecar::set_sidecar_dir,
             sidecar::get_app_data_dir,
+            sidecar::edit_item,
             paste::simulate_system_paste,
             visibility::is_visible,
             visibility::hide_app,

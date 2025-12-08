@@ -48,3 +48,7 @@ pub fn dir_url() -> String {
 pub fn save_url() -> String {
     format!("{}/save", API_BASE)
 }
+
+pub fn item_edit_url(id: &str) -> String {
+    format!("{}/item/{}", API_BASE, id)
+}

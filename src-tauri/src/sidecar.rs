@@ -417,3 +417,29 @@ pub async fn get_app_data_dir(app: AppHandle) -> Result<String, String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     Ok(app_data_dir.to_string_lossy().to_string())
 }
+
+#[tauri::command]
+pub async fn edit_item(
+    _app: AppHandle,
+    id: String,
+    formats: std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let url = api::item_edit_url(&id);
+    let body = serde_json::json!({ "formats": formats });
+
+    let response = client
+        .patch(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if response.status().is_success() {
+        Ok(response.text().await.map_err(|e| e.to_string())?)
+    } else {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        Err(format!("API error {}: {}", status, error_text))
+    }
+}
