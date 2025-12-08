@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Hardened Runtime: Required for notarization and distribution -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    
+    <!-- Allow JIT for JavaScript/WebView -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    
+    <!-- Disable Library Validation: Required for loading dynamic libraries -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    
+    <!-- Accessibility: Required for simulating paste and global shortcuts -->
+    <!-- Note: This entitlement alone doesn't grant access - user must still approve -->
+    <!-- in System Preferences > Privacy & Security > Accessibility -->
+    <!-- This entitlement signals to macOS that the app intends to use accessibility features -->
+    
+    <!-- Allow execution of sidecar binaries -->
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <true/>
+</dict>
+</plist>

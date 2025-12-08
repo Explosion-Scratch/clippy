@@ -98,6 +98,9 @@ echo "   • Copying standalone get_clipboard binary..."
 cp "$SIDECAR_BIN" "$RELEASE_DIR/get_clipboard"
 chmod +x "$RELEASE_DIR/get_clipboard"
 
+echo "   • Verifying code signature..."
+codesign -dv --verbose=2 "$APP_BUNDLE" 2>&1 | head -10 || echo "   ⚠ Note: Code signature verification returned non-zero (may be ad-hoc signed)"
+
 echo "   • Verifying artifacts..."
 ls -lh "$RELEASE_DIR/"
 
@@ -114,7 +117,7 @@ if command -v gh &> /dev/null; then
     if gh release view "v${APP_VERSION}" &>/dev/null; then
         echo "   Release v${APP_VERSION} already exists. Uploading assets..."
         gh release upload "v${APP_VERSION}" \
-            "$RELEASE_DIR/clippy.app.zip" \
+            "$RELEASE_DIR/clippy.dmg" \
             "$RELEASE_DIR/get_clipboard" \
             --clobber
     else
@@ -123,19 +126,32 @@ if command -v gh &> /dev/null; then
             --notes "## Clippy v${APP_VERSION}
 
 ### Downloads
-- **clippy.app.zip** - macOS application bundle
+- **clippy.dmg** - macOS disk image (recommended)
 - **get_clipboard** - Standalone CLI binary
 
-### First-time Setup (macOS)
-If you encounter permission errors after downloading:
+### First-time Setup (macOS - Unsigned Build)
+Since this build is not notarized, macOS will block it initially:
+
+1. **Open the DMG** and drag Clippy to Applications
+2. **Right-click the app** → Open (not double-click)
+3. Click \"Open\" in the dialog that appears
+
+If you still see \"damaged\" error:
 \`\`\`bash
 xattr -cr /Applications/clippy.app
 \`\`\`
 
+### Permissions Required
+On first launch, Clippy will request **Accessibility** permissions. This is required for:
+- Simulating paste actions
+- Global keyboard shortcuts (Ctrl+P)
+
+Grant access in: **System Settings → Privacy & Security → Accessibility**
+
 ### Versions
 - Clippy App: v${APP_VERSION}
 - get_clipboard: v${SIDECAR_VERSION}" \
-            "$RELEASE_DIR/clippy.app.zip" \
+            "$RELEASE_DIR/clippy.dmg" \
             "$RELEASE_DIR/get_clipboard"
     fi
     
@@ -153,7 +169,7 @@ else
     echo ""
     echo "   gh release create \"v${APP_VERSION}\" \\"
     echo "       --title \"Clippy v${APP_VERSION}\" \\"
-    echo "       \"$RELEASE_DIR/clippy.app.zip\" \\"
+    echo "       \"$RELEASE_DIR/clippy.dmg\" \\"
     echo "       \"$RELEASE_DIR/get_clipboard\""
 fi
 
