@@ -47,6 +47,14 @@
           </div>
           <div class="flex items-center gap-2">
             <button 
+              v-if="item.type === 'text' && !isEditing"
+              @click="startEdit" 
+              class="btn-icon bg-stone-500/10 hover:bg-stone-500/10 transition-colors duration-200 text-slate-900"
+              title="Edit Item"
+            >
+              <PhPencil :size="18" />
+            </button>
+            <button 
               @click="$emit('copy', item.id)" 
               class="btn-icon bg-stone-500/10 hover:bg-stone-500/10 transition-colors duration-200 text-slate-900"
               title="Copy Item"
@@ -84,40 +92,52 @@
         </div>
         
         <div v-else-if="item" class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col max-w-4xl mx-auto w-full relative group">
-          <!-- Tabs moved to header -->
 
-          <div class="flex-1 relative bg-white">
-             <div v-if="previewLoading" class="absolute inset-0 flex items-center justify-center bg-white z-10">
-              <div class="spinner w-8 h-8" />
+          <div v-if="isEditing" class="flex-1 flex flex-col p-4">
+            <textarea 
+              v-model="editedText"
+              class="flex-1 w-full p-3 border border-gray-200 rounded-lg font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            ></textarea>
+            <div class="flex justify-end gap-2 mt-4">
+              <button @click="cancelEdit" class="px-4 py-2 text-sm bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+              <button @click="saveEdit" class="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600">Save</button>
+            </div>
+          </div>
+
+          <template v-else>
+            <div class="flex-1 relative bg-white">
+               <div v-if="previewLoading" class="absolute inset-0 flex items-center justify-center bg-white z-10">
+                <div class="spinner w-8 h-8" />
+              </div>
+              
+              <div v-if="error" class="absolute inset-0 flex items-center justify-center text-red-500 p-4 text-center">
+                <p>Error loading preview: {{ error }}</p>
+              </div>
+
+              <iframe 
+                v-if="previewData && activeTab && previewData.data[activeTab]"
+                :key="activeTab"
+                :srcdoc="previewData.data[activeTab].html"
+                class="w-full h-full border-none bg-white block" 
+                sandbox="allow-same-origin allow-scripts"
+              ></iframe>
+            </div>
+
+            <div class="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+              <button 
+                @click="copyCurrentContent" 
+                class="bg-white/90 border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg text-xs hover:bg-gray-100 flex items-center gap-2 font-medium text-gray-700"
+              >
+                <PhCopy :size="14" /> 
+                {{ activeTab === 'image' ? 'Copy Image' : 'Copy Content' }}
+              </button>
             </div>
             
-            <div v-if="error" class="absolute inset-0 flex items-center justify-center text-red-500 p-4 text-center">
-              <p>Error loading preview: {{ error }}</p>
+            <div class="bg-gray-50 border-t border-gray-100 px-4 py-2 text-[10px] text-gray-500 flex gap-4 font-mono flex-shrink-0">
+              <div v-if="previewData?.kind">KIND: {{ previewData.kind }}</div>
+              <div v-if="activeTab">FORMAT: {{ activeTab }}</div>
             </div>
-
-            <iframe 
-              v-if="previewData && activeTab && previewData.data[activeTab]"
-              :key="activeTab"
-              :srcdoc="previewData.data[activeTab].html"
-              class="w-full h-full border-none bg-white block" 
-              sandbox="allow-same-origin allow-scripts"
-            ></iframe>
-          </div>
-
-          <div class="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-            <button 
-              @click="copyCurrentContent" 
-              class="bg-white/90 border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg text-xs hover:bg-gray-100 flex items-center gap-2 font-medium text-gray-700"
-            >
-              <PhCopy :size="14" /> 
-              {{ activeTab === 'image' ? 'Copy Image' : 'Copy Content' }}
-            </button>
-          </div>
-          
-          <div class="bg-gray-50 border-t border-gray-100 px-4 py-2 text-[10px] text-gray-500 flex gap-4 font-mono flex-shrink-0">
-            <div v-if="previewData?.kind">KIND: {{ previewData.kind }}</div>
-            <div v-if="activeTab">FORMAT: {{ activeTab }}</div>
-          </div>
+          </template>
         </div>
       </div>
     </div>
@@ -126,7 +146,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash, PhArrowLeft } from '@phosphor-icons/vue'
+import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash, PhArrowLeft, PhPencil } from '@phosphor-icons/vue'
 
 const props = defineProps({
   item: Object,
@@ -136,12 +156,14 @@ const props = defineProps({
   showBackButton: Boolean
 })
 
-const emit = defineEmits(['format-change', 'copy', 'delete', 'toast', 'back'])
+const emit = defineEmits(['format-change', 'copy', 'delete', 'toast', 'back', 'refresh'])
 
 const previewData = ref(null)
 const previewLoading = ref(false)
 const activeTab = ref('')
 const error = ref(null)
+const isEditing = ref(false)
+const editedText = ref('')
 
 const fetchPreview = async (id) => {
   if (!id) return
@@ -227,12 +249,40 @@ const copyCurrentContent = () => {
     return
   }
   
-  // For text/files/html, copy the raw text if available, or fall back to item ID copy
   const text = previewData.value?.data?.[activeTab.value]?.text
   if (text) {
     copyTextWithToast(text)
   } else {
     emit('copy', props.item.id)
+  }
+}
+
+const startEdit = () => {
+  const text = previewData.value?.data?.text?.text || previewData.value?.data?.[activeTab.value]?.text || ''
+  editedText.value = text
+  isEditing.value = true
+}
+
+const cancelEdit = () => {
+  isEditing.value = false
+  editedText.value = ''
+}
+
+const saveEdit = async () => {
+  if (!props.item?.id) return
+  try {
+    const res = await fetch(`/item/${props.item.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: editedText.value })
+    })
+    if (!res.ok) throw new Error('Failed to save edit')
+    isEditing.value = false
+    emit('toast', { title: 'Saved', message: 'Item updated successfully', type: 'success' })
+    emit('refresh')
+  } catch (err) {
+    console.error('Failed to save edit:', err)
+    emit('toast', { title: 'Error', message: 'Failed to save edit', type: 'error' })
   }
 }
 
