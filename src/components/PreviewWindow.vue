@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from "vue";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import PreviewPane from "./PreviewPane.vue";
+import { showToast } from "../utils/ui";
 
 const currentId = ref(null);
 let unlisten = null;
@@ -12,6 +13,19 @@ async function openInDashboard() {
         await invoke("open_in_dashboard", { id: currentId.value });
     }
 }
+
+async function handleRefresh(newId) {
+    if (newId && newId !== currentId.value) {
+        currentId.value = newId;
+        try {
+            await tauriEmit("preview-item-changed", newId);
+        } catch (e) {
+            console.error("Failed to emit preview-item-changed:", e);
+        }
+    }
+}
+
+
 
 onMounted(async () => {
     unlisten = await listen("preview-item", (event) => {
@@ -29,7 +43,7 @@ onUnmounted(() => {
 
 <template>
     <div id="wrapper" class="compact">
-        <PreviewPane :item-id="currentId" />
+        <PreviewPane :item-id="currentId" @refresh="handleRefresh" />
         <div class="footer">
             <div class="shortcut-group">
                 <span>Inject</span>

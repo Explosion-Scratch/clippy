@@ -27,11 +27,14 @@
         :sort-by="sortBy"
         :sort-direction="sortDirection"
         :selected-types="selectedTypes"
+        :selected-ids="selectedIds"
         :show-hamburger="isMobile"
         @refresh="refreshAll"
         @sort="setSortBy"
         @toggle-type="toggleType"
         @toggle-sidebar="toggleMobileSidebar"
+        @clear-selection="clearSelection"
+        @delete-selected="deleteSelected"
       />
       
       <div class="flex-1 flex overflow-hidden relative">

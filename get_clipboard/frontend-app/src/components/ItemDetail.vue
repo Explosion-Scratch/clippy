@@ -47,7 +47,7 @@
           </div>
           <div class="flex items-center gap-2">
             <button 
-              v-if="item.type === 'text' && !isEditing"
+              v-if="!isEditing && isEditable"
               @click="startEdit" 
               class="btn-icon bg-stone-500/10 hover:bg-stone-500/10 transition-colors duration-200 text-slate-900"
               title="Edit Item"
@@ -105,7 +105,7 @@
           </div>
 
           <template v-else>
-            <div class="flex-1 relative bg-white">
+            <div class="flex-1 relative bg-white" @dblclick="handlePreviewDblClick">
                <div v-if="previewLoading" class="absolute inset-0 flex items-center justify-center bg-white z-10">
                 <div class="spinner w-8 h-8" />
               </div>
@@ -117,7 +117,8 @@
               <iframe 
                 v-if="previewData && activeTab && previewData.data[activeTab]"
                 :key="activeTab"
-                :srcdoc="previewData.data[activeTab].html"
+                :srcdoc="getEnhancedHtml(previewData.data[activeTab].html)"
+                ref="previewFrame"
                 class="w-full h-full border-none bg-white block" 
                 sandbox="allow-same-origin allow-scripts"
               ></iframe>
@@ -145,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { PhMouseSimple, PhTextT, PhImage as PhImageIcon, PhFile as PhFileIcon, PhCube, PhCopy, PhTrash, PhArrowLeft, PhPencil } from '@phosphor-icons/vue'
 
 const props = defineProps({
@@ -164,6 +165,13 @@ const activeTab = ref('')
 const error = ref(null)
 const isEditing = ref(false)
 const editedText = ref('')
+const previewFrame = ref(null)
+
+const isEditable = computed(() => {
+  if (!previewData.value || !activeTab.value) return false
+  const kind = previewData.value.kind
+  return kind !== 'file' && kind !== 'image'
+})
 
 const fetchPreview = async (id) => {
   if (!id) return
@@ -258,7 +266,8 @@ const copyCurrentContent = () => {
 }
 
 const startEdit = () => {
-  const text = previewData.value?.data?.text?.text || previewData.value?.data?.[activeTab.value]?.text || ''
+  const formatData = previewData.value?.data?.[activeTab.value]
+  const text = formatData?.text || ''
   editedText.value = text
   isEditing.value = true
 }
@@ -271,14 +280,18 @@ const cancelEdit = () => {
 const saveEdit = async () => {
   if (!props.item?.id) return
   try {
+    const payload = {}
+    payload[activeTab.value] = editedText.value
+    
     const res = await fetch(`/item/${props.item.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: editedText.value })
+      body: JSON.stringify(payload)
     })
     if (!res.ok) throw new Error('Failed to save edit')
     isEditing.value = false
-    emit('toast', { title: 'Saved', message: 'Item updated successfully', type: 'success' })
+    emit('toast', { title: 'Saved', message: `${activeTab.value} format updated successfully`, type: 'success' })
+    await fetchPreview(props.item.id)
     emit('refresh')
   } catch (err) {
     console.error('Failed to save edit:', err)
@@ -286,9 +299,32 @@ const saveEdit = async () => {
   }
 }
 
+const handlePreviewDblClick = () => {
+  if (isEditable.value) {
+    startEdit()
+  }
+}
+
+const getEnhancedHtml = (html) => {
+  if (!html) return html
+  const script = `<script>
+    document.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      parent.postMessage({ type: 'preview-dblclick' }, '*');
+    });
+  <\\/script>`
+  return html.includes('</body>') ? html.replace('</body>', `${script}</body>`) : `${html}${script}`
+}
+
 const handleMessage = (event) => {
+  if (event.data?.type === 'copy') {
+    navigator.clipboard.writeText(event.data.text).catch(console.error)
+  }
   if (event.data?.type === 'toast') {
     emit('toast', event.data.toast || { message: event.data.message, type: event.data.level || 'info' })
+  }
+  if (event.data?.type === 'preview-dblclick') {
+    handlePreviewDblClick()
   }
 }
 

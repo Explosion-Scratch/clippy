@@ -571,6 +571,8 @@ pub fn build_preview_formats(
                         .collect::<Vec<_>>()
                         .join("\n")
                 })
+        } else if plugin.is_editable() {
+            plugin.get_editable_text(&instance.context()).ok()
         } else {
             None
         };

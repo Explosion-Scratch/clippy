@@ -167,13 +167,12 @@ fn preview_item(app: tauri::AppHandle, id: String) -> Result<(), String> {
         }))
         .map_err(|e| format!("Failed to set preview position: {}", e))?;
 
-    // Make window non-focusable to prevent focus stealing
+    // Keep preview window non-focusable to prevent focus stealing
     preview_window
         .set_focusable(false)
         .map_err(|e| format!("Failed to set focusable: {}", e))?;
 
-    // Show the window without focusing it
-    // Note: set_focusable(false) should prevent focus on show, but we can also use show() safely now.
+    // Show the preview window without stealing focus
     preview_window
         .show()
         .map_err(|e| format!("Failed to show preview window: {}", e))?;
@@ -214,6 +213,38 @@ fn hide_preview(app: tauri::AppHandle) -> Result<(), String> {
             .map_err(|e| format!("Failed to hide preview window: {}", e))?;
     }
     Ok(())
+}
+
+// Command to make preview window focusable and focus it (for editing)
+#[tauri::command]
+fn focus_preview(app: tauri::AppHandle) -> Result<(), String> {
+    println!("[focus_preview] Called");
+    if let Some(preview_window) = app.get_webview_window("preview") {
+        println!("[focus_preview] Got preview window, setting focusable");
+        preview_window
+            .set_focusable(true)
+            .map_err(|e| format!("Failed to set focusable: {}", e))?;
+        println!("[focus_preview] Focusable set, now focusing");
+        preview_window
+            .set_focus()
+            .map_err(|e| format!("Failed to focus preview window: {}", e))?;
+        println!("[focus_preview] Focus set successfully");
+    } else {
+        println!("[focus_preview] No preview window found");
+    }
+    Ok(())
+}
+
+// Command to check if preview window is visible
+#[tauri::command]
+fn is_preview_visible(app: tauri::AppHandle) -> Result<bool, String> {
+    if let Some(preview_window) = app.get_webview_window("preview") {
+        preview_window
+            .is_visible()
+            .map_err(|e| format!("Failed to check preview visibility: {}", e))
+    } else {
+        Ok(false)
+    }
 }
 
 // Command to fetch preview content
@@ -283,9 +314,17 @@ pub fn run() {
                 }
             }
             // Hide preview window when main window loses focus or is hidden
+            // But NOT when focus is intentionally transferred to the preview (for editing)
             if window.label() == "main" {
                 match event {
-                    tauri::WindowEvent::Focused(false) | tauri::WindowEvent::Destroyed => {
+                    tauri::WindowEvent::Focused(false) => {
+                        if let Some(preview) = window.app_handle().get_webview_window("preview") {
+                            if !preview.is_focused().unwrap_or(false) {
+                                let _ = preview.hide();
+                            }
+                        }
+                    }
+                    tauri::WindowEvent::Destroyed => {
                         if let Some(preview) = window.app_handle().get_webview_window("preview") {
                             let _ = preview.hide();
                         }
@@ -301,6 +340,8 @@ pub fn run() {
             open_settings,
             preview_item,
             hide_preview,
+            focus_preview,
+            is_preview_visible,
             get_preview_content,
             open_in_dashboard,
             sidecar::init_service,

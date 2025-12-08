@@ -75,6 +75,25 @@
           />
         </button>
       </div>
+      
+      <div 
+        v-if="selectedIds.size > 0" 
+        class="flex items-center gap-3 ml-auto text-sm"
+      >
+        <span class="font-medium text-blue-700">{{ selectedIds.size }} selected</span>
+        <button 
+          @click="$emit('clear-selection')" 
+          class="text-xs uppercase tracking-wide font-semibold text-blue-600 hover:text-blue-800"
+        >
+          Clear
+        </button>
+        <button 
+          @click="$emit('delete-selected')" 
+          class="text-xs uppercase tracking-wide font-semibold text-red-500 hover:text-red-600"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -89,10 +108,11 @@ const props = defineProps({
   sortBy: String,
   sortDirection: String,
   selectedTypes: Set,
+  selectedIds: Set,
   showHamburger: Boolean
 })
 
-defineEmits(['update:searchQuery', 'refresh', 'sort', 'toggleType', 'toggleSidebar'])
+defineEmits(['update:searchQuery', 'refresh', 'sort', 'toggleType', 'toggleSidebar', 'clear-selection', 'delete-selected'])
 
 const searchInputRef = ref(null)
 

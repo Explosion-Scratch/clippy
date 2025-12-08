@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, nextTick, onUnmounted, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { showToast } from "../utils/ui";
 
 const EDIT_SAVE_TIMEOUT_MS = 10000;
 
@@ -24,6 +25,7 @@ const itemKind = ref("text");
 const currentId = ref(null);
 const frameRef = ref(null);
 const isSaving = ref(false);
+const editTextareaRef = ref(null);
 
 let abortController = null;
 let frameDblHandler = null;
@@ -40,9 +42,24 @@ function resetState() {
     isSaving.value = false;
 }
 
-function startEdit() {
-    if (!originalText.value || !isEditable.value) return;
+async function startEdit() {
+    console.log("[PreviewPane] startEdit called", { originalText: !!originalText.value, isEditable: isEditable.value });
+    if (!originalText.value || !isEditable.value) {
+        console.log("[PreviewPane] startEdit aborted - not editable");
+        return;
+    }
     isEditing.value = true;
+    console.log("[PreviewPane] isEditing set to true, calling focus_preview");
+    try {
+        await invoke("focus_preview");
+        console.log("[PreviewPane] focus_preview completed");
+        await nextTick();
+        console.log("[PreviewPane] focusing textarea", editTextareaRef.value);
+        editTextareaRef.value?.focus();
+        console.log("[PreviewPane] textarea focus called");
+    } catch (e) {
+        console.error("[PreviewPane] Failed to focus preview:", e);
+    }
 }
 
 function cancelEdit() {
@@ -58,14 +75,19 @@ async function saveEdit() {
     error.value = null;
     
     try {
-        await invoke("edit_item", { 
+        const responseJson = await invoke("edit_item", { 
             id: currentId.value, 
             formats: { text: editedText.value } 
         });
+        const newItem = JSON.parse(responseJson);
+        const newId = newItem.hash || newItem.id || currentId.value;
+        
         isEditing.value = false;
         originalText.value = editedText.value;
-        emit("refresh", currentId.value);
-        await loadPreview(currentId.value);
+        currentId.value = newId;
+        
+        emit("refresh", newId);
+        await loadPreview(newId);
     } catch (e) {
         console.error("Failed to save edit:", e);
         error.value = "Failed to save changes. Please try again.";
@@ -130,9 +152,6 @@ async function loadPreview(id) {
         editedText.value = text || "";
 
         await nextTick();
-        if (!signal.aborted) {
-            attachFrameDblclick();
-        }
     } catch (e) {
         if (signal.aborted) return;
         console.error("Failed to fetch preview:", e);
@@ -145,17 +164,11 @@ async function loadPreview(id) {
 }
 
 function sanitizePreviewHtml(html, id) {
-    if (html.includes('<iframe') && html.includes('src="')) {
-        html = html.replace(/src="([^"]+)"/, (match, url) => {
-            const separator = url.includes('?') ? '&' : '?';
-            return `src="${url}${separator}interactive=false"`;
-        });
-    }
-    
     html = html.replace('<html>', '<html class="compact">');
     
     const dblScript = `<` + 'script' + `>
-window.addEventListener('dblclick', () => {
+document.addEventListener('dblclick', (e) => {
+    e.preventDefault();
     try { parent.postMessage({ type: 'preview-dblclick', id: '${id}' }, '*'); } catch (_) {}
 });
 </` + 'script' + `>`;
@@ -172,21 +185,63 @@ watch(() => props.itemId, (id) => {
 }, { immediate: true });
 
 function attachFrameDblclick() {
+    console.log("[PreviewPane] attachFrameDblclick called", { frameRef: !!frameRef.value });
     if (!frameRef.value) return;
     
     const doc = frameRef.value.contentDocument || frameRef.value.contentWindow?.document;
-    if (!doc) return;
+    console.log("[PreviewPane] iframe doc", { doc: !!doc, body: !!doc?.body });
+    if (!doc || !doc.body) return;
+    
+    if (frameDblHandler) {
+        doc.removeEventListener("dblclick", frameDblHandler);
+    }
     
     frameDblHandler = (event) => {
+        console.log("[PreviewPane] iframe dblclick handler fired");
         event.preventDefault();
+        event.stopPropagation();
         startEdit();
     };
     doc.addEventListener("dblclick", frameDblHandler);
+    console.log("[PreviewPane] dblclick listener attached to iframe doc");
+}
+
+function handleFrameLoad() {
+    attachFrameDblclick();
 }
 
 function handlePostMessage(event) {
-    if (!event?.data || event.data.type !== "preview-dblclick") return;
-    if (event.data.id && currentId.value && event.data.id !== currentId.value) return;
+    if (!event?.data) return;
+    
+    // Handle specific message types
+    if (event.data.type === "copy") {
+        if (event.data.text) {
+             // Use the Tauri clipboard API via backend or navigator if available
+             // Since we are in Tauri, navigator.clipboard should work for text
+             navigator.clipboard.writeText(event.data.text).catch(err => {
+                 console.error("Failed to copy text:", err);
+                 // Fallback to backend invoke if needed, but usually navigator works
+             });
+        }
+        return;
+    }
+
+    if (event.data.type === "toast") {
+        if (event.data.toast) {
+            const t = event.data.toast;
+            const message = typeof t === "string" ? t : t.message;
+            const timeout = typeof t === "object" ? t.timeout : 3000;
+            showToast(message, { timeout, bottom: "40px" });
+        }
+        return;
+    }
+
+    if (event.data.type !== "preview-dblclick") return;
+    console.log("[PreviewPane] handlePostMessage received preview-dblclick", event.data);
+    if (event.data.id && currentId.value && event.data.id !== currentId.value) {
+        console.log("[PreviewPane] ID mismatch, ignoring", { eventId: event.data.id, currentId: currentId.value });
+        return;
+    }
     startEdit();
 }
 
@@ -217,19 +272,21 @@ onUnmounted(() => {
             {{ error }}
         </div>
         <template v-else-if="isEditing">
-            <div v-if="error" class="edit-error">{{ error }}</div>
-            <textarea 
-                v-model="editedText" 
-                class="edit-textarea"
-                @keydown.escape="cancelEdit"
-                :disabled="isSaving"
-                autofocus
-            ></textarea>
-            <div class="edit-actions">
-                <button @click="cancelEdit" class="cancel-btn" :disabled="isSaving">Cancel</button>
-                <button @click="saveEdit" class="save-btn" :disabled="isSaving">
-                    {{ isSaving ? 'Saving...' : 'Save' }}
-                </button>
+            <div class="frame-shell">
+                <div v-if="error" class="edit-error">{{ error }}</div>
+                <textarea 
+                    ref="editTextareaRef"
+                    v-model="editedText" 
+                    class="edit-textarea"
+                    @keydown.escape="cancelEdit"
+                    :disabled="isSaving"
+                ></textarea>
+                <div class="edit-actions">
+                    <button @click="cancelEdit" class="cancel-btn" :disabled="isSaving">Cancel</button>
+                    <button @click="saveEdit" class="save-btn" :disabled="isSaving">
+                        {{ isSaving ? 'Saving...' : 'Save' }}
+                    </button>
+                </div>
             </div>
         </template>
         <template v-else-if="previewContent">
@@ -238,7 +295,8 @@ onUnmounted(() => {
                     class="content-frame"
                     ref="frameRef"
                     :srcdoc="previewContent"
-                    sandbox="allow-same-origin"
+                    sandbox="allow-same-origin allow-scripts"
+                    @load="handleFrameLoad"
                 ></iframe>
                 <div v-if="isEditable" class="edit-hint">
                     <span>Double-click to edit</span>

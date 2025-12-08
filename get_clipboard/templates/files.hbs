@@ -121,7 +121,7 @@
             <div class="file-list-container compact-mode">
                 <ul class="file-list">
                     {{#each files}}
-                    <div class="file-item">
+                    <div class="file-item" onclick="copyPath('{{path}}'); return false;" title="{{path}}">
                         <div class="file-info">
                             <div class="file-name">{{name}}</div>
                             <div class="file-meta">
@@ -201,12 +201,8 @@
     </script>
     <script>
         function copyPath(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                window.parent.postMessage({
-                    type: 'toast',
-                    toast: { title: 'Copied', message: 'Path copied to clipboard', type: 'success' }
-                }, '*');
-            });
+            window.copy(text);
+            window.toast({ title: 'Copied', message: 'Path copied to clipboard', type: 'success' });
         }
     </script>
 </body>

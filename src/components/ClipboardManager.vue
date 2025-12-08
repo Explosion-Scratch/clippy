@@ -1,9 +1,11 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import ClipboardItem from "./ClipboardItem.vue";
 import InlinePreview from "./InlinePreview.vue";
+import { showToast } from "../utils/ui";
 
 const BATCH_SIZE = 30;
 const WINDOW_STATE_KEY = 'clipboardManagerWindowState';
@@ -24,6 +26,7 @@ const selectedIndex = ref(-1);
 const clipboardManager = ref(null);
 const clipboardListRef = ref(null);
 const loadMoreSentinel = ref(null);
+const searchInputRef = ref(null);
 const clipboardItems = computed(() => allLoadedItems.value);
 const totalItems = ref(0);
 const windowWidth = ref(400);
@@ -40,6 +43,7 @@ let keydownHandler = null;
 let keyupHandler = null;
 let resizeDebounceTimer = null;
 let focusUnlisten = null;
+let previewChangedUnlisten = null;
 
 const showInlinePreview = computed(() => windowWidth.value >= INLINE_PREVIEW_MIN_WIDTH);
 
@@ -262,7 +266,12 @@ async function hidePreview() {
 }
 
 function handleToastEvent(e) {
-    console.log("Toast:", e.detail);
+    const detail = e.detail;
+    if (typeof detail === 'string') {
+        showToast(detail, { bottom: "20px" });
+    } else if (detail?.message) {
+        showToast(detail.message, { timeout: detail.timeout || 3000, bottom: "20px" });
+    }
 }
 
 watch(searchQuery, () => {
@@ -520,12 +529,6 @@ async function handleFocusChange(focused) {
             isCtrlPressed.value = false;
         }
         registerGlobalShortcut();
-        resetSelection();
-        searchQuery.value = "";
-        selectedIndex.value = -1;
-        globalSelectedIndex.value = -1;
-        loadTotalItems();
-        loadItems();
         saveWindowState();
     } else {
         unregisterGlobalShortcut();
@@ -535,7 +538,7 @@ async function handleFocusChange(focused) {
             }
             loadTotalItems();
             loadItems(false, selectedItem.value?.id || allLoadedItems.value[0]?.id).then(() => {
-                setTimeout(() => document.querySelector(".search-input")?.focus(), 20);
+                nextTick(() => searchInputRef.value?.focus());
             });
         }
         isCtrlPressed.value = true;
@@ -554,6 +557,10 @@ function cleanup() {
     if (focusUnlisten) {
         focusUnlisten();
         focusUnlisten = null;
+    }
+    if (previewChangedUnlisten) {
+        previewChangedUnlisten();
+        previewChangedUnlisten = null;
     }
     if (windowResizeObserver) {
         windowResizeObserver.disconnect();
@@ -604,11 +611,19 @@ onMounted(async () => {
         handleFocusChange(focused);
     });
 
+    previewChangedUnlisten = await listen("preview-item-changed", async (event) => {
+        const newId = event.payload;
+        if (newId) {
+            await loadItems(false, newId);
+        }
+    });
+
     await loadTotalItems();
     await loadItems();
     await checkDataDirectory();
 
     await nextTick();
+    searchInputRef.value?.focus();
 
     windowResizeObserver = new ResizeObserver((entries) => {
         const entry = entries[0];
@@ -671,7 +686,7 @@ onUnmounted(() => {
         </div>
 
         <div class="search-container">
-            <input autocapitalize="off" autocomplete="off" autocorrect="off" :autofocus="true" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" autofocus />
+            <input ref="searchInputRef" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" />
         </div>
 
         <div class="content-area" :class="{ 'has-preview': showInlinePreview && selectedItem }">

@@ -1,21 +1,6 @@
 <template>
   <div class="flex-1 flex flex-col border-r border-gray-200 md:min-w-[350px] md:max-w-[450px] bg-white">
     <div 
-      v-if="selectedIds.size > 0" 
-      class="bg-blue-50/50 px-4 py-2 text-sm text-blue-700 flex items-center justify-between border-b border-blue-100 backdrop-blur-sm"
-    >
-      <span class="font-medium">{{ selectedIds.size }} selected</span>
-      <div class="flex gap-3">
-        <button @click="$emit('clear-selection')" class="hover:text-blue-800 text-xs uppercase tracking-wide font-semibold">
-          Clear
-        </button>
-        <button @click="$emit('delete-selected')" class="hover:text-red-600 text-red-500 text-xs uppercase tracking-wide font-semibold">
-          Delete
-        </button>
-      </div>
-    </div>
-
-    <div 
       class="flex-1 overflow-y-auto scrollbar-thin" 
       @scroll="$emit('scroll', $event)"
       @mousedown="handleMouseDown"

@@ -89,7 +89,13 @@
     "macOS": {
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist",
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "background": "dmg-background.png",
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 224 },
+        "applicationFolderPosition": { "x": 480, "y": 224 }
+      }
     }
   }
 }

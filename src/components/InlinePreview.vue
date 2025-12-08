@@ -10,7 +10,10 @@ const emit = defineEmits(["refresh"]);
 
 <template>
     <div class="inline-preview-inner">
-        <PreviewPane :item-id="itemId" @refresh="emit('refresh')" />
+        <PreviewPane 
+            :item-id="itemId" 
+            @refresh="(newId) => emit('refresh', newId)" 
+        />
     </div>
 </template>
 
