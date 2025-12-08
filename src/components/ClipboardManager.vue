@@ -1,56 +1,95 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-// ClipboardItem component
+import { getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import ClipboardItem from "./ClipboardItem.vue";
+import InlinePreview from "./InlinePreview.vue";
 
-const clipboardItems = ref([]);
+const BATCH_SIZE = 30;
+const WINDOW_STATE_KEY = 'clipboardManagerWindowState';
+const INLINE_PREVIEW_MIN_WIDTH = 500;
+const DIR_CHECK_DELAY_MS = 1000;
+const HOVER_LOCK_DURATION_MS = 180;
+const LOADING_INDICATOR_DELAY_MS = 300;
+const POLL_INTERVAL_MS = 1500;
+const RESIZE_DEBOUNCE_MS = 50;
+
+const allLoadedItems = ref([]);
 const searchQuery = ref("");
 const isLoading = ref(false);
+const isLoadingMore = ref(false);
 const showLoadingStatus = ref(false);
-let loadingTimer = null;
-const selectedIndex = ref(-1); // -1 means no item selected
-const currentPageOffset = ref(0);
-const itemsPerPage = 10;
+const globalSelectedIndex = ref(-1);
+const selectedIndex = ref(-1);
 const clipboardManager = ref(null);
+const clipboardListRef = ref(null);
+const loadMoreSentinel = ref(null);
+const clipboardItems = computed(() => allLoadedItems.value);
 const totalItems = ref(0);
-let resizeObserver = null;
+const windowWidth = ref(400);
+const windowHeight = ref(400);
+
+let loadingTimer = null;
+let windowResizeObserver = null;
 let pollingInterval = null;
 let lastKnownId = null;
+let loadMoreObserver = null;
+let listScrollCleanup = null;
+let hoverLockUntil = 0;
+let keydownHandler = null;
+let keyupHandler = null;
+let resizeDebounceTimer = null;
+let focusUnlisten = null;
 
-// Modal state
+const showInlinePreview = computed(() => windowWidth.value >= INLINE_PREVIEW_MIN_WIDTH);
+
 const showDirModal = ref(false);
 const mismatchDirs = ref({ current: "", expected: "" });
 
-// Cycling mode state
 const isCycling = ref(false);
 const isCtrlPressed = ref(true);
 
-// Get the currently selected item
 const selectedItem = computed(() => {
-    if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-        return clipboardItems.value[selectedIndex.value];
+    if (globalSelectedIndex.value >= 0 && allLoadedItems.value[globalSelectedIndex.value]) {
+        return allLoadedItems.value[globalSelectedIndex.value];
     }
     return null;
 });
 
-// Computed placeholder for search input
-const searchPlaceholder = computed(() => {
-    if (currentPageOffset.value > 0) {
-        const startOffset = currentPageOffset.value + 1;
-        const endOffset = currentPageOffset.value + clipboardItems.value.length;
-        return `Search ${totalItems.value} items (showing ${startOffset}-${endOffset})`;
-    } else {
-        return `Search ${totalItems.value} items`;
-    }
-});
+const searchPlaceholder = computed(() => `Search ${totalItems.value} items`);
 
-// Check directory mismatch
+async function saveWindowState() {
+    try {
+        const win = getCurrentWindow();
+        const pos = await win.outerPosition();
+        const size = await win.outerSize();
+        localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify({
+            x: pos.x, y: pos.y, 
+            width: size.width, height: size.height
+        }));
+    } catch (e) {
+        console.error('Failed to save window state:', e);
+    }
+}
+
+async function restoreWindowState() {
+    try {
+        const saved = localStorage.getItem(WINDOW_STATE_KEY);
+        if (saved) {
+            const { x, y, width, height } = JSON.parse(saved);
+            const win = getCurrentWindow();
+            await win.setPosition(new PhysicalPosition(x, y));
+            await win.setSize(new PhysicalSize(width, height));
+        }
+    } catch (e) {
+        console.error('Failed to restore window state:', e);
+    }
+}
+
 async function checkDataDirectory() {
     try {
         if (localStorage.getItem('ignoreDirMismatch') === 'true') return;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, DIR_CHECK_DELAY_MS));
         const currentDir = await invoke('get_sidecar_dir');
         const expectedDir = await invoke('get_app_data_dir');
         
@@ -71,7 +110,6 @@ async function handleDirChoice(choice) {
             localStorage.setItem('ignoreDirMismatch', 'true');
             showDirModal.value = false;
             loadItems();
-            resizeWindowToFitContent();
             return;
         }
         const path = mismatchDirs.value.expected;
@@ -82,7 +120,6 @@ async function handleDirChoice(choice) {
         }
         showDirModal.value = false;
         loadItems();
-        resizeWindowToFitContent();
     } catch (e) {
         console.error("Failed to set directory:", e);
         alert("Failed to update directory: " + e);
@@ -93,40 +130,65 @@ function startLoading() {
     isLoading.value = true;
     showLoadingStatus.value = false;
     if (loadingTimer) clearTimeout(loadingTimer);
-    loadingTimer = setTimeout(() => { showLoadingStatus.value = true; }, 300);
+    loadingTimer = setTimeout(() => { showLoadingStatus.value = true; }, LOADING_INDICATOR_DELAY_MS);
 }
 
 function stopLoading() {
     isLoading.value = false;
     showLoadingStatus.value = false;
-    if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
+    if (loadingTimer) { 
+        clearTimeout(loadingTimer); 
+        loadingTimer = null; 
+    }
 }
 
-async function loadItems(offset = 0) {
+async function loadItems(appendMode = false, preserveId = null) {
     try {
-        startLoading();
+        if (!appendMode) startLoading();
+        else isLoadingMore.value = true;
+        
         const query = searchQuery.value.trim();
+        const offset = appendMode ? allLoadedItems.value.length : 0;
         const jsonStr = await invoke("get_history", { 
             query: query || null, 
-            limit: itemsPerPage, 
+            limit: BATCH_SIZE, 
             offset: offset 
         });
         
         const rawItems = JSON.parse(jsonStr);
         const items = rawItems.map(mapApiItem);
+        const targetId = preserveId || (appendMode ? null : selectedItem.value?.id);
         
-        if (offset === 0 && items.length > 0) {
-            lastKnownId = items[0].id;
+        if (!appendMode) {
+            allLoadedItems.value = items;
+            if (items.length > 0) lastKnownId = items[0].id;
+
+            if (isCycling.value) {
+                // Don't reset selection during cycling mode
+            } else if (targetId) {
+                const idx = items.findIndex((it) => it.id === targetId);
+                globalSelectedIndex.value = idx >= 0 ? idx : (items.length > 0 ? 0 : -1);
+            } else {
+                globalSelectedIndex.value = items.length > 0 ? 0 : -1;
+            }
+            
+            if (!isCycling.value) {
+                await syncPreviewWindow();
+            }
+        } else {
+            allLoadedItems.value = [...allLoadedItems.value, ...items];
         }
-        
-        clipboardItems.value = items;
-        currentPageOffset.value = offset;
-        await resizeWindowToFitContent();
     } catch (error) {
         console.error("Failed to load items:", error);
     } finally {
         stopLoading();
+        isLoadingMore.value = false;
     }
+}
+
+async function loadMoreItems() {
+    if (isLoadingMore.value || allLoadedItems.value.length >= totalItems.value) return;
+    await loadItems(true);
 }
 
 async function loadTotalItems() {
@@ -139,11 +201,14 @@ async function loadTotalItems() {
     }
 }
 
+async function syncPreviewWindow() {
+    if (!selectedItem.value) return;
+    await showPreview(selectedItem.value.id.toString());
+}
+
 function mapApiItem(item) {
-    // Map API response fields to component expected format
     const id = item.hash || item.id;
     const idx = item.offset !== undefined ? item.offset : item.index;
-    // The API returns 'type', but we also check 'kind' for compatibility
     const itemType = item.type;
 
     return {
@@ -162,77 +227,100 @@ function mapApiItem(item) {
     };
 }
 
-// Preview logic
 watch(selectedItem, async (newItem) => {
-    if (newItem) {
+    if (!newItem) return;
+    await showPreview(newItem.id.toString());
+});
+
+watch(showInlinePreview, async () => {
+    if (!selectedItem.value) return;
+    await showPreview(selectedItem.value.id.toString());
+});
+
+async function showPreview(id) {
+    if (!id) {
+        await hidePreview();
+        return;
+    }
+    if (showInlinePreview.value) {
+        await hidePreview();
+    } else {
         try {
-            await invoke("preview_item", { id: newItem.id });
+            await invoke("preview_item", { id: id.toString() });
         } catch (e) {
             console.error("Failed to show preview:", e);
         }
-    } else {
-        // We might want to hide the preview window here, but currently the backend 'hide' logic handles hiding both.
-        // If we want to hide just the preview when no item is selected (but window is open), we'd need a new command.
-        // For now, let's leave it as is, or maybe send an empty preview?
     }
-});
+}
 
-// Listen for toast messages from iframe
-onMounted(() => {
-    window.addEventListener('show-toast', (e) => {
-        // TODO: Implement a proper toast notification system
-        console.log("Toast:", e.detail);
-    });
-});
+async function hidePreview() {
+    try {
+        await invoke("hide_preview");
+    } catch (e) {
+        console.error("Failed to hide preview window:", e);
+    }
+}
 
-watch(searchQuery, (newQuery) => {
-    selectedIndex.value = -1;
-    currentPageOffset.value = 0;
-    loadItems(0);
+function handleToastEvent(e) {
+    console.log("Toast:", e.detail);
+}
+
+watch(searchQuery, () => {
+    globalSelectedIndex.value = -1;
+    loadItems();
 }, { debounce: 300 });
+
+watch(loadMoreSentinel, (el, prev) => {
+    if (!loadMoreObserver) return;
+    if (prev) loadMoreObserver.unobserve(prev);
+    if (el) loadMoreObserver.observe(el);
+});
 
 async function deleteItem(id) {
     try {
         await invoke("delete_item", { selector: id.toString() });
-        clipboardItems.value = clipboardItems.value.filter(item => item.id !== id);
-        await resizeWindowToFitContent();
+        allLoadedItems.value = allLoadedItems.value.filter(item => item.id !== id);
+        if (globalSelectedIndex.value >= allLoadedItems.value.length) {
+            globalSelectedIndex.value = Math.max(0, allLoadedItems.value.length - 1);
+        }
     } catch (error) {
         console.error("Failed to delete item:", error);
     }
 }
 
-// Polling for new items
 async function pollForChanges() {
     try {
         const mtimeJson = await invoke("get_mtime");
         const mtime = JSON.parse(mtimeJson);
-        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value && currentPageOffset.value === 0) {
-            console.log("Detected change, reloading items...");
-            await loadItems(0);
+        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value) {
+            await loadItems(false, selectedItem.value?.id);
             await loadTotalItems();
         }
     } catch (e) {
-        // silent error
     }
 }
 
-// Shortcuts and Navigation logic
-document.addEventListener("keydown", (e) => {
-    handleKeyDown(e);
+function handleKeyDown(e) {
+    if (e.key === "Control") {
+        isCtrlPressed.value = true;
+    }
+    if (isCtrlPressed.value && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        if (!isCycling.value) startCyclingMode();
+        else cycleToNext();
+    }
+    
     if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
         const key = e.key;
         
-        // Handle Cmd+, to open settings (only when this window is visible/focused)
         if (key === ",") {
             e.preventDefault();
-            console.log("Cmd+, pressed in ClipboardManager - opening settings");
             invoke("open_settings").catch(err => {
                 console.error("Failed to open settings:", err);
             });
             return;
         }
         
-        // Handle Cmd+number for quick paste
         let itemIndex = null;
         if (key >= "1" && key <= "9") itemIndex = parseInt(key) - 1;
         else if (key === "0") itemIndex = 9;
@@ -241,77 +329,94 @@ document.addEventListener("keydown", (e) => {
             pasteItemToSystem(clipboardItems.value[itemIndex]);
         }
     }
+    
     if (!isCycling.value) {
-        if (e.key === "ArrowDown") { e.preventDefault(); handleArrowDown(); }
-        else if (e.key === "ArrowUp") { e.preventDefault(); handleArrowUp(); }
-        else if (e.key === "Enter") {
+        if (e.key === "ArrowDown") { 
+            e.preventDefault(); 
+            handleArrowDown(); 
+        } else if (e.key === "ArrowUp") { 
+            e.preventDefault(); 
+            handleArrowUp(); 
+        } else if (e.key === "Enter") {
             e.preventDefault();
             if (e.shiftKey) {
-                // Shift+Enter: Open in dashboard
                 if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-                     invoke("open_in_dashboard", { id: clipboardItems.value[selectedIndex.value].id.toString() })
+                    invoke("open_in_dashboard", { id: clipboardItems.value[selectedIndex.value].id.toString() })
                         .catch(err => console.error("Failed to open in dashboard:", err));
-                     invoke("hide_app");
+                    invoke("hide_app");
                 }
             } else if (e.metaKey) {
-                // Cmd+Enter: Copy to clipboard (no paste)
                 if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-                     copyItemToSystem(clipboardItems.value[selectedIndex.value]);
+                    copyItemToSystem(clipboardItems.value[selectedIndex.value]);
                 }
             } else {
-                // Enter: Paste
                 handleEnter();
             }
         }
     }
-});
+}
 
-document.addEventListener("keyup", (e) => {
-    handleKeyUp(e);
+function handleKeyUp(e) {
+    if (e.key === "Control") {
+        isCtrlPressed.value = false;
+        if (isCycling.value) endCycling();
+    }
     if (e.key === "Escape") {
         if (showDirModal.value) {
             localStorage.setItem('ignoreDirMismatch', 'true');
             showDirModal.value = false;
             loadItems();
-            resizeWindowToFitContent();
             return;
         }
         invoke("hide_app");
     }
-});
+}
+
+function scrollSelectedIntoView() {
+    nextTick(() => {
+        const selectedEl = clipboardListRef.value?.querySelector('.clipboard-item.is-selected');
+        if (selectedEl) {
+            selectedEl.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        }
+    });
+}
+
+function lockHoverSelection() {
+    hoverLockUntil = Date.now() + HOVER_LOCK_DURATION_MS;
+}
+
+function handleMouseEnter(index) {
+    if (Date.now() < hoverLockUntil) return;
+    globalSelectedIndex.value = index;
+}
 
 async function handleArrowDown() {
-    if (clipboardItems.value.length === 0) return;
-    if (selectedIndex.value === clipboardItems.value.length - 1) {
-        const newOffset = currentPageOffset.value + 1;
-        await loadItems(newOffset);
-        if (clipboardItems.value.length > 0) {
-             selectedIndex.value = clipboardItems.value.length - 1;
-        } else {
-             await loadItems(currentPageOffset.value - 1);
-             selectedIndex.value = clipboardItems.value.length - 1;
+    if (allLoadedItems.value.length === 0) return;
+    lockHoverSelection();
+    
+    if (globalSelectedIndex.value < allLoadedItems.value.length - 1) {
+        globalSelectedIndex.value++;
+        scrollSelectedIntoView();
+        
+        if (globalSelectedIndex.value >= allLoadedItems.value.length - 5) {
+            await loadMoreItems();
         }
-    } else {
-        selectedIndex.value = selectedIndex.value + 1;
     }
 }
 
-async function handleArrowUp() {
-    if (clipboardItems.value.length === 0) return;
-    if (selectedIndex.value === 0) {
-        if (currentPageOffset.value > 0) {
-            const newOffset = Math.max(0, currentPageOffset.value - 1);
-            await loadItems(newOffset);
-            selectedIndex.value = 0;
-        }
-    } else {
-        selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
+function handleArrowUp() {
+    if (allLoadedItems.value.length === 0) return;
+    lockHoverSelection();
+    
+    if (globalSelectedIndex.value > 0) {
+        globalSelectedIndex.value--;
+        scrollSelectedIntoView();
     }
 }
 
 function handleEnter() {
-    if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-        pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
+    if (selectedItem.value) {
+        pasteItemToSystem(selectedItem.value);
     }
 }
 
@@ -319,7 +424,7 @@ async function pasteItemToSystem(item) {
     try {
         await invoke("hide_app");
         await invoke("paste_item", { selector: item.id.toString() });
-        loadItems(currentPageOffset.value);
+        loadItems(false, item.id);
     } catch (error) {
         console.error("Failed to inject item:", error);
     }
@@ -329,17 +434,20 @@ async function copyItemToSystem(item) {
     try {
         await invoke("copy_item", { selector: item.id.toString() });
         await invoke("hide_app");
-        // Optional: Show a toast or feedback?
-        // For now just hide app as requested "just copy it but not attempt to inject"
     } catch (error) {
         console.error("Failed to copy item:", error);
     }
 }
 
+async function refreshItem(id) {
+    const targetId = id || selectedItem.value?.id;
+    if (!targetId) return;
+    await loadItems(false, targetId);
+}
+
 function resetSelection() {
-    selectedIndex.value = -1;
+    globalSelectedIndex.value = -1;
     searchQuery.value = "";
-    currentPageOffset.value = 0;
 }
 
 function formatFirstCopied(firstCopied) {
@@ -361,97 +469,186 @@ function getItemInfo(item) {
     return { type: "text", size: `${wordCount} words`, label: "Text" };
 }
 
-async function resizeWindowToFitContent() {
-    if (!clipboardManager.value || showDirModal.value) return;
-    try {
-        await nextTick();
-        const rect = clipboardManager.value.getBoundingClientRect();
-        const contentHeight = rect.height;
-        const finalHeight = Math.max(200, Math.min(600, contentHeight));
-        const window = getCurrentWindow();
-        await window.setSize(new LogicalSize(400, finalHeight));
-    } catch (error) {
-        console.error("Failed to resize window:", error);
-    }
+async function unregisterGlobalShortcut() { 
+    await invoke("unregister_main_shortcut").catch(console.error); 
 }
 
-async function unregisterGlobalShortcut() { await invoke("unregister_main_shortcut").catch(console.error); }
-async function registerGlobalShortcut() { await invoke("register_main_shortcut").catch(console.error); }
+async function registerGlobalShortcut() { 
+    await invoke("register_main_shortcut").catch(console.error); 
+}
 
 function startCyclingMode() {
     if (clipboardItems.value.length === 0) return;
     isCycling.value = true;
     selectedIndex.value = clipboardItems.value.length > 1 ? 1 : 0;
+    globalSelectedIndex.value = selectedIndex.value;
+    scrollSelectedIntoView();
 }
 
 function cycleToNext() {
     if (!isCycling.value || clipboardItems.value.length === 0) return;
     selectedIndex.value = (selectedIndex.value + 1) % clipboardItems.value.length;
+    globalSelectedIndex.value = selectedIndex.value;
+    scrollSelectedIntoView();
 }
 
 async function endCycling() {
     if (!isCycling.value) return;
     isCycling.value = false;
+    globalSelectedIndex.value = selectedIndex.value;
     if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
         await pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
     }
+    selectedIndex.value = -1;
 }
 
-function handleKeyDown(e) {
-    if (e.key === "Control" && !isCtrlPressed.value) isCtrlPressed.value = true;
-    if (isCtrlPressed.value && e.key === "p") {
-        e.preventDefault();
-        if (!isCycling.value) startCyclingMode();
-        else cycleToNext();
+function handleDebouncedResize(width, height) {
+    if (resizeDebounceTimer) {
+        clearTimeout(resizeDebounceTimer);
+    }
+    resizeDebounceTimer = setTimeout(() => {
+        windowWidth.value = width;
+        windowHeight.value = height;
+        resizeDebounceTimer = null;
+    }, RESIZE_DEBOUNCE_MS);
+}
+
+async function handleFocusChange(focused) {
+    if (!focused) {
+        if (isCycling.value) {
+            isCycling.value = false;
+            isCtrlPressed.value = false;
+        }
+        registerGlobalShortcut();
+        resetSelection();
+        searchQuery.value = "";
+        selectedIndex.value = -1;
+        globalSelectedIndex.value = -1;
+        loadTotalItems();
+        loadItems();
+        saveWindowState();
+    } else {
+        unregisterGlobalShortcut();
+        if (!isCycling.value) {
+            if (globalSelectedIndex.value === -1 && allLoadedItems.value.length > 0) {
+                globalSelectedIndex.value = 0;
+            }
+            loadTotalItems();
+            loadItems(false, selectedItem.value?.id || allLoadedItems.value[0]?.id).then(() => {
+                setTimeout(() => document.querySelector(".search-input")?.focus(), 20);
+            });
+        }
+        isCtrlPressed.value = true;
     }
 }
 
-function handleKeyUp(e) {
-    if (e.key === "Control") {
-        isCtrlPressed.value = false;
-        if (isCycling.value) endCycling();
+function cleanup() {
+    if (keydownHandler) {
+        document.removeEventListener("keydown", keydownHandler);
+        keydownHandler = null;
     }
+    if (keyupHandler) {
+        document.removeEventListener("keyup", keyupHandler);
+        keyupHandler = null;
+    }
+    if (focusUnlisten) {
+        focusUnlisten();
+        focusUnlisten = null;
+    }
+    if (windowResizeObserver) {
+        windowResizeObserver.disconnect();
+        windowResizeObserver = null;
+    }
+    if (loadMoreObserver) {
+        loadMoreObserver.disconnect();
+        loadMoreObserver = null;
+    }
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+    if (listScrollCleanup) {
+        listScrollCleanup();
+        listScrollCleanup = null;
+    }
+    if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+    }
+    if (resizeDebounceTimer) {
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = null;
+    }
+    window.removeEventListener('show-toast', handleToastEvent);
 }
 
 onMounted(async () => {
-    const unlistenFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-        if (!focused) {
-            if (isCycling.value) {
-                isCycling.value = false;
-                isCtrlPressed.value = false;
-            }
-            registerGlobalShortcut();
-            resetSelection();
-        } else {
-            unregisterGlobalShortcut();
-            if (!isCycling.value) {
-                resetSelection();
-                loadTotalItems();
-                loadItems(0).then(() => {
-                     setTimeout(() => document.querySelector(".search-input")?.focus(), 20);
-                });
-            }
-            isCtrlPressed.value = true;
-            if (!showDirModal.value) resizeWindowToFitContent();
-        }
+    await restoreWindowState();
+    
+    try {
+        const size = await getCurrentWindow().outerSize();
+        windowWidth.value = size.width;
+        windowHeight.value = size.height;
+    } catch (e) {
+        console.error("Failed to read window size:", e);
+    }
+    
+    keydownHandler = handleKeyDown;
+    keyupHandler = handleKeyUp;
+    document.addEventListener("keydown", keydownHandler);
+    document.addEventListener("keyup", keyupHandler);
+    
+    window.addEventListener('show-toast', handleToastEvent);
+    
+    focusUnlisten = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        handleFocusChange(focused);
     });
 
     await loadTotalItems();
-    await loadItems(0);
+    await loadItems();
     await checkDataDirectory();
 
+    await nextTick();
+
+    windowResizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) {
+            handleDebouncedResize(entry.contentRect.width, entry.contentRect.height);
+        }
+    });
     if (clipboardManager.value) {
-        resizeObserver = new ResizeObserver(() => resizeWindowToFitContent());
-        resizeObserver.observe(clipboardManager.value);
+        windowResizeObserver.observe(clipboardManager.value);
     }
 
-    pollingInterval = setInterval(pollForChanges, 1500);
+    loadMoreObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore.value) {
+            loadMoreItems();
+        }
+    }, { threshold: 0.1, root: clipboardListRef.value || undefined });
 
-    onUnmounted(() => {
-        unlistenFocus();
-        if (resizeObserver && clipboardManager.value) resizeObserver.disconnect();
-        if (pollingInterval) clearInterval(pollingInterval);
-    });
+    if (loadMoreObserver && loadMoreSentinel.value) {
+        loadMoreObserver.observe(loadMoreSentinel.value);
+    }
+
+    if (clipboardListRef.value) {
+        const handleListScroll = () => {
+            const el = clipboardListRef.value;
+            if (!el) return;
+            if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
+                loadMoreItems();
+            }
+        };
+        clipboardListRef.value.addEventListener("scroll", handleListScroll, { passive: true });
+        listScrollCleanup = () => {
+            clipboardListRef.value?.removeEventListener("scroll", handleListScroll);
+        };
+    }
+
+    pollingInterval = setInterval(pollForChanges, POLL_INTERVAL_MS);
+});
+
+onUnmounted(() => {
+    cleanup();
 });
 </script>
 
@@ -477,27 +674,46 @@ onMounted(async () => {
             <input autocapitalize="off" autocomplete="off" autocorrect="off" :autofocus="true" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" autofocus />
         </div>
 
-        <div class="content-area">
+        <div class="content-area" :class="{ 'has-preview': showInlinePreview && selectedItem }">
             <div class="items-container">
-                <div v-if="clipboardItems?.length === 0 && !isLoading" class="empty-state">
+                <div v-if="allLoadedItems?.length === 0 && !isLoading" class="empty-state">
                     <div class="empty-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256"><path fill="currentColor" d="M200,32H163.74a47.92,47.92,0,0,0-71.48,0H56A16,16,0,0,0,40,48V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm-72,0a32,32,0,0,1,32,32H96A32,32,0,0,1,128,32Zm72,184H56V48H82.75A47.93,47.93,0,0,0,80,64v8a8,8,0,0,0,8,8h80a8,8,0,0,0,8-8V64a47.93,47.93,0,0,0-2.75-16H200Z"/></svg>
                     </div>
                     <p>{{ searchQuery ? "No results" : "Copy something to get started" }}</p>
                 </div>
-                <div v-else class="clipboard-list">
-                    <ClipboardItem v-for="(item, index) in clipboardItems" :key="item.id" :item="{ ...item, index }" :selected="index === selectedIndex" @mouseenter="selectedIndex = index" @delete="deleteItem(item.id)" @select="pasteItemToSystem(item)" />
+                <div v-else class="clipboard-list" ref="clipboardListRef">
+                    <ClipboardItem 
+                        v-for="(item, index) in allLoadedItems" 
+                        :key="item.id" 
+                        :item="{ ...item, index }" 
+                        :selected="index === globalSelectedIndex" 
+                        @mouseenter="handleMouseEnter(index)" 
+                        @delete="deleteItem(item.id)" 
+                        @select="pasteItemToSystem(item)" 
+                    />
+                    <div v-if="allLoadedItems.length < totalItems" ref="loadMoreSentinel" class="load-more-sentinel">
+                        <div v-if="isLoadingMore" class="loading-more">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
                 </div>
+            </div>
+            <div v-if="showInlinePreview && selectedItem" class="inline-preview">
+                <InlinePreview :itemId="selectedItem.id" @refresh="refreshItem" />
             </div>
         </div>
 
-        <div v-if="showLoadingStatus || selectedItem" class="status-bar">
+        <div class="status-bar">
             <div v-if="showLoadingStatus" class="status-item loading-status">
                 <div class="spinner"></div><span class="status-value">Loading...</span>
             </div>
             <template v-else-if="selectedItem">
                 <div class="status-item"><span class="status-value">{{ formatFirstCopied(selectedItem.firstCopied) }}</span></div>
                 <div class="status-item"><span class="status-value">{{ selectedItem.copies }} copies</span></div>
+            </template>
+            <template v-else>
+                <div class="status-item"><span class="status-value">{{ totalItems }} items</span></div>
             </template>
         </div>
     </div>
@@ -513,7 +729,9 @@ onMounted(async () => {
     padding: 8px;
     background: var(--bg-primary);
     color: var(--text-primary);
-    min-height: 200px;
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
 
     .search-container { margin-top: 3px; }
     .content-area {
@@ -521,23 +739,64 @@ onMounted(async () => {
         gap: 10px;
         flex: 1;
         min-height: 0;
+        overflow: hidden;
     }
     .items-container {
         flex: 1;
         display: flex;
         flex-direction: column;
         min-width: 0;
+        overflow: hidden;
+    }
+    .content-area.has-preview {
+        .items-container {
+            flex: 0 0 45%;
+            max-width: 45%;
+        }
+    }
+    .inline-preview {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-secondary);
+        border-radius: 4px;
+        overflow: hidden;
     }
 
-
     .clipboard-list {
-        padding-top: 10px; display: flex; flex-direction: column; gap: 1px;
+        padding-top: 10px; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 1px;
+        flex: 1;
+        overflow-y: auto;
+        scrollbar-width: none;
+        &::-webkit-scrollbar { display: none; }
         .clipboard-item {
             height: 23px; overflow: hidden; cursor: default; font-size: 0.8em; display: flex; justify-content: space-between; gap: 10px; align-items: center; border-radius: 4px; padding: 1px 5px; color: var(--text-primary);
+            flex-shrink: 0;
             .info { opacity: 0.6; color: var(--text-secondary); }
             &.is-selected { background: var(--accent); color: var(--accent-text); .info { color: var(--accent-text); opacity: 0.8; } }
         }
         .clipboard-item:has(img) { height: 80px; padding-top: 4px; padding-bottom: 4px; img { height: calc(100% - 8px); } }
+        .load-more-sentinel {
+            height: 30px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .loading-more {
+            .spinner {
+                width: 16px;
+                height: 16px;
+                border: 2px solid var(--border-color);
+                border-radius: 50%;
+                border-top-color: var(--accent);
+                animation: spin 1s linear infinite;
+            }
+        }
     }
 }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; backdrop-filter: blur(5px); }
