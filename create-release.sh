@@ -42,18 +42,22 @@ echo "🔨 Building Tauri app..."
 bun install
 bun run tauri build
 
+echo "   • Ejecting any mounted DMG volumes..."
+for vol in /Volumes/clippy*; do
+    [ -d "$vol" ] && hdiutil detach "$vol" -quiet 2>/dev/null || true
+done
+
 echo ""
 echo "📁 Preparing release artifacts..."
 RELEASE_DIR="$SCRIPT_DIR/release"
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 
-APP_BUNDLE="src-tauri/target/release/bundle/macos/clippy.app"
 SIDECAR_BIN="get_clipboard/target/release/get_clipboard"
 DMG_SOURCE=$(ls src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1 || true)
 
-if [ ! -d "$APP_BUNDLE" ]; then
-    echo "❌ Error: App bundle not found at $APP_BUNDLE"
+if [ -z "$DMG_SOURCE" ]; then
+    echo "❌ Error: DMG not found in src-tauri/target/release/bundle/dmg/"
     exit 1
 fi
 
@@ -62,20 +66,13 @@ if [ ! -f "$SIDECAR_BIN" ]; then
     exit 1
 fi
 
-echo "   • Setting executable permissions..."
-chmod +x "$APP_BUNDLE/Contents/MacOS/clippy"
-chmod +x "$APP_BUNDLE/Contents/MacOS/get_clipboard"
+echo "   • Setting executable permissions on sidecar..."
 chmod +x "$SIDECAR_BIN"
 
 APPLE_IDENTITY="${APPLE_IDENTITY:-${APPLE_CODESIGN_IDENTITY:-}}"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
 APPLE_ID="${APPLE_ID:-}"
 APPLE_APP_SPECIFIC_PASSWORD="${APPLE_APP_SPECIFIC_PASSWORD:-}"
-
-if [ -z "$DMG_SOURCE" ]; then
-    echo "❌ Error: DMG not found in src-tauri/target/release/bundle/dmg/"
-    exit 1
-fi
 
 if [ -n "$APPLE_IDENTITY" ]; then
     echo "   • Signing DMG with identity: $APPLE_IDENTITY"
@@ -98,8 +95,8 @@ echo "   • Copying standalone get_clipboard binary..."
 cp "$SIDECAR_BIN" "$RELEASE_DIR/get_clipboard"
 chmod +x "$RELEASE_DIR/get_clipboard"
 
-echo "   • Verifying code signature..."
-codesign -dv --verbose=2 "$APP_BUNDLE" 2>&1 | head -10 || echo "   ⚠ Note: Code signature verification returned non-zero (may be ad-hoc signed)"
+echo "   • Verifying DMG..."
+hdiutil verify "$DMG_FINAL" 2>&1 | head -5 || echo "   ⚠ DMG verification returned non-zero"
 
 echo "   • Verifying artifacts..."
 ls -lh "$RELEASE_DIR/"
