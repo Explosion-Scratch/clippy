@@ -50,6 +50,7 @@ mkdir -p "$RELEASE_DIR"
 
 APP_BUNDLE="src-tauri/target/release/bundle/macos/clippy.app"
 SIDECAR_BIN="get_clipboard/target/release/get_clipboard"
+DMG_SOURCE=$(ls src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1 || true)
 
 if [ ! -d "$APP_BUNDLE" ]; then
     echo "❌ Error: App bundle not found at $APP_BUNDLE"
@@ -66,10 +67,32 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/clippy"
 chmod +x "$APP_BUNDLE/Contents/MacOS/get_clipboard"
 chmod +x "$SIDECAR_BIN"
 
-echo "   • Creating clippy.app.zip..."
-cd "src-tauri/target/release/bundle/macos"
-zip -r -y "$RELEASE_DIR/clippy.app.zip" clippy.app
-cd "$SCRIPT_DIR"
+APPLE_IDENTITY="${APPLE_IDENTITY:-${APPLE_CODESIGN_IDENTITY:-}}"
+APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
+APPLE_ID="${APPLE_ID:-}"
+APPLE_APP_SPECIFIC_PASSWORD="${APPLE_APP_SPECIFIC_PASSWORD:-}"
+
+if [ -z "$DMG_SOURCE" ]; then
+    echo "❌ Error: DMG not found in src-tauri/target/release/bundle/dmg/"
+    exit 1
+fi
+
+if [ -n "$APPLE_IDENTITY" ]; then
+    echo "   • Signing DMG with identity: $APPLE_IDENTITY"
+    codesign --force --options runtime --timestamp --sign "$APPLE_IDENTITY" "$DMG_SOURCE"
+fi
+
+DMG_FINAL="$RELEASE_DIR/clippy.dmg"
+
+if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
+    echo "   • Submitting DMG for notarization..."
+    xcrun notarytool submit "$DMG_SOURCE" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+    echo "   • Stapling notarization ticket to DMG..."
+    xcrun stapler staple "$DMG_SOURCE"
+fi
+
+echo "   • Copying DMG to release directory..."
+cp "$DMG_SOURCE" "$DMG_FINAL"
 
 echo "   • Copying standalone get_clipboard binary..."
 cp "$SIDECAR_BIN" "$RELEASE_DIR/get_clipboard"
@@ -81,7 +104,7 @@ ls -lh "$RELEASE_DIR/"
 echo ""
 echo "✅ Release artifacts created in: $RELEASE_DIR"
 echo ""
-echo "   📦 clippy.app.zip  - Full application bundle"
+echo "   📦 clippy.dmg      - macOS disk image"
 echo "   📦 get_clipboard   - Standalone CLI binary"
 echo ""
 
