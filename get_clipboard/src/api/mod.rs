@@ -12,6 +12,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use handlebars::Handlebars;
@@ -55,9 +56,8 @@ static HANDLEBARS: Lazy<Handlebars<'static>> = Lazy::new(|| {
 
 
 
-// Store API start time as a static variable
-static mut API_START_TIME: Option<u64> = None;
-static mut API_PORT: Option<u16> = None;
+static API_START_TIME: OnceLock<u64> = OnceLock::new();
+static API_PORT: OnceLock<u16> = OnceLock::new();
 
 pub async fn serve(port: u16) -> Result<()> {
     refresh_index()?;
@@ -65,15 +65,12 @@ pub async fn serve(port: u16) -> Result<()> {
     println!("API listening on http://{}", addr);
     println!("Dashboard available at http://{}/dashboard", addr);
 
-    // Record API start time and port
     let start_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    unsafe {
-        API_START_TIME = Some(start_time);
-        API_PORT = Some(port);
-    }
+    let _ = API_START_TIME.set(start_time);
+    let _ = API_PORT.set(port);
 
     // Note: Watcher is now run separately via 'get_clipboard watch' command
 
@@ -84,6 +81,7 @@ pub async fn serve(port: u16) -> Result<()> {
 }
 
 fn router() -> Router {
+    use axum::routing::patch;
     Router::new()
         .route("/", get(get_docs))
         .route("/version", get(get_version))
@@ -94,7 +92,7 @@ fn router() -> Router {
         .route("/item/:selector/data", get(get_item_data))
         .route(
             "/item/:selector",
-            get(get_item).delete(axum_delete(delete_item)).put(put_item),
+            get(get_item).delete(axum_delete(delete_item)).put(put_item).patch(patch_item),
         )
         .route("/item/:selector/preview", get(preview_item))
         .route("/item/:selector/copy", post(copy_item))
@@ -110,7 +108,7 @@ fn router() -> Router {
 }
 
 async fn get_docs() -> impl IntoResponse {
-    let port = unsafe { API_PORT.unwrap_or(3000) };
+    let port = API_PORT.get().copied().unwrap_or(3000);
     let url = format!("http://127.0.0.1:{}", port);
     let docs = API_DOCS.replace("{{URL}}", &url);
     (
@@ -513,6 +511,98 @@ async fn put_item(
     Ok(Json(item))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EditItemRequest {
+    formats: HashMap<String, String>,
+}
+
+async fn patch_item(
+    Path(selector): Path<String>,
+    Json(payload): Json<EditItemRequest>,
+) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
+    let index = load_fresh_index()?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
+    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+
+    let mut new_formats = Vec::new();
+    
+    let (order, map) = plugins::extract_plugin_meta(&metadata)
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::bad_request("Item has no plugin metadata"))?;
+    
+    for plugin_id in &order {
+        let plugin = plugins::plugin_by_id(plugin_id)
+            .ok_or_else(|| ApiError::bad_request(format!("Unknown plugin: {}", plugin_id)))?;
+        
+        if let Some(new_text) = payload.formats.get(plugin_id) {
+            if !plugin.is_editable() {
+                return Err(ApiError::bad_request(format!("Plugin {} is not editable", plugin_id)));
+            }
+            let import = plugin.edit_item(new_text)
+                .map_err(ApiError::from)?;
+            new_formats.push(plugins::ClipboardJsonFormat {
+                plugin_id: plugin.id().to_string(),
+                kind: Some(plugin.kind().to_string()),
+                priority: Some(plugin.priority()),
+                entry_kind: Some(plugin.entry_kind()),
+                data: serde_json::Value::String(new_text.clone()),
+                metadata: serde_json::Value::Null,
+            });
+        } else if let Some(plugin_meta) = map.get(plugin_id) {
+            let stored_files = plugins::load_plugin_files(&item_dir, plugin_meta)
+                .map_err(ApiError::from)?;
+            let ctx = plugins::PluginContext {
+                metadata: &metadata,
+                plugin_meta,
+                item_dir: &item_dir,
+                stored_files: &stored_files,
+            };
+            let data = plugin.export_json(&ctx).map_err(ApiError::from)?;
+            new_formats.push(plugins::ClipboardJsonFormat {
+                plugin_id: plugin.id().to_string(),
+                kind: Some(plugin.kind().to_string()),
+                priority: Some(plugin.priority()),
+                entry_kind: Some(plugin.entry_kind()),
+                data,
+                metadata: plugin_meta.clone(),
+            });
+        }
+    }
+
+    delete_entry(&hash).map_err(ApiError::from)?;
+
+    let new_item = plugins::ClipboardJsonFullItem {
+        index: None,
+        _index: None,
+        id: None,
+        date: Some(crate::util::time::format_iso(metadata.last_seen)),
+        first_date: Some(crate::util::time::format_iso(metadata.first_seen)),
+        summary: None,
+        item_type: Some(format!("{:?}", metadata.kind)),
+        size: None,
+        copy_count: Some(metadata.copy_count),
+        detected_formats: metadata.detected_formats.clone(),
+        sources: vec!["edit".to_string()],
+        search_text: None,
+        data_path: None,
+        formats: new_formats,
+    };
+
+    let new_metadata = store_json_item(&new_item).map_err(ApiError::from)?;
+    let new_item_dir = data_dir.join(&new_metadata.relative_path);
+    let new_index = load_index().map_err(ApiError::from)?;
+    let (_, new_offsets) = ordered_index(&new_index);
+    let offset = new_offsets.get(&new_metadata.hash).copied();
+    let result = plugins::build_full_json_item(&new_metadata, &new_item_dir, offset, None)
+        .map_err(ApiError::from)?;
+    
+    Ok(Json(result))
+}
+
 async fn search_items(
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<plugins::ClipboardJsonItem>>, ApiError> {
@@ -655,17 +745,14 @@ async fn get_mtime() -> Result<Json<MtimeResponse>, ApiError> {
 async fn get_version() -> Json<VersionResponse> {
     let version = env!("CARGO_PKG_VERSION").to_string();
 
-    let (api_start_time, api_start_time_iso) = unsafe {
-        match API_START_TIME {
-            Some(timestamp) => {
-                // Convert Unix timestamp to OffsetDateTime
-                let datetime = time::OffsetDateTime::from_unix_timestamp(timestamp as i64)
-                    .unwrap_or_else(|_| time::OffsetDateTime::UNIX_EPOCH);
-                let iso_string = format_iso(datetime);
-                (Some(timestamp), Some(iso_string))
-            }
-            None => (None, None),
+    let (api_start_time, api_start_time_iso) = match API_START_TIME.get().copied() {
+        Some(timestamp) => {
+            let datetime = time::OffsetDateTime::from_unix_timestamp(timestamp as i64)
+                .unwrap_or_else(|_| time::OffsetDateTime::UNIX_EPOCH);
+            let iso_string = format_iso(datetime);
+            (Some(timestamp), Some(iso_string))
         }
+        None => (None, None),
     };
 
     Json(VersionResponse {

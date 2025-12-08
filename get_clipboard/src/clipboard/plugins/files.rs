@@ -227,6 +227,10 @@ impl ClipboardPlugin for FilesPlugin {
         }
         Ok(json!({ "files": file_items }))
     }
+
+    fn is_editable(&self) -> bool {
+        false
+    }
 }
 
 fn collect_entries(ctx: &PluginContext<'_>) -> Result<Vec<serde_json::Value>> {

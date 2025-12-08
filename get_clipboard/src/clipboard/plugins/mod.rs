@@ -58,6 +58,30 @@ pub trait ClipboardPlugin: Sync + Send {
     fn get_summary(&self, _is_tty: bool, ctx: &PluginContext<'_>) -> Option<String> {
         ctx.metadata.summary.clone()
     }
+
+    fn is_editable(&self) -> bool {
+        true
+    }
+
+    fn get_editable_text(&self, ctx: &PluginContext<'_>) -> Result<String> {
+        self.export_json(ctx).and_then(|v| {
+            v.as_str()
+                .map(String::from)
+                .ok_or_else(|| anyhow!("No editable text available for this format"))
+        })
+    }
+
+    fn edit_item(&self, new_text: &str) -> Result<PluginImport> {
+        let format = ClipboardJsonFormat {
+            plugin_id: self.id().to_string(),
+            kind: Some(self.kind().to_string()),
+            priority: Some(self.priority()),
+            entry_kind: Some(self.entry_kind()),
+            data: Value::String(new_text.to_string()),
+            metadata: Value::Null,
+        };
+        self.import_json(&format)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -660,7 +684,7 @@ impl<'a> PluginInstance<'a> {
     }
 }
 
-fn load_plugin_files(item_dir: &Path, plugin_meta: &Value) -> Result<Vec<StoredFile>> {
+pub fn load_plugin_files(item_dir: &Path, plugin_meta: &Value) -> Result<Vec<StoredFile>> {
     let stored_files = match plugin_meta.get("storedFiles") {
         Some(Value::Array(array)) => array
             .iter()
