@@ -15,10 +15,12 @@
       {
         "label": "main",
         "title": "clippy",
-        "width": 300,
+        "width": 400,
         "height": 600,
+        "minWidth": 300,
+        "minHeight": 200,
         "transparent": true,
-        "resizable": false,
+        "resizable": true,
         "minimizable": false,
         "maximizable": false,
         "alwaysOnTop": true,
@@ -61,7 +63,7 @@
   "bundle": {
     "active": true,
     "targets": [
-      "app"
+      "dmg"
     ],
     "externalBin": [
       "binaries/get_clipboard"
