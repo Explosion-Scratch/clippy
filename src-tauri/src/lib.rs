@@ -13,6 +13,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 mod accessibility;
 mod api;
 mod paste;
+mod settings;
 mod sidecar;
 mod visibility;
 
@@ -25,25 +26,27 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-// Command to unregister the main shortcut (Ctrl+P)
+// Command to unregister the main shortcut (dynamic from settings)
 #[tauri::command]
 fn unregister_main_shortcut(app: tauri::AppHandle) -> Result<(), String> {
-    let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
+    let shortcut_str = settings::get_configured_shortcut(app.clone())?;
+    let main_shortcut = settings::parse_shortcut(&shortcut_str)?;
     if let Err(e) = app.global_shortcut().unregister(main_shortcut) {
         return Err(format!("Failed to unregister shortcut: {}", e));
     }
-    println!("Ctrl+P shortcut unregistered");
+    println!("{} shortcut unregistered", shortcut_str);
     Ok(())
 }
 
-// Command to register the main shortcut (Ctrl+P)
+// Command to register the main shortcut (dynamic from settings)
 #[tauri::command]
 fn register_main_shortcut(app: tauri::AppHandle) -> Result<(), String> {
-    let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
+    let shortcut_str = settings::get_configured_shortcut(app.clone())?;
+    let main_shortcut = settings::parse_shortcut(&shortcut_str)?;
     if let Err(e) = app.global_shortcut().register(main_shortcut) {
         return Err(format!("Failed to register shortcut: {}", e));
     }
-    println!("Ctrl+P shortcut registered");
+    println!("{} shortcut registered", shortcut_str);
     Ok(())
 }
 
@@ -300,6 +303,7 @@ pub fn run() {
         .plugin(tauri_plugin_macos_permissions::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .on_window_event(|window, event| {
             // Handle settings window close/destroy events
             if window.label() == "settings" {
@@ -368,15 +372,25 @@ pub fn run() {
             visibility::show_app,
             accessibility::check_permissions,
             accessibility::request_permissions,
+            settings::get_settings,
+            settings::set_settings,
+            settings::check_first_run,
+            settings::get_configured_shortcut,
+            settings::add_cli_to_path,
         ])
         .setup(|app| {
-            use tauri_plugin_global_shortcut::{Code, ShortcutState};
+            use tauri_plugin_global_shortcut::ShortcutState;
 
-            let main_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP);
+            let app_handle = app.handle().clone();
+
+            let shortcut_str = settings::get_configured_shortcut(app_handle.clone())
+                .unwrap_or_else(|_| settings::AppSettings::default_shortcut());
+            let main_shortcut = settings::parse_shortcut(&shortcut_str)
+                .unwrap_or_else(|_| Shortcut::new(Some(Modifiers::CONTROL), Code::KeyP));
+            println!("Configured shortcut: {}", shortcut_str);
 
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let app_handle = app.handle().clone();
             let window = app_handle.get_webview_window("main").unwrap();
 
             // Shared state for clipboard items in tray
@@ -605,15 +619,15 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            /* Shortcut - Only register Ctrl+P as global shortcut */
+            /* Shortcut - Register the configured global shortcut */
             /* Cmd+Comma is now handled by frontend and tray menu accelerator */
             app_handle.plugin(
                 tauri_plugin_global_shortcut::Builder::new()
                     .with_handler({
-                        move |app_handle, shortcut, event| {
-                            if shortcut == &main_shortcut && event.state() == ShortcutState::Pressed
+                        move |app_handle, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed
                             {
-                                println!("Ctrl+P pressed - showing window");
+                                println!("Shortcut pressed - showing window");
                                 if let Err(e) = visibility::show(app_handle.clone()) {
                                     eprintln!("Failed to show window: {}", e);
                                 }

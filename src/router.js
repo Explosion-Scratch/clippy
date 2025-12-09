@@ -17,6 +17,11 @@ const routes = [
     path: '/preview',
     name: 'preview',
     component: () => import('./components/PreviewWindow.vue')
+  },
+  {
+    path: '/welcome',
+    name: 'welcome',
+    component: () => import('./components/Welcome.vue')
   }
 ];
 

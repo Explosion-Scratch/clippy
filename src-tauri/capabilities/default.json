@@ -5,7 +5,8 @@
   "windows": [
     "main",
     "settings",
-    "preview"
+    "preview",
+    "welcome"
   ],
   "permissions": [
     "macos-permissions:default",
@@ -38,6 +39,10 @@
     "shell:allow-open",
     "opener:default",
     "opener:allow-open-path",
-    "opener:allow-open-url"
+    "opener:allow-open-url",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-save",
+    "store:allow-load"
   ]
 }

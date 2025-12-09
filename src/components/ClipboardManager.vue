@@ -3,9 +3,12 @@ import { ref, computed, onMounted, watch, nextTick, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
+import { useRouter } from "vue-router";
 import ClipboardItem from "./ClipboardItem.vue";
 import InlinePreview from "./InlinePreview.vue";
 import { showToast } from "../utils/ui";
+
+const router = useRouter();
 
 const BATCH_SIZE = 30;
 const WINDOW_STATE_KEY = 'clipboardManagerWindowState';
@@ -51,7 +54,72 @@ const showDirModal = ref(false);
 const mismatchDirs = ref({ current: "", expected: "" });
 
 const isCycling = ref(false);
-const isCtrlPressed = ref(true);
+const isModifierPressed = ref(false);
+
+const configuredShortcut = ref({ ctrl: true, alt: false, shift: false, meta: false, code: 'KeyP' });
+
+const codeToKeyMap = {
+  KeyA: 'A', KeyB: 'B', KeyC: 'C', KeyD: 'D', KeyE: 'E',
+  KeyF: 'F', KeyG: 'G', KeyH: 'H', KeyI: 'I', KeyJ: 'J',
+  KeyK: 'K', KeyL: 'L', KeyM: 'M', KeyN: 'N', KeyO: 'O',
+  KeyP: 'P', KeyQ: 'Q', KeyR: 'R', KeyS: 'S', KeyT: 'T',
+  KeyU: 'U', KeyV: 'V', KeyW: 'W', KeyX: 'X', KeyY: 'Y',
+  KeyZ: 'Z',
+  Digit0: '0', Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4',
+  Digit5: '5', Digit6: '6', Digit7: '7', Digit8: '8', Digit9: '9',
+  F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4', F5: 'F5', F6: 'F6',
+  F7: 'F7', F8: 'F8', F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
+};
+
+function parseShortcutString(shortcutStr) {
+  const parts = shortcutStr.split('+');
+  const result = { ctrl: false, alt: false, shift: false, meta: false, code: 'KeyP' };
+  
+  for (const part of parts) {
+    switch (part) {
+      case 'Control': case 'Ctrl': result.ctrl = true; break;
+      case 'Alt': case 'Option': result.alt = true; break;
+      case 'Shift': result.shift = true; break;
+      case 'Meta': case 'Cmd': case 'Command': result.meta = true; break;
+      default:
+        for (const [code, key] of Object.entries(codeToKeyMap)) {
+          if (key === part.toUpperCase()) {
+            result.code = code;
+            break;
+          }
+        }
+        break;
+    }
+  }
+  
+  return result;
+}
+
+async function loadConfiguredShortcut() {
+  try {
+    const shortcutStr = await invoke('get_configured_shortcut');
+    configuredShortcut.value = parseShortcutString(shortcutStr);
+  } catch (e) {
+    console.error('Failed to load configured shortcut:', e);
+  }
+}
+
+function matchesConfiguredShortcut(e) {
+  const s = configuredShortcut.value;
+  return e.ctrlKey === s.ctrl &&
+         e.altKey === s.alt &&
+         e.shiftKey === s.shift &&
+         e.metaKey === s.meta &&
+         e.code === s.code;
+}
+
+function hasAnyModifierPressed(e) {
+  const s = configuredShortcut.value;
+  return (s.ctrl && e.ctrlKey) ||
+         (s.alt && e.altKey) ||
+         (s.shift && e.shiftKey) ||
+         (s.meta && e.metaKey);
+}
 
 const selectedItem = computed(() => {
     if (globalSelectedIndex.value >= 0 && allLoadedItems.value[globalSelectedIndex.value]) {
@@ -309,14 +377,22 @@ async function pollForChanges() {
     }
 }
 
-function handleKeyDown(e) {
-    if (e.key === "Control") {
-        isCtrlPressed.value = true;
+function handleSearchKeyDown(e) {
+    if (matchesConfiguredShortcut(e)) {
+        e.preventDefault();
     }
-    if (isCtrlPressed.value && e.key.toLowerCase() === "p") {
+}
+
+function handleKeyDown(e) {
+    if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
         if (!isCycling.value) startCyclingMode();
         else cycleToNext();
+        return;
+    }
+    
+    if (hasAnyModifierPressed(e)) {
+        isModifierPressed.value = true;
     }
     
     if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey) {
@@ -366,8 +442,15 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
-    if (e.key === "Control") {
-        isCtrlPressed.value = false;
+    const s = configuredShortcut.value;
+    const modifierReleased = 
+        (s.ctrl && e.key === 'Control') ||
+        (s.alt && e.key === 'Alt') ||
+        (s.shift && e.key === 'Shift') ||
+        (s.meta && e.key === 'Meta');
+    
+    if (modifierReleased) {
+        isModifierPressed.value = false;
         if (isCycling.value) endCycling();
     }
     if (e.key === "Escape") {
@@ -590,6 +673,17 @@ function cleanup() {
 }
 
 onMounted(async () => {
+    try {
+        const isFirstRun = await invoke('check_first_run');
+        if (isFirstRun) {
+            router.replace('/welcome');
+            return;
+        }
+    } catch (e) {
+        console.error('Failed to check first run:', e);
+    }
+    
+    await loadConfiguredShortcut();
     await restoreWindowState();
     
     try {
@@ -686,7 +780,7 @@ onUnmounted(() => {
         </div>
 
         <div class="search-container">
-            <input ref="searchInputRef" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" />
+            <input ref="searchInputRef" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" @keydown="handleSearchKeyDown" />
         </div>
 
         <div class="content-area" :class="{ 'has-preview': showInlinePreview && selectedItem }">

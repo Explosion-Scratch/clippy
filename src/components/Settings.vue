@@ -5,6 +5,7 @@ import { save, open as openDialog, ask } from '@tauri-apps/plugin-dialog';
 import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openPath } from '@tauri-apps/plugin-opener';
+import ShortcutRecorder from './ShortcutRecorder.vue';
 
 const appVersion = ref('0.1.0');
 const itemCount = ref(0);
@@ -13,6 +14,75 @@ const currentDataDir = ref('');
 const isDeleting = ref(false);
 const isExporting = ref(false);
 const isImporting = ref(false);
+
+const shortcut = ref('Control+P');
+const displayShortcut = ref('⌃P');
+const isSavingShortcut = ref(false);
+
+const modifierMap = {
+  Control: '⌃',
+  Alt: '⌥',
+  Shift: '⇧',
+  Meta: '⌘'
+};
+
+const keyDisplayMap = {
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  Escape: 'Esc',
+  Backspace: '⌫',
+  Delete: '⌦',
+  Enter: '↵',
+  Tab: '⇥',
+  Space: 'Space'
+};
+
+function formatShortcutDisplay(shortcutStr) {
+  const parts = shortcutStr.split('+');
+  return parts.map(part => {
+    if (modifierMap[part]) return modifierMap[part];
+    if (keyDisplayMap[part]) return keyDisplayMap[part];
+    return part.length === 1 ? part.toUpperCase() : part;
+  }).join('');
+}
+
+async function onShortcutChange(newShortcut) {
+  try {
+    isSavingShortcut.value = true;
+    
+    await invoke('unregister_main_shortcut').catch(() => {});
+    
+    const settings = await invoke('get_settings');
+    await invoke('set_settings', {
+      settings: {
+        ...settings,
+        shortcut: newShortcut
+      }
+    });
+    
+    await invoke('register_main_shortcut');
+    
+    shortcut.value = newShortcut;
+    displayShortcut.value = formatShortcutDisplay(newShortcut);
+  } catch (error) {
+    console.error('Failed to save shortcut:', error);
+    alert('Failed to save shortcut: ' + error);
+  } finally {
+    isSavingShortcut.value = false;
+  }
+}
+
+async function loadShortcut() {
+  try {
+    const stored = await invoke('get_configured_shortcut');
+    shortcut.value = stored;
+    displayShortcut.value = formatShortcutDisplay(stored);
+  } catch (error) {
+    console.error('Failed to load shortcut:', error);
+  }
+}
 
 async function loadStats() {
   try {
@@ -159,6 +229,7 @@ function formatBytes(bytes) {
 
 onMounted(() => {
   loadStats();
+  loadShortcut();
   
   // Handle Escape key to close settings window
   document.addEventListener('keyup', async (e) => {
@@ -200,6 +271,17 @@ onMounted(() => {
       </div>
 
       <div class="section">
+        <h2>Keyboard Shortcut</h2>
+        <p class="section-description">Press this shortcut to show the clipboard manager from anywhere.</p>
+        
+        <ShortcutRecorder 
+          v-model="shortcut"
+          compact
+          @change="onShortcutChange"
+        />
+      </div>
+
+      <div class="section">
         <h2>Database Management</h2>
         <div class="stats">
           <p>Total clipboard items: <strong>{{ itemCount }}</strong></p>
@@ -236,7 +318,7 @@ onMounted(() => {
       <div class="section">
         <h2>About</h2>
         <p>Clippy is a clipboard management application that helps you keep track of your copied items.</p>
-        <p>Press Cmd+P to show the clipboard manager, or Cmd+, to open these settings.</p>
+        <p>Press <strong>{{ displayShortcut }}</strong> to show the clipboard manager, or <strong>⌘,</strong> to open these settings.</p>
       </div>
     </div>
   </div>
@@ -382,6 +464,61 @@ onMounted(() => {
         display: flex;
         flex-direction: column;
         gap: 6px;
+      }
+      
+      .section-description {
+        margin: 0 0 8px 0 !important;
+        font-size: 10px !important;
+        color: var(--text-secondary);
+      }
+      
+      .shortcut-config {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .shortcut-display {
+        flex: 1;
+        background: rgba(0, 0, 0, 0.04);
+        border: 1px solid var(--settings-border-color);
+        border-radius: 4px;
+        padding: 6px 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        
+        &:hover {
+          background: rgba(0, 0, 0, 0.06);
+        }
+        
+        &.recording {
+          background: rgba(32, 178, 170, 0.1);
+          border-color: var(--accent);
+          box-shadow: 0 0 0 1px rgba(32, 178, 170, 0.2);
+        }
+        
+        .shortcut-keys {
+          font-size: 14px;
+          font-weight: 500;
+          letter-spacing: 1px;
+          color: var(--text-primary);
+        }
+        
+        .recording-hint {
+          font-size: 10px;
+          color: var(--accent);
+        }
+      }
+      
+      .action-button.cancel {
+        background: rgba(255, 59, 48, 0.1);
+        color: #FF3B30;
+        border-color: rgba(255, 59, 48, 0.2);
+        
+        &:hover {
+          background: rgba(255, 59, 48, 0.15);
+        }
       }
       
       .action-button {
