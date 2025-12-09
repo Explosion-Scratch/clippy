@@ -89,7 +89,7 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
         tauri::WebviewUrl::App("/settings".into()),
     )
     .title("Clippy Settings")
-    .inner_size(400.0, 600.0)
+    .inner_size(400.0, 630.0)
     .resizable(false)
     .minimizable(true)
     .maximizable(false)
