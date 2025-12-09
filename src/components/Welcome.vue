@@ -30,8 +30,11 @@ async function completeSetup() {
       await handleAddToPath();
     }
     
+    const existingSettings = await invoke('get_settings').catch(() => ({}));
+    
     await invoke('set_settings', {
       settings: {
+        ...existingSettings,
         shortcut: shortcut.value,
         first_run_complete: true,
         cli_in_path: addToPath.value
@@ -119,27 +122,27 @@ function onShortcutChange(newShortcut) {
 
 .header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
   
   .app-icon {
-    width: 80px;
-    height: 80px;
-    margin-bottom: 16px;
-    border-radius: 16px;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 12px;
+    border-radius: 14px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   }
   
   h1 {
     margin: 0;
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.5px;
     color: var(--text-primary);
   }
   
   .tagline {
-    margin: 8px 0 0;
-    font-size: 15px;
+    margin: 6px 0 0;
+    font-size: 13px;
     color: var(--text-secondary);
     font-weight: 400;
   }
@@ -150,29 +153,29 @@ function onShortcutChange(newShortcut) {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
   
   h2 {
-    margin: 0 0 4px;
-    font-size: 14px;
+    margin: 0 0 3px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-primary);
   }
   
   .description {
-    margin: 0 0 12px;
-    font-size: 12px;
+    margin: 0 0 10px;
+    font-size: 11px;
     color: var(--text-secondary);
     line-height: 1.4;
     
     code {
       background: rgba(0, 0, 0, 0.06);
-      padding: 1px 5px;
-      border-radius: 4px;
+      padding: 1px 4px;
+      border-radius: 3px;
       font-family: 'SF Mono', Monaco, monospace;
-      font-size: 11px;
+      font-size: 10px;
     }
   }
 }
@@ -180,9 +183,9 @@ function onShortcutChange(newShortcut) {
 .checkbox-label {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-primary);
   
   input[type="checkbox"] {
@@ -231,17 +234,17 @@ function onShortcutChange(newShortcut) {
 }
 
 .actions {
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .primary-btn {
   width: 100%;
-  padding: 14px 24px;
+  padding: 12px 20px;
   background: var(--accent);
   color: white;
   border: none;
-  border-radius: 10px;
-  font-size: 15px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -249,7 +252,7 @@ function onShortcutChange(newShortcut) {
   &:hover:not(:disabled) {
     filter: brightness(1.05);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(32, 178, 170, 0.3);
+    box-shadow: 0 4px 12px var(--accent-transparent, rgba(32, 178, 170, 0.3));
   }
   
   &:active:not(:disabled) {

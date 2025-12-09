@@ -3,8 +3,32 @@ import { onMounted } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 
+function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyAccentColor(hex) {
+    document.documentElement.style.setProperty('--accent', hex);
+    document.documentElement.style.setProperty('--accent-transparent', hexToRgba(hex, 0.25));
+}
+
+async function loadAccentColor() {
+    try {
+        const settings = await invoke('get_settings');
+        if (settings.accent_color) {
+            applyAccentColor(settings.accent_color);
+        }
+    } catch (error) {
+        console.error('Failed to load accent color:', error);
+    }
+}
+
 onMounted(() => {
-    // Close window on Escape key for main window
+    loadAccentColor();
+    
     document.addEventListener("keyup", async (e) => {
         if (e.key === "Escape") {
             await invoke("hide_app");

@@ -16,7 +16,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['update:modelValue', 'change']);
+const emit = defineEmits(['update:modelValue', 'change', 'recording']);
 
 const displayShortcut = ref('');
 const isRecording = ref(false);
@@ -98,6 +98,7 @@ function handleKeyDown(e) {
   if (formatted.includes('+')) {
     displayShortcut.value = formatShortcutDisplay(formatted);
     isRecording.value = false;
+    emit('recording', false);
     document.removeEventListener('keydown', handleKeyDown);
     emit('update:modelValue', formatted);
     emit('change', formatted);
@@ -106,11 +107,13 @@ function handleKeyDown(e) {
 
 function startRecording() {
   isRecording.value = true;
+  emit('recording', true);
   document.addEventListener('keydown', handleKeyDown);
 }
 
 function cancelRecording() {
   isRecording.value = false;
+  emit('recording', false);
   document.removeEventListener('keydown', handleKeyDown);
 }
 
@@ -185,9 +188,9 @@ onUnmounted(() => {
     }
     
     &.recording {
-      background: rgba(32, 178, 170, 0.1);
+      background: var(--accent-transparent, rgba(32, 178, 170, 0.15));
       border-color: var(--accent);
-      box-shadow: 0 0 0 2px rgba(32, 178, 170, 0.2);
+      box-shadow: 0 0 0 2px var(--accent-transparent, rgba(32, 178, 170, 0.2));
     }
     
     .shortcut-keys {

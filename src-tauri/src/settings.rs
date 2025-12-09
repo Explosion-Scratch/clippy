@@ -12,11 +12,16 @@ pub struct AppSettings {
     pub shortcut: String,
     pub first_run_complete: bool,
     pub cli_in_path: bool,
+    pub accent_color: String,
 }
 
 impl AppSettings {
     pub fn default_shortcut() -> String {
         "Control+P".to_string()
+    }
+
+    pub fn default_accent_color() -> String {
+        "#20b2aa".to_string()
     }
 }
 
@@ -137,6 +142,10 @@ pub fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
             .get("cli_in_path")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        accent_color: store
+            .get("accent_color")
+            .and_then(|v| v.as_str().map(String::from))
+            .unwrap_or_else(AppSettings::default_accent_color),
     };
 
     Ok(settings)
@@ -152,6 +161,7 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<(), String>
         serde_json::json!(settings.first_run_complete),
     );
     store.set("cli_in_path", serde_json::json!(settings.cli_in_path));
+    store.set("accent_color", serde_json::json!(settings.accent_color));
     store.save().map_err(|e| e.to_string())?;
 
     Ok(())

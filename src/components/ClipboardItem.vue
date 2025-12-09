@@ -14,20 +14,28 @@ const props = defineProps({
 
 const emit = defineEmits(["delete", "mouseenter", "select"]);
 
-// Format timestamp for display
+// Format timestamp for display (timestamp is in milliseconds)
 function formatTimestamp(timestamp) {
-    const date = new Date(timestamp * 1000);
+    const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return "now";
-    if (diffMins < 60) return `${diffMins}m`;
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h`;
     const diffDays = Math.floor(diffHours / 24);
+    const diffWeeks = Math.floor(diffDays / 7);
+
+    if (diffSecs < 60) return `${diffSecs}s`;
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (diffWeeks < 4) return `${diffWeeks}wk`;
+    
+    if (date.getFullYear() !== now.getFullYear()) {
+        return date.getFullYear().toString();
+    }
+    
+    return date.toLocaleDateString("en-US", { month: "short" });
 }
 
 // Format first copied timestamp for display

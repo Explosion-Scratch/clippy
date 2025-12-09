@@ -19,6 +19,19 @@ const isImporting = ref(false);
 const shortcut = ref('Control+P');
 const displayShortcut = ref('⌃P');
 const isSavingShortcut = ref(false);
+const isRecordingShortcut = ref(false);
+
+const accentColor = ref('#20b2aa');
+
+const ACCENT_COLORS = [
+  { name: 'Teal', hex: '#20b2aa' },
+  { name: 'Blue', hex: '#3b82f6' },
+  { name: 'Purple', hex: '#8b5cf6' },
+  { name: 'Pink', hex: '#ec4899' },
+  { name: 'Orange', hex: '#f97316' },
+  { name: 'Green', hex: '#22c55e' },
+  { name: 'Red', hex: '#ef4444' },
+];
 
 const modifierMap = {
   Control: '⌃',
@@ -92,6 +105,45 @@ async function loadStats() {
     currentDataDir.value = await invoke('get_sidecar_dir');
   } catch (error) {
     console.error('Failed to get stats:', error);
+  }
+}
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyAccentColor(hex) {
+  document.documentElement.style.setProperty('--accent', hex);
+  document.documentElement.style.setProperty('--accent-transparent', hexToRgba(hex, 0.25));
+}
+
+async function loadAccentColor() {
+  try {
+    const settings = await invoke('get_settings');
+    accentColor.value = settings.accent_color || '#20b2aa';
+    applyAccentColor(accentColor.value);
+  } catch (error) {
+    console.error('Failed to load accent color:', error);
+  }
+}
+
+async function onAccentColorChange(hex) {
+  try {
+    accentColor.value = hex;
+    applyAccentColor(hex);
+    
+    const settings = await invoke('get_settings');
+    await invoke('set_settings', {
+      settings: {
+        ...settings,
+        accent_color: hex
+      }
+    });
+  } catch (error) {
+    console.error('Failed to save accent color:', error);
   }
 }
 
@@ -232,10 +284,11 @@ onMounted(async () => {
   appVersion.value = await getVersion();
   loadStats();
   loadShortcut();
+  loadAccentColor();
   
-  // Handle Escape key to close settings window
   document.addEventListener('keyup', async (e) => {
     if (e.key === 'Escape') {
+      if (isRecordingShortcut.value) return;
       await closeSettings();
     }
   });
@@ -252,7 +305,12 @@ onMounted(async () => {
           <p class="version">Version {{ appVersion }}</p>
         </div>
       </div>
-      <button @click="closeSettings" class="close-button">×</button>
+      <div class="header-actions">
+        <a href="https://github.com/user/clippy" target="_blank" class="icon-button" title="View on GitHub">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        </a>
+        <button @click="closeSettings" class="close-button">×</button>
+      </div>
     </div>
 
     <div class="settings-content">
@@ -280,7 +338,37 @@ onMounted(async () => {
           v-model="shortcut"
           compact
           @change="onShortcutChange"
+          @recording="(val) => isRecordingShortcut = val"
         />
+      </div>
+
+      <div class="section">
+        <h2>Appearance</h2>
+        <p class="section-description">Choose an accent color for the interface.</p>
+        
+        <div class="color-picker">
+          <button
+            v-for="color in ACCENT_COLORS"
+            :key="color.hex"
+            class="color-swatch"
+            :class="{ selected: accentColor === color.hex }"
+            :style="{ backgroundColor: color.hex }"
+            :title="color.name"
+            @click="onAccentColorChange(color.hex)"
+          >
+            <span v-if="accentColor === color.hex" class="checkmark">✓</span>
+          </button>
+          
+          <label class="color-swatch custom" :class="{ selected: !ACCENT_COLORS.some(c => c.hex === accentColor) }" title="Custom color">
+            <input 
+              type="color" 
+              :value="accentColor" 
+              @input="onAccentColorChange($event.target.value)"
+              class="color-input"
+            />
+            <span v-if="!ACCENT_COLORS.some(c => c.hex === accentColor)" class="checkmark">✓</span>
+          </label>
+        </div>
       </div>
 
       <div class="section">
@@ -315,12 +403,6 @@ onMounted(async () => {
             {{ isDeleting ? 'Deleting...' : 'Delete All Data' }}
           </button>
         </div>
-      </div>
-
-      <div class="section">
-        <h2>About</h2>
-        <p>Clippy is a clipboard management application that helps you keep track of your copied items.</p>
-        <p>Press <strong>{{ displayShortcut }}</strong> to show the clipboard manager, or <strong>⌘,</strong> to open these settings.</p>
       </div>
     </div>
   </div>
@@ -370,6 +452,28 @@ onMounted(async () => {
           margin: 1px 0 0 0;
           font-size: 10px;
           color: var(--text-secondary);
+        }
+      }
+    }
+    
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      
+      .icon-button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 4px;
+        color: var(--text-secondary);
+        transition: all 0.15s;
+        
+        &:hover {
+          background: var(--settings-bg-primary);
+          color: var(--text-primary);
         }
       }
     }
@@ -556,12 +660,13 @@ onMounted(async () => {
         }
         
         &.import {
-          background: #34C759;
-          color: white;
-          border: none;
+          background: var(--accent-transparent, rgba(32, 178, 170, 0.25));
+          color: var(--accent);
+          border: 1px solid var(--accent);
           
           &:hover:not(:disabled) {
-            background: #28A745;
+            background: var(--accent);
+            color: var(--accent-text);
             box-shadow: var(--settings-shadow-medium);
           }
         }
@@ -574,6 +679,57 @@ onMounted(async () => {
           &:hover:not(:disabled) {
             background: #D70015;
             box-shadow: var(--settings-shadow-medium);
+          }
+        }
+      }
+      
+      .color-picker {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        
+        .color-swatch {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+          
+          &:hover {
+            transform: scale(1.1);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+          }
+          
+          &.selected {
+            border-color: var(--text-primary);
+            box-shadow: 0 0 0 2px var(--settings-bg-primary), 0 0 0 4px var(--text-primary);
+          }
+          
+          .checkmark {
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+          }
+          
+          &.custom {
+            background: conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+            position: relative;
+            cursor: pointer;
+            
+            .color-input {
+              position: absolute;
+              inset: 0;
+              opacity: 0;
+              cursor: pointer;
+              width: 100%;
+              height: 100%;
+            }
           }
         }
       }

@@ -166,12 +166,25 @@ async function loadPreview(id) {
 function sanitizePreviewHtml(html, id) {
     html = html.replace('<html>', '<html class="compact">');
     
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#20b2aa';
+    const accentTransparent = getComputedStyle(document.documentElement).getPropertyValue('--accent-transparent').trim() || 'rgba(32, 178, 170, 0.25)';
+    
+    const accentStyle = `<style>:root { --accent: ${accent}; --accent-transparent: ${accentTransparent}; }</style>`;
+    
     const dblScript = `<` + 'script' + `>
 document.addEventListener('dblclick', (e) => {
     e.preventDefault();
     try { parent.postMessage({ type: 'preview-dblclick', id: '${id}' }, '*'); } catch (_) {}
 });
 </` + 'script' + `>`;
+    
+    if (html.includes("</head>")) {
+        html = html.replace("</head>", `${accentStyle}</head>`);
+    } else if (html.includes("<body")) {
+        html = html.replace("<body", `${accentStyle}<body`);
+    } else {
+        html = `${accentStyle}${html}`;
+    }
     
     html = html.includes("</body>") 
         ? html.replace("</body>", `${dblScript}</body>`) 
