@@ -1,15 +1,41 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { useRouter } from 'vue-router';
 import ShortcutRecorder from './ShortcutRecorder.vue';
-
-const router = useRouter();
+import AccentColorPicker from './AccentColorPicker.vue';
 
 const shortcut = ref('Control+P');
+const accentColor = ref('#20b2aa');
 const addToPath = ref(false);
 const pathResult = ref('');
 const isLoading = ref(false);
+
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyAccentColor(hex) {
+  document.documentElement.style.setProperty('--accent', hex);
+  document.documentElement.style.setProperty('--accent-transparent', hexToRgba(hex, 0.25));
+}
+
+async function loadSettings() {
+  try {
+    const settings = await invoke('get_settings');
+    if (settings.shortcut) {
+      shortcut.value = settings.shortcut;
+    }
+    if (settings.accent_color) {
+      accentColor.value = settings.accent_color;
+      applyAccentColor(settings.accent_color);
+    }
+  } catch (error) {
+    console.error('Failed to load settings:', error);
+  }
+}
 
 async function handleAddToPath() {
   if (!addToPath.value) return;
@@ -36,7 +62,9 @@ async function completeSetup() {
       settings: {
         ...existingSettings,
         shortcut: shortcut.value,
+        accent_color: accentColor.value,
         first_run_complete: true,
+        welcome_shown: true,
         cli_in_path: addToPath.value
       }
     });
@@ -44,7 +72,9 @@ async function completeSetup() {
     await invoke('unregister_main_shortcut').catch(() => {});
     await invoke('register_main_shortcut');
     
-    router.replace('/');
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const welcomeWindow = getCurrentWindow();
+    await welcomeWindow.close();
   } catch (error) {
     console.error('Failed to complete setup:', error);
     isLoading.value = false;
@@ -54,6 +84,14 @@ async function completeSetup() {
 function onShortcutChange(newShortcut) {
   shortcut.value = newShortcut;
 }
+
+function onAccentColorChange(hex) {
+  accentColor.value = hex;
+}
+
+onMounted(() => {
+  loadSettings();
+});
 </script>
 
 <template>
@@ -86,6 +124,16 @@ function onShortcutChange(newShortcut) {
         </label>
         
         <p v-if="pathResult" class="path-result">{{ pathResult }}</p>
+      </div>
+
+      <div class="section">
+        <h2>Accent Color</h2>
+        <p class="description">Choose a color to personalize the interface.</p>
+        
+        <AccentColorPicker 
+          v-model="accentColor"
+          @change="onAccentColorChange"
+        />
       </div>
 
       <div class="actions">

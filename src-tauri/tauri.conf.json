@@ -54,6 +54,36 @@
           "y": -100
         },
         "visible": false
+      },
+      {
+        "label": "welcome",
+        "title": "Welcome to Clippy",
+        "url": "/welcome",
+        "width": 450,
+        "height": 580,
+        "transparent": true,
+        "resizable": false,
+        "minimizable": false,
+        "maximizable": false,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": {
+          "x": -100,
+          "y": -100
+        },
+        "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Clippy Settings",
+        "url": "/settings",
+        "width": 400,
+        "height": 500,
+        "transparent": true,
+        "resizable": false,
+        "minimizable": true,
+        "maximizable": false,
+        "visible": false
       }
     ],
     "security": {

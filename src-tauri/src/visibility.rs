@@ -3,9 +3,9 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Check if the app or window is visible
 #[tauri::command]
 pub fn is_visible(app: AppHandle) -> Result<bool, String> {
-    let window = app
-        .get_webview_window("main")
-        .ok_or("Failed to get main window")?;
+    let Some(window) = app.get_webview_window("main") else {
+        return Ok(false);
+    };
 
     let is_visible = window
         .is_visible()
@@ -19,23 +19,18 @@ pub fn is_visible(app: AppHandle) -> Result<bool, String> {
 pub fn hide(app: &AppHandle) -> Result<(), String> {
     println!("Hiding main window");
 
-    let window = app
-        .get_webview_window("main")
-        .ok_or("Failed to get main window")?;
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .hide()
+            .map_err(|e| format!("Failed to hide window: {}", e))?;
+    }
 
-    // Hide the main window
-    window
-        .hide()
-        .map_err(|e| format!("Failed to hide window: {}", e))?;
-
-    // Also hide preview window if it exists
     if let Some(preview) = app.get_webview_window("preview") {
         let _ = preview.hide();
     }
 
     println!("Main window hidden successfully");
 
-    // Emit event to update tray menu
     app.emit("window-visibility-changed", ())
         .map_err(|e| format!("Failed to emit visibility event: {}", e))?;
 
@@ -46,21 +41,16 @@ pub fn hide(app: &AppHandle) -> Result<(), String> {
 pub fn hide_all(app: &AppHandle) -> Result<(), String> {
     println!("Hiding window and app");
 
-    let window = app
-        .get_webview_window("main")
-        .ok_or("Failed to get main window")?;
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .hide()
+            .map_err(|e| format!("Failed to hide window: {}", e))?;
+    }
 
-    // Hide the window first
-    window
-        .hide()
-        .map_err(|e| format!("Failed to hide window: {}", e))?;
-
-    // Also hide preview window if it exists
     if let Some(preview) = app.get_webview_window("preview") {
         let _ = preview.hide();
     }
 
-    // On macOS, also hide the app to properly return focus to the previous application
     #[cfg(target_os = "macos")]
     {
         app.hide()
@@ -69,7 +59,6 @@ pub fn hide_all(app: &AppHandle) -> Result<(), String> {
 
     println!("Window and app hidden successfully");
 
-    // Emit event to update tray menu
     app.emit("window-visibility-changed", ())
         .map_err(|e| format!("Failed to emit visibility event: {}", e))?;
 
@@ -78,45 +67,67 @@ pub fn hide_all(app: &AppHandle) -> Result<(), String> {
 
 /// Show the app and main window
 pub fn show(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewUrl;
+    use tauri::webview::WebviewWindowBuilder;
+
     println!("Showing window and app");
 
-    // First, close any settings window that might be open
-    // Only one of clipboard manager or settings can be open at a time
     if let Some(settings_window) = app.get_webview_window("settings") {
         println!("Closing settings window before showing main window");
         let _ = settings_window.close();
 
-        // Restore accessory mode since settings is closing
         #[cfg(target_os = "macos")]
         {
             let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
     }
 
-    let window = app
-        .get_webview_window("main")
-        .ok_or("Failed to get main window")?;
+    let window = match app.get_webview_window("main") {
+        Some(w) => w,
+        None => {
+            println!("Main window not found, recreating...");
+            WebviewWindowBuilder::new(
+                &app,
+                "main",
+                WebviewUrl::App("/".into()),
+            )
+            .title("clippy")
+            .inner_size(400.0, 600.0)
+            .min_inner_size(300.0, 200.0)
+            .transparent(true)
+            .resizable(true)
+            .minimizable(false)
+            .maximizable(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(true)
+            .skip_taskbar(true)
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .visible(false)
+            .build()
+            .map_err(|e| format!("Failed to recreate main window: {}", e))?
+        }
+    };
 
-    // Show the window
     window
         .show()
         .map_err(|e| format!("Failed to show window: {}", e))?;
 
-    // Set focus to the window
     window
         .set_focus()
         .map_err(|e| format!("Failed to set window focus: {}", e))?;
 
-    // On macOS, also show the app
     #[cfg(target_os = "macos")]
     {
+        use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+        let _ = apply_vibrancy(&window, NSVisualEffectMaterial::HudWindow, None, None);
+        
         app.show()
             .map_err(|e| format!("Failed to show app: {}", e))?;
     }
 
     println!("Window and app shown successfully");
 
-    // Emit event to update tray menu
     app.emit("window-visibility-changed", ())
         .map_err(|e| format!("Failed to emit visibility event: {}", e))?;
 

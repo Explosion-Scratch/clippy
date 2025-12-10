@@ -7,6 +7,7 @@ import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openPath } from '@tauri-apps/plugin-opener';
 import ShortcutRecorder from './ShortcutRecorder.vue';
+import AccentColorPicker from './AccentColorPicker.vue';
 
 const appVersion = ref('0.1.0');
 const itemCount = ref(0);
@@ -22,16 +23,6 @@ const isSavingShortcut = ref(false);
 const isRecordingShortcut = ref(false);
 
 const accentColor = ref('#20b2aa');
-
-const ACCENT_COLORS = [
-  { name: 'Teal', hex: '#20b2aa' },
-  { name: 'Blue', hex: '#3b82f6' },
-  { name: 'Purple', hex: '#8b5cf6' },
-  { name: 'Pink', hex: '#ec4899' },
-  { name: 'Orange', hex: '#f97316' },
-  { name: 'Green', hex: '#22c55e' },
-  { name: 'Red', hex: '#ef4444' },
-];
 
 const modifierMap = {
   Control: '⌃',
@@ -108,43 +99,17 @@ async function loadStats() {
   }
 }
 
-function hexToRgba(hex, alpha) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function applyAccentColor(hex) {
-  document.documentElement.style.setProperty('--accent', hex);
-  document.documentElement.style.setProperty('--accent-transparent', hexToRgba(hex, 0.25));
-}
-
 async function loadAccentColor() {
   try {
     const settings = await invoke('get_settings');
     accentColor.value = settings.accent_color || '#20b2aa';
-    applyAccentColor(accentColor.value);
   } catch (error) {
     console.error('Failed to load accent color:', error);
   }
 }
 
-async function onAccentColorChange(hex) {
-  try {
-    accentColor.value = hex;
-    applyAccentColor(hex);
-    
-    const settings = await invoke('get_settings');
-    await invoke('set_settings', {
-      settings: {
-        ...settings,
-        accent_color: hex
-      }
-    });
-  } catch (error) {
-    console.error('Failed to save accent color:', error);
-  }
+function onAccentColorChange(hex) {
+  accentColor.value = hex;
 }
 
 async function openDataDirectory() {
@@ -346,29 +311,10 @@ onMounted(async () => {
         <h2>Appearance</h2>
         <p class="section-description">Choose an accent color for the interface.</p>
         
-        <div class="color-picker">
-          <button
-            v-for="color in ACCENT_COLORS"
-            :key="color.hex"
-            class="color-swatch"
-            :class="{ selected: accentColor === color.hex }"
-            :style="{ backgroundColor: color.hex }"
-            :title="color.name"
-            @click="onAccentColorChange(color.hex)"
-          >
-            <span v-if="accentColor === color.hex" class="checkmark">✓</span>
-          </button>
-          
-          <label class="color-swatch custom" :class="{ selected: !ACCENT_COLORS.some(c => c.hex === accentColor) }" title="Custom color">
-            <input 
-              type="color" 
-              :value="accentColor" 
-              @input="onAccentColorChange($event.target.value)"
-              class="color-input"
-            />
-            <span v-if="!ACCENT_COLORS.some(c => c.hex === accentColor)" class="checkmark">✓</span>
-          </label>
-        </div>
+        <AccentColorPicker 
+          v-model="accentColor"
+          @change="onAccentColorChange"
+        />
       </div>
 
       <div class="section">
@@ -679,57 +625,6 @@ onMounted(async () => {
           &:hover:not(:disabled) {
             background: #D70015;
             box-shadow: var(--settings-shadow-medium);
-          }
-        }
-      }
-      
-      .color-picker {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        
-        .color-swatch {
-          width: 28px;
-          height: 28px;
-          border-radius: 50%;
-          border: 2px solid transparent;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.15s ease;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-          
-          &:hover {
-            transform: scale(1.1);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-          }
-          
-          &.selected {
-            border-color: var(--text-primary);
-            box-shadow: 0 0 0 2px var(--settings-bg-primary), 0 0 0 4px var(--text-primary);
-          }
-          
-          .checkmark {
-            color: white;
-            font-size: 12px;
-            font-weight: bold;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-          }
-          
-          &.custom {
-            background: conic-gradient(from 0deg, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
-            position: relative;
-            cursor: pointer;
-            
-            .color-input {
-              position: absolute;
-              inset: 0;
-              opacity: 0;
-              cursor: pointer;
-              width: 100%;
-              height: 100%;
-            }
           }
         }
       }

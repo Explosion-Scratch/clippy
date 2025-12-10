@@ -11,6 +11,7 @@ const STORE_PATH: &str = "settings.json";
 pub struct AppSettings {
     pub shortcut: String,
     pub first_run_complete: bool,
+    pub welcome_shown: bool,
     pub cli_in_path: bool,
     pub accent_color: String,
 }
@@ -138,6 +139,10 @@ pub fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
             .get("first_run_complete")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        welcome_shown: store
+            .get("welcome_shown")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         cli_in_path: store
             .get("cli_in_path")
             .and_then(|v| v.as_bool())
@@ -160,6 +165,10 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<(), String>
         "first_run_complete",
         serde_json::json!(settings.first_run_complete),
     );
+    store.set(
+        "welcome_shown",
+        serde_json::json!(settings.welcome_shown),
+    );
     store.set("cli_in_path", serde_json::json!(settings.cli_in_path));
     store.set("accent_color", serde_json::json!(settings.accent_color));
     store.save().map_err(|e| e.to_string())?;
@@ -177,6 +186,18 @@ pub fn check_first_run(app: AppHandle) -> Result<bool, String> {
         .unwrap_or(false);
 
     Ok(is_first_run)
+}
+
+#[tauri::command]
+pub fn check_welcome_shown(app: AppHandle) -> Result<bool, String> {
+    let store = app.store(STORE_PATH).map_err(|e| e.to_string())?;
+
+    let welcome_shown = store
+        .get("welcome_shown")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    Ok(welcome_shown)
 }
 
 #[tauri::command]

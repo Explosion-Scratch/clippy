@@ -56,9 +56,10 @@ fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
     open_settings_window(app).map_err(|e| e.to_string())
 }
 
-// Function to open settings window
 fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::{Manager, WebviewWindowBuilder};
+    use tauri::Manager;
+    use tauri::WebviewUrl;
+    use tauri::webview::WebviewWindowBuilder;
 
     // Show dock icon when opening settings
     #[cfg(target_os = "macos")]
@@ -66,15 +67,63 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
         app_handle.set_activation_policy(tauri::ActivationPolicy::Regular)?;
     }
 
-    // Check if settings window already exists
-    if let Some(settings_window) = app_handle.get_webview_window("settings") {
-        // Settings window already exists, just show it and hide main
-        if let Some(_main_window) = app_handle.get_webview_window("main") {
-            visibility::hide(&app_handle).ok();
+    // Hide main window first
+    if let Some(_main_window) = app_handle.get_webview_window("main") {
+        visibility::hide(&app_handle).ok();
+    }
+
+    // Get or create the settings window (it may have been destroyed by .close())
+    let settings_window = match app_handle.get_webview_window("settings") {
+        Some(window) => window,
+        None => {
+            WebviewWindowBuilder::new(
+                &app_handle,
+                "settings",
+                WebviewUrl::App("/settings".into()),
+            )
+            .title("Clippy Settings")
+            .inner_size(400.0, 500.0)
+            .transparent(true)
+            .resizable(false)
+            .minimizable(true)
+            .maximizable(false)
+            .visible(false)
+            .build()?
         }
-        settings_window.set_focus()?;
-        settings_window.show()?;
-        return Ok(());
+    };
+
+    // Show and focus FIRST
+    settings_window.show()?;
+    settings_window.set_focus()?;
+
+    // Apply vibrancy AFTER showing on macOS (must be on main thread)
+    #[cfg(target_os = "macos")]
+    {
+        let app_clone = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            if let Some(settings_window) = app_clone.get_webview_window("settings") {
+                let _ = apply_vibrancy(
+                    &settings_window,
+                    NSVisualEffectMaterial::HudWindow,
+                    None,
+                    None,
+                );
+            }
+        });
+    }
+
+    Ok(())
+}
+
+fn open_welcome_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::Manager;
+    use tauri::WebviewUrl;
+    use tauri::webview::WebviewWindowBuilder;
+
+    // Show dock icon when opening welcome
+    #[cfg(target_os = "macos")]
+    {
+        app_handle.set_activation_policy(tauri::ActivationPolicy::Regular)?;
     }
 
     // Hide main window first
@@ -82,40 +131,46 @@ fn open_settings_window(app_handle: tauri::AppHandle) -> Result<(), Box<dyn std:
         visibility::hide(&app_handle).ok();
     }
 
-    // Create new settings window
-    let settings_window = WebviewWindowBuilder::new(
-        &app_handle,
-        "settings",
-        tauri::WebviewUrl::App("/settings".into()),
-    )
-    .title("Clippy Settings")
-    .inner_size(400.0, 630.0)
-    .resizable(false)
-    .minimizable(true)
-    .maximizable(false)
-    .visible(true)
-    .focused(true)
-    .build()?;
+    // Get or create the welcome window (it may have been destroyed by .close())
+    let welcome_window = match app_handle.get_webview_window("welcome") {
+        Some(window) => window,
+        None => {
+            WebviewWindowBuilder::new(
+                &app_handle,
+                "welcome",
+                WebviewUrl::App("/welcome".into()),
+            )
+            .title("Welcome to Clippy")
+            .inner_size(450.0, 580.0)
+            .transparent(true)
+            .resizable(false)
+            .minimizable(false)
+            .maximizable(false)
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .visible(false)
+            .build()?
+        }
+    };
 
-    // Ensure the settings window is shown and focused
-    settings_window.show()?;
-    settings_window.set_focus()?;
+    // Show and focus FIRST
+    welcome_window.show()?;
+    welcome_window.set_focus()?;
 
-    // Apply vibrancy to settings window on macOS (must run on main thread)
+    // Apply vibrancy AFTER showing on macOS (must be on main thread)
     #[cfg(target_os = "macos")]
     {
-        let app_handle_clone = app_handle.clone();
-        app_handle.run_on_main_thread(move || {
-            if let Some(settings_window) = app_handle_clone.get_webview_window("settings") {
-                apply_vibrancy(
-                    &settings_window,
+        let app_clone = app_handle.clone();
+        let _ = app_handle.run_on_main_thread(move || {
+            if let Some(welcome_window) = app_clone.get_webview_window("welcome") {
+                let _ = apply_vibrancy(
+                    &welcome_window,
                     NSVisualEffectMaterial::HudWindow,
                     None,
                     None,
-                )
-                .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
+                );
             }
-        })?;
+        });
     }
 
     Ok(())
@@ -306,9 +361,9 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .on_window_event(|window, event| {
             // Handle settings window close/destroy events
-            if window.label() == "settings" {
+            if window.label() == "settings" || window.label() == "welcome" {
                 if let tauri::WindowEvent::Destroyed = event {
-                    println!("Settings window destroyed, restoring dock state");
+                    println!("{} window destroyed, restoring dock state", window.label());
                     #[cfg(target_os = "macos")]
                     {
                         let _ = window
@@ -375,6 +430,7 @@ pub fn run() {
             settings::get_settings,
             settings::set_settings,
             settings::check_first_run,
+            settings::check_welcome_shown,
             settings::get_configured_shortcut,
             settings::add_cli_to_path,
         ])
@@ -646,7 +702,7 @@ pub fn run() {
                     .expect("Unsupported platform! 'apply_vibrancy' is only supported on macOS");
             }
 
-            // Check accessibility permissions on startup
+            // Check accessibility permissions on startup and show welcome if needed
             #[cfg(target_os = "macos")]
             {
                 let app_handle_clone = app_handle.clone();
@@ -661,6 +717,21 @@ pub fn run() {
                                         .await
                                 {
                                     eprintln!("Failed to show permissions alert: {}", e);
+                                }
+                            } else {
+                                // Accessibility granted - check if welcome needs to be shown
+                                match settings::check_welcome_shown(app_handle_clone.clone()) {
+                                    Ok(shown) => {
+                                        if !shown {
+                                            println!("Welcome not yet shown, opening welcome window...");
+                                            if let Err(e) = open_welcome_window(app_handle_clone.clone()) {
+                                                eprintln!("Failed to open welcome window: {}", e);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to check welcome_shown: {}", e);
+                                    }
                                 }
                             }
                         }
