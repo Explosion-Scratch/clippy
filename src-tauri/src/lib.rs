@@ -419,6 +419,7 @@ pub fn run() {
             sidecar::db_delete_all,
             sidecar::get_sidecar_dir,
             sidecar::set_sidecar_dir,
+            sidecar::restart_api,
             sidecar::get_app_data_dir,
             sidecar::edit_item,
             paste::simulate_system_paste,

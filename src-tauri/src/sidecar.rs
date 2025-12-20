@@ -105,6 +105,13 @@ pub async fn get_service_status(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub async fn restart_api(app: AppHandle) -> Result<String, String> {
+    stop_service(app.clone()).await.ok();
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    init_service(app).await
+}
+
+#[tauri::command]
 pub async fn get_history(
     _app: AppHandle,
     limit: Option<usize>,

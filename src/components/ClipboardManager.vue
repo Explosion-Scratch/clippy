@@ -7,6 +7,7 @@ import { useRouter } from "vue-router";
 import ClipboardItem from "./ClipboardItem.vue";
 import InlinePreview from "./InlinePreview.vue";
 import { showToast } from "../utils/ui";
+import { handleItemShortcuts, ITEM_SHORTCUTS } from "../utils/itemShortcuts";
 
 const router = useRouter();
 
@@ -55,6 +56,10 @@ const mismatchDirs = ref({ current: "", expected: "" });
 
 const isCycling = ref(false);
 const isModifierPressed = ref(false);
+
+const apiStatus = ref('connected');
+let consecutiveApiFailures = 0;
+const API_FAILURE_THRESHOLD = 3;
 
 const configuredShortcut = ref({ ctrl: true, alt: false, shift: false, meta: false, code: 'KeyP' });
 
@@ -369,12 +374,37 @@ async function pollForChanges() {
     try {
         const mtimeJson = await invoke("get_mtime");
         const mtime = JSON.parse(mtimeJson);
+        consecutiveApiFailures = 0;
+        if (apiStatus.value === 'error') {
+            apiStatus.value = 'connected';
+        }
         if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value) {
             await loadItems(false, selectedItem.value?.id);
             await loadTotalItems();
         }
     } catch (e) {
+        consecutiveApiFailures++;
+        if (consecutiveApiFailures >= API_FAILURE_THRESHOLD && apiStatus.value !== 'error') {
+            apiStatus.value = 'error';
+        }
     }
+}
+
+async function restartApi() {
+    showToast("Restarting API...", { timeout: 2000 });
+    try {
+        await invoke("restart_api");
+        apiStatus.value = 'connected';
+        consecutiveApiFailures = 0;
+        await loadItems();
+        showToast("API restarted successfully", { timeout: 2000 });
+    } catch (e) {
+        showToast("Failed to restart API: " + e, { timeout: 4000 });
+    }
+}
+
+function dismissApiError() {
+    apiStatus.value = 'dismissed';
 }
 
 function handleSearchKeyDown(e) {
@@ -423,18 +453,18 @@ function handleKeyDown(e) {
             e.preventDefault(); 
             handleArrowUp(); 
         } else if (e.key === "Enter") {
-            e.preventDefault();
-            if (e.shiftKey) {
-                if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-                    invoke("open_in_dashboard", { id: clipboardItems.value[selectedIndex.value].id.toString() })
+            const currentItem = globalSelectedIndex.value >= 0 ? clipboardItems.value[globalSelectedIndex.value] : null;
+            const handled = handleItemShortcuts(e, currentItem, {
+                paste: (item) => pasteItemToSystem(item),
+                copy: (item) => copyItemToSystem(item),
+                openDashboard: (item) => {
+                    invoke("open_in_dashboard", { id: item.id.toString() })
                         .catch(err => console.error("Failed to open in dashboard:", err));
                     invoke("hide_app");
                 }
-            } else if (e.metaKey) {
-                if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-                    copyItemToSystem(clipboardItems.value[selectedIndex.value]);
-                }
-            } else {
+            });
+            if (!handled && currentItem) {
+                e.preventDefault();
                 handleEnter();
             }
         }
@@ -607,24 +637,24 @@ function handleDebouncedResize(width, height) {
 
 async function handleFocusChange(focused) {
     if (!focused) {
+        searchQuery.value = "";
+        globalSelectedIndex.value = -1;
         if (isCycling.value) {
             isCycling.value = false;
-            isCtrlPressed.value = false;
+            isModifierPressed.value = false;
         }
         registerGlobalShortcut();
         saveWindowState();
     } else {
         unregisterGlobalShortcut();
         if (!isCycling.value) {
-            if (globalSelectedIndex.value === -1 && allLoadedItems.value.length > 0) {
-                globalSelectedIndex.value = 0;
-            }
+            globalSelectedIndex.value = 0;
             loadTotalItems();
-            loadItems(false, selectedItem.value?.id || allLoadedItems.value[0]?.id).then(() => {
+            loadItems().then(() => {
                 nextTick(() => searchInputRef.value?.focus());
             });
         }
-        isCtrlPressed.value = true;
+        isModifierPressed.value = true;
     }
 }
 
@@ -785,6 +815,11 @@ onUnmounted(() => {
 
         <div class="content-area" :class="{ 'has-preview': showInlinePreview && selectedItem }">
             <div class="items-container">
+                <div v-if="apiStatus === 'error'" class="api-error-banner">
+                    <span>⚠️ API not responding</span>
+                    <button @click="restartApi" class="restart-btn">Restart API</button>
+                    <button @click="dismissApiError" class="dismiss-btn">×</button>
+                </div>
                 <div v-if="allLoadedItems?.length === 0 && !isLoading" class="empty-state">
                     <div class="empty-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256"><path fill="currentColor" d="M200,32H163.74a47.92,47.92,0,0,0-71.48,0H56A16,16,0,0,0,40,48V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm-72,0a32,32,0,0,1,32,32H96A32,32,0,0,1,128,32Zm72,184H56V48H82.75A47.93,47.93,0,0,0,80,64v8a8,8,0,0,0,8,8h80a8,8,0,0,0,8-8V64a47.93,47.93,0,0,0-2.75-16H200Z"/></svg>
@@ -906,6 +941,39 @@ onUnmounted(() => {
                 animation: spin 1s linear infinite;
             }
         }
+    }
+}
+.api-error-banner {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-primary);
+    flex-shrink: 0;
+    span { flex: 1; }
+    .restart-btn {
+        background: var(--accent);
+        color: var(--accent-text);
+        border: none;
+        border-radius: 4px;
+        padding: 3px 8px;
+        font-size: 10px;
+        cursor: pointer;
+        &:hover { filter: brightness(1.1); }
+    }
+    .dismiss-btn {
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0 4px;
+        &:hover { color: var(--text-primary); }
     }
 }
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; padding: 20px; backdrop-filter: blur(5px); }

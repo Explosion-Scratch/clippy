@@ -82,12 +82,20 @@ fn load_index_from_disk(data_dir: &Path) -> Result<SearchIndex> {
                         if !metadata_path.exists() {
                             continue;
                         }
-                        let meta: EntryMetadata = serde_json::from_slice(&fs::read(
-                            &metadata_path,
-                        )?)
-                        .with_context(|| {
-                            format!("Failed to parse metadata at {}", metadata_path.display())
-                        })?;
+                        let bytes = match fs::read(&metadata_path) {
+                            Ok(b) => b,
+                            Err(e) => {
+                                eprintln!("Warning: Failed to read {}: {}", metadata_path.display(), e);
+                                continue;
+                            }
+                        };
+                        let meta: EntryMetadata = match serde_json::from_slice(&bytes) {
+                            Ok(m) => m,
+                            Err(e) => {
+                                eprintln!("Warning: Corrupt metadata at {}: {}", metadata_path.display(), e);
+                                continue;
+                            }
+                        };
                         index.insert(
                             meta.hash.clone(),
                             SearchIndexRecord {
@@ -612,9 +620,20 @@ where
                         let item_dir = item.path();
                         let metadata_path = item_dir.join("metadata.json");
                         if metadata_path.exists() {
-                            let meta: EntryMetadata =
-                                serde_json::from_slice(&fs::read(&metadata_path)?)?;
-                            visitor(meta);
+                            let bytes = match fs::read(&metadata_path) {
+                                Ok(b) => b,
+                                Err(e) => {
+                                    eprintln!("Warning: Failed to read {}: {}", metadata_path.display(), e);
+                                    continue;
+                                }
+                            };
+                            match serde_json::from_slice::<EntryMetadata>(&bytes) {
+                                Ok(meta) => visitor(meta),
+                                Err(e) => {
+                                    eprintln!("Warning: Corrupt metadata at {}: {}", metadata_path.display(), e);
+                                    continue;
+                                }
+                            }
                         }
                     }
                 }
