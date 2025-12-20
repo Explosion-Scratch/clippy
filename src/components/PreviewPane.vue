@@ -2,6 +2,7 @@
 import { ref, watch, nextTick, onUnmounted, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { showToast } from "../utils/ui";
+import PreviewFooter from "./PreviewFooter.vue";
 
 const EDIT_SAVE_TIMEOUT_MS = 10000;
 
@@ -9,6 +10,14 @@ const props = defineProps({
     itemId: {
         type: String,
         default: null
+    },
+    keyboardState: {
+        type: Object,
+        default: () => ({ currentlyPressed: [], itemShortcuts: [] })
+    },
+    isInline: {
+        type: Boolean,
+        default: false
     }
 });
 
@@ -273,6 +282,10 @@ onUnmounted(() => {
     
     frameDblHandler = null;
 });
+
+defineExpose({
+    resetState
+});
 </script>
 
 <template>
@@ -311,14 +324,21 @@ onUnmounted(() => {
                     sandbox="allow-same-origin allow-scripts"
                     @load="handleFrameLoad"
                 ></iframe>
-                <div v-if="isEditable" class="edit-hint">
-                    <span>Double-click to edit</span>
+            </div>
+        </template>
+        <template v-else-if="isInline">
+            <div class="frame-shell placeholder-shell">
+                <div class="placeholder-content">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256"><path fill="currentColor" d="M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Z"/></svg>
+                    <span>Select an item to preview</span>
                 </div>
             </div>
         </template>
-        <div v-else class="empty-state">
-            No item selected
-        </div>
+        <PreviewFooter 
+            v-if="!isEditing"
+            :keyboard-state="keyboardState" 
+            :is-editable="isEditable && !!previewContent" 
+        />
     </div>
 </template>
 
@@ -440,11 +460,24 @@ onUnmounted(() => {
     color: var(--accent-text, #ffffff);
 }
 
-.edit-hint {
-    font-size: 0.7em;
-    color: var(--text-secondary);
-    text-align: center;
-    padding: 2px 0;
+.placeholder-shell {
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary, #f3f4f6);
+    border-radius: 4px;
+}
+
+.placeholder-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary, #6b7280);
+    font-size: 12px;
     opacity: 0.6;
+}
+
+.placeholder-content svg {
+    opacity: 0.5;
 }
 </style>

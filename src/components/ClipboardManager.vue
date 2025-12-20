@@ -1,13 +1,13 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick, onUnmounted } from "vue";
+import { ref, computed, onMounted, watch, nextTick, onUnmounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { useRouter } from "vue-router";
 import ClipboardItem from "./ClipboardItem.vue";
 import InlinePreview from "./InlinePreview.vue";
 import { showToast } from "../utils/ui";
-import { handleItemShortcuts, ITEM_SHORTCUTS } from "../utils/itemShortcuts";
+import { handleItemShortcuts, ITEM_SHORTCUTS, getFilteredShortcuts } from "../utils/itemShortcuts";
 
 const router = useRouter();
 
@@ -31,6 +31,7 @@ const clipboardManager = ref(null);
 const clipboardListRef = ref(null);
 const loadMoreSentinel = ref(null);
 const searchInputRef = ref(null);
+const inlinePreviewRef = ref(null);
 const clipboardItems = computed(() => allLoadedItems.value);
 const totalItems = ref(0);
 const windowWidth = ref(400);
@@ -56,6 +57,12 @@ const mismatchDirs = ref({ current: "", expected: "" });
 
 const isCycling = ref(false);
 const isModifierPressed = ref(false);
+const isWindowFocused = ref(true);
+
+const keyboardState = reactive({
+    currentlyPressed: [],
+    itemShortcuts: getFilteredShortcuts([])
+});
 
 const apiStatus = ref('connected');
 let consecutiveApiFailures = 0;
@@ -378,9 +385,14 @@ async function pollForChanges() {
         if (apiStatus.value === 'error') {
             apiStatus.value = 'connected';
         }
-        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value) {
+        // Only refresh items when window is hidden to prevent layout shifts
+        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value && !isWindowFocused.value) {
             await loadItems(false, selectedItem.value?.id);
             await loadTotalItems();
+        }
+        // Always update lastKnownId regardless of focus state
+        if (mtime.id) {
+            lastKnownId = mtime.id;
         }
     } catch (e) {
         consecutiveApiFailures++;
@@ -407,6 +419,36 @@ function dismissApiError() {
     apiStatus.value = 'dismissed';
 }
 
+function updateKeyboardState(e) {
+    const pressed = [];
+    if (e.ctrlKey) pressed.push('Control');
+    if (e.altKey) pressed.push('Alt');
+    if (e.shiftKey) pressed.push('Shift');
+    if (e.metaKey) pressed.push('Meta');
+    
+    keyboardState.currentlyPressed = pressed;
+    keyboardState.itemShortcuts = getFilteredShortcuts(pressed);
+    
+    if (!showInlinePreview.value) {
+        tauriEmit("keyboard-state-changed", {
+            currentlyPressed: pressed,
+            itemShortcuts: keyboardState.itemShortcuts
+        }).catch(err => console.error("Failed to emit keyboard state:", err));
+    }
+}
+
+function resetKeyboardState() {
+    keyboardState.currentlyPressed = [];
+    keyboardState.itemShortcuts = getFilteredShortcuts([]);
+    
+    if (!showInlinePreview.value) {
+        tauriEmit("keyboard-state-changed", {
+            currentlyPressed: [],
+            itemShortcuts: keyboardState.itemShortcuts
+        }).catch(err => console.error("Failed to emit keyboard state:", err));
+    }
+}
+
 function handleSearchKeyDown(e) {
     if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
@@ -414,6 +456,8 @@ function handleSearchKeyDown(e) {
 }
 
 function handleKeyDown(e) {
+    updateKeyboardState(e);
+    
     if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
         if (!isCycling.value) startCyclingMode();
@@ -457,6 +501,8 @@ function handleKeyDown(e) {
             const handled = handleItemShortcuts(e, currentItem, {
                 paste: (item) => pasteItemToSystem(item),
                 copy: (item) => copyItemToSystem(item),
+                pastePlain: (item) => pasteItemPlainText(item),
+                copyPlain: (item) => copyItemPlainText(item),
                 openDashboard: (item) => {
                     invoke("open_in_dashboard", { id: item.id.toString() })
                         .catch(err => console.error("Failed to open in dashboard:", err));
@@ -472,6 +518,8 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
+    updateKeyboardState(e);
+    
     const s = configuredShortcut.value;
     const modifierReleased = 
         (s.ctrl && e.key === 'Control') ||
@@ -561,6 +609,52 @@ async function copyItemToSystem(item) {
     }
 }
 
+async function getItemPlainText(item) {
+    if (item.text) return item.text;
+    try {
+        const response = await fetch(`http://localhost:3016/item/${item.id}/data`);
+        if (response.ok) {
+            const data = await response.json();
+            const textPlugin = data.plugins?.find(p => p.id === 'text');
+            if (textPlugin?.data) return textPlugin.data;
+        }
+    } catch (e) {
+        console.error("Failed to fetch item data:", e);
+    }
+    return null;
+}
+
+async function pasteItemPlainText(item) {
+    try {
+        const text = await getItemPlainText(item);
+        if (!text) {
+            showToast("No plain text available", { timeout: 2000, bottom: "20px" });
+            return;
+        }
+        await navigator.clipboard.writeText(text);
+        await invoke("hide_app");
+        await invoke("simulate_system_paste");
+        loadItems(false, item.id);
+    } catch (error) {
+        console.error("Failed to paste plain text:", error);
+    }
+}
+
+async function copyItemPlainText(item) {
+    try {
+        const text = await getItemPlainText(item);
+        if (!text) {
+            showToast("No plain text available", { timeout: 2000, bottom: "20px" });
+            return;
+        }
+        await navigator.clipboard.writeText(text);
+        showToast("Copied as plain text", { timeout: 1500, bottom: "20px" });
+        await invoke("hide_app");
+    } catch (error) {
+        console.error("Failed to copy plain text:", error);
+    }
+}
+
 async function refreshItem(id) {
     const targetId = id || selectedItem.value?.id;
     if (!targetId) return;
@@ -636,24 +730,40 @@ function handleDebouncedResize(width, height) {
 }
 
 async function handleFocusChange(focused) {
+    isWindowFocused.value = focused;
+    
     if (!focused) {
         searchQuery.value = "";
-        globalSelectedIndex.value = -1;
+        globalSelectedIndex.value = 0;
+        
+        // Reset scroll position
+        if (clipboardListRef.value) {
+            clipboardListRef.value.scrollTop = 0;
+        }
+
+        // Reset preview state
+        if (inlinePreviewRef.value) {
+            inlinePreviewRef.value.resetState?.();
+        }
+        await hidePreview();
+        
         if (isCycling.value) {
             isCycling.value = false;
             isModifierPressed.value = false;
         }
+        
+        resetKeyboardState();
+        
+        // Load fresh items so they're ready when reopened
+        await loadTotalItems();
+        await loadItems();
+        
         registerGlobalShortcut();
         saveWindowState();
     } else {
         unregisterGlobalShortcut();
-        if (!isCycling.value) {
-            globalSelectedIndex.value = 0;
-            loadTotalItems();
-            loadItems().then(() => {
-                nextTick(() => searchInputRef.value?.focus());
-            });
-        }
+        // Data is already fresh, just focus the search input
+        nextTick(() => searchInputRef.value?.focus());
         isModifierPressed.value = true;
     }
 }
@@ -813,7 +923,7 @@ onUnmounted(() => {
             <input ref="searchInputRef" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="off" v-model="searchQuery" type="text" :placeholder="searchPlaceholder" class="search-input" @keydown="handleSearchKeyDown" />
         </div>
 
-        <div class="content-area" :class="{ 'has-preview': showInlinePreview && selectedItem }">
+        <div class="content-area" :class="{ 'has-preview': showInlinePreview }">
             <div class="items-container">
                 <div v-if="apiStatus === 'error'" class="api-error-banner">
                     <span>⚠️ API not responding</span>
@@ -843,8 +953,8 @@ onUnmounted(() => {
                     </div>
                 </div>
             </div>
-            <div v-if="showInlinePreview && selectedItem" class="inline-preview">
-                <InlinePreview :itemId="selectedItem.id" @refresh="refreshItem" />
+            <div v-if="showInlinePreview" class="inline-preview">
+                <InlinePreview ref="inlinePreviewRef" :itemId="selectedItem?.id" :keyboardState="keyboardState" @refresh="refreshItem" />
             </div>
         </div>
 

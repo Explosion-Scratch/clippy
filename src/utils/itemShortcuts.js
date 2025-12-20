@@ -24,6 +24,20 @@ export const ITEM_SHORTCUTS = {
     key: 'Enter',
     modifiers: { shiftKey: true, metaKey: false, altKey: false, ctrlKey: false },
     description: 'Open the selected item in the web dashboard'
+  },
+  pastePlain: {
+    id: 'pastePlain',
+    label: 'Paste as plain text',
+    key: 'Enter',
+    modifiers: { altKey: true, metaKey: false, shiftKey: false, ctrlKey: false },
+    description: 'Paste the selected item as plain text without formatting'
+  },
+  copyPlain: {
+    id: 'copyPlain',
+    label: 'Copy as plain text',
+    key: 'Enter',
+    modifiers: { altKey: true, shiftKey: true, metaKey: false, ctrlKey: false },
+    description: 'Copy the selected item as plain text without pasting'
   }
 }
 
@@ -102,4 +116,35 @@ export function formatShortcut(shortcut) {
   if (shortcut.modifiers.metaKey) parts.push('⌘')
   parts.push(shortcut.key)
   return parts.join('')
+}
+
+/**
+ * Get shortcuts filtered by currently pressed modifier keys.
+ * @param {string[]} pressedModifiers - Array of currently pressed modifier names: 'Meta', 'Alt', 'Shift', 'Control'
+ * @returns {Object[]} Filtered shortcuts matching the pressed modifiers
+ */
+export function getFilteredShortcuts(pressedModifiers = []) {
+  const shortcuts = Object.values(ITEM_SHORTCUTS)
+  
+  const hasCtrl = pressedModifiers.includes('Control')
+  const hasAlt = pressedModifiers.includes('Alt')
+  const hasShift = pressedModifiers.includes('Shift')
+  const hasMeta = pressedModifiers.includes('Meta')
+  const noModifiersPressed = !hasCtrl && !hasAlt && !hasShift && !hasMeta
+
+  if (noModifiersPressed) {
+    return shortcuts.filter(s => {
+      const m = s.modifiers
+      return !m.ctrlKey && !m.altKey && !m.shiftKey && !m.metaKey
+    })
+  }
+
+  return shortcuts.filter(s => {
+    const m = s.modifiers
+    const matchesCtrl = hasCtrl ? m.ctrlKey : !m.ctrlKey
+    const matchesAlt = hasAlt ? m.altKey : !m.altKey
+    const matchesShift = hasShift ? m.shiftKey : !m.shiftKey
+    const matchesMeta = hasMeta ? m.metaKey : !m.metaKey
+    return matchesCtrl && matchesAlt && matchesShift && matchesMeta
+  })
 }

@@ -6,7 +6,9 @@ import PreviewPane from "./PreviewPane.vue";
 import { showToast } from "../utils/ui";
 
 const currentId = ref(null);
+const keyboardState = ref({ currentlyPressed: [], itemShortcuts: [] });
 let unlisten = null;
+let keyboardStateUnlisten = null;
 
 async function openInDashboard() {
     if (currentId.value) {
@@ -25,11 +27,13 @@ async function handleRefresh(newId) {
     }
 }
 
-
-
 onMounted(async () => {
     unlisten = await listen("preview-item", (event) => {
         currentId.value = event.payload;
+    });
+    
+    keyboardStateUnlisten = await listen("keyboard-state-changed", (event) => {
+        keyboardState.value = event.payload || { currentlyPressed: [], itemShortcuts: [] };
     });
 });
 
@@ -38,26 +42,21 @@ onUnmounted(() => {
         unlisten();
         unlisten = null;
     }
+    if (keyboardStateUnlisten) {
+        keyboardStateUnlisten();
+        keyboardStateUnlisten = null;
+    }
 });
 </script>
 
 <template>
-    <div id="wrapper" class="compact">
-        <PreviewPane :item-id="currentId" @refresh="handleRefresh" />
-        <div class="footer">
-            <div class="shortcut-group">
-                <span>Inject</span>
-                <span class="shortcut-key">⏎</span>
-            </div>
-            <div class="shortcut-group">
-                <span>Copy</span>
-                <span class="shortcut-key">⌘⏎</span>
-            </div>
-            <div class="action-button" @click="openInDashboard">
-                <span>Open</span>
-                <span class="shortcut-key">⇧⏎</span>
-            </div>
-        </div>
+    <div id="wrapper" class="compact" v-if="currentId">
+        <PreviewPane 
+            :item-id="currentId" 
+            :keyboard-state="keyboardState"
+            :is-inline="false"
+            @refresh="handleRefresh" 
+        />
     </div>
 </template>
 
@@ -95,43 +94,5 @@ body,
         --footer-text-hover: #f9fafb;
     }
 }
-
-.footer {
-    height: 24px;
-    background-color: var(--footer-bg);
-    border-top: 1px solid var(--footer-border);
-    display: flex;
-    align-items: center;
-    justify-content: space-evenly;
-    padding: 0 12px;
-    font-size: 10px;
-    color: var(--footer-text);
-    user-select: none;
-    flex-shrink: 0;
-    font-family: system-ui, sans-serif;
-    border-radius: 6px;
-
-    .shortcut-group {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-    }
-
-    .shortcut-key {
-        font-family: system-ui, sans-serif;
-        opacity: 0.7;
-    }
-
-    .action-button {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        cursor: pointer;
-        transition: color 0.15s;
-
-        &:hover {
-            color: var(--footer-text-hover);
-        }
-    }
-}
 </style>
+
