@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { save, open as openDialog, ask } from '@tauri-apps/plugin-dialog';
@@ -108,6 +108,12 @@ async function loadAccentColor() {
   }
 }
 
+async function reloadAllSettings() {
+  await loadShortcut();
+  await loadStats();
+  await loadAccentColor();
+}
+
 function onAccentColorChange(hex) {
   accentColor.value = hex;
 }
@@ -198,7 +204,7 @@ async function importDatabase() {
       const jsonData = new TextDecoder().decode(jsonDataBytes);
       const result = await invoke('db_import_all', { jsonData });
       alert(result);
-      await loadStats(); // Refresh the count
+      await loadStats();
     }
   } catch (error) {
     console.error('Failed to import database:', error);
@@ -219,7 +225,7 @@ async function deleteAllData() {
       isDeleting.value = true;
       const result = await invoke('db_delete_all');
       alert(result);
-      await loadStats(); // Refresh the count
+      await loadStats();
     }
   } catch (error) {
     console.error('Failed to delete all data:', error);
@@ -230,7 +236,6 @@ async function deleteAllData() {
 }
 
 async function closeSettings() {
-  // Just close the window - the native window event handler will restore dock state
   const window = getCurrentWindow();
   await window.close();
 }
@@ -245,11 +250,18 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+let unlistenFocus = null;
+
 onMounted(async () => {
   appVersion.value = await getVersion();
-  loadStats();
-  loadShortcut();
-  loadAccentColor();
+  await reloadAllSettings();
+  
+  const currentWindow = getCurrentWindow();
+  unlistenFocus = await currentWindow.onFocusChanged(({ payload: focused }) => {
+    if (focused) {
+      reloadAllSettings();
+    }
+  });
   
   document.addEventListener('keyup', async (e) => {
     if (e.key === 'Escape') {
@@ -257,6 +269,12 @@ onMounted(async () => {
       await closeSettings();
     }
   });
+});
+
+onUnmounted(() => {
+  if (unlistenFocus) {
+    unlistenFocus();
+  }
 });
 </script>
 

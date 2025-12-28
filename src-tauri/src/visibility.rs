@@ -103,6 +103,7 @@ pub fn show(app: AppHandle) -> Result<(), String> {
             .skip_taskbar(true)
             .hidden_title(true)
             .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .traffic_light_position(tauri::LogicalPosition::new(-100.0, -100.0))
             .visible(false)
             .build()
             .map_err(|e| format!("Failed to recreate main window: {}", e))?

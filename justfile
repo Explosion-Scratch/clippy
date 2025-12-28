@@ -51,8 +51,21 @@ compile-templates:
 
 # Install the application
 install-app:
+    #!/usr/bin/env bash
+    set -euo pipefail
     just build
-    cp -r src-tauri/target/release/bundle/macos/Clippy.app /Applications/
+    DMG_PATH=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n 1)
+    echo "Mounting $DMG_PATH..."
+    MOUNT_POINT=$(hdiutil attach "$DMG_PATH" | grep -o '/Volumes/.*' | head -n 1)
+    echo "Mounted at $MOUNT_POINT"
+    APP_PATH=$(ls -d "$MOUNT_POINT"/*.app | head -n 1)
+    APP_NAME=$(basename "$APP_PATH")
+    echo "Installing $APP_NAME to /Applications/..."
+    rm -rf "/Applications/$APP_NAME"
+    cp -R "$APP_PATH" /Applications/
+    echo "Detaching $MOUNT_POINT..."
+    hdiutil detach "$MOUNT_POINT"
+    echo "✅ $APP_NAME installed to /Applications/"
 
 # Install the binary
 install-binary:

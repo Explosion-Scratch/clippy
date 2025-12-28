@@ -389,7 +389,9 @@ async function pollForChanges() {
         // When window is focused, this ensures new items appear in real-time
         // When window is hidden, this keeps the cache ready for next open
         if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value) {
-            await loadItems(false, selectedItem.value?.id);
+            // Only preserve selection if window is focused; otherwise let it reset on next open
+            const preserveId = isWindowFocused.value ? selectedItem.value?.id : null;
+            await loadItems(false, preserveId);
             await loadTotalItems();
         }
         // Always update lastKnownId regardless of focus state
@@ -759,12 +761,26 @@ async function handleFocusChange(focused) {
         saveWindowState();
     } else {
         unregisterGlobalShortcut();
+        
+        // Reset state when window gains focus - always start fresh
+        searchQuery.value = "";
+        globalSelectedIndex.value = 0;
+        
+        // Reset scroll position
+        if (clipboardListRef.value) {
+            clipboardListRef.value.scrollTop = 0;
+        }
+        
+        // Reset preview state
+        if (inlinePreviewRef.value) {
+            inlinePreviewRef.value.resetState?.();
+        }
+        
         // Focus input immediately - data is kept fresh by polling
         nextTick(() => searchInputRef.value?.focus());
         isModifierPressed.value = true;
         
-        // Check for updates in background (non-blocking)
-        // Only refresh if mtime indicates new data
+        // Refresh data if needed (will reset to first item)
         checkAndRefreshIfNeeded();
     }
 }
@@ -776,7 +792,13 @@ async function checkAndRefreshIfNeeded() {
         if (mtime.id && mtime.id !== lastKnownId) {
             lastKnownId = mtime.id;
             await loadTotalItems();
-            await loadItems();
+            // Don't preserve selection - always reset to first item
+            await loadItems(false, null);
+        }
+        // Always reset selection and scroll after focus refresh
+        globalSelectedIndex.value = allLoadedItems.value.length > 0 ? 0 : -1;
+        if (clipboardListRef.value) {
+            clipboardListRef.value.scrollTop = 0;
         }
     } catch (e) {
         // Silently fail - polling will catch up
