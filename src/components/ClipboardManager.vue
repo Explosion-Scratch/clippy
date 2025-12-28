@@ -385,8 +385,10 @@ async function pollForChanges() {
         if (apiStatus.value === 'error') {
             apiStatus.value = 'connected';
         }
-        // Only refresh items when window is hidden to prevent layout shifts
-        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value && !isWindowFocused.value) {
+        // Refresh items when mtime changes and no active search
+        // When window is focused, this ensures new items appear in real-time
+        // When window is hidden, this keeps the cache ready for next open
+        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value) {
             await loadItems(false, selectedItem.value?.id);
             await loadTotalItems();
         }
@@ -753,18 +755,31 @@ async function handleFocusChange(focused) {
         }
         
         resetKeyboardState();
-        
-        // Load fresh items so they're ready when reopened
-        await loadTotalItems();
-        await loadItems();
-        
         registerGlobalShortcut();
         saveWindowState();
     } else {
         unregisterGlobalShortcut();
-        // Data is already fresh, just focus the search input
+        // Focus input immediately - data is kept fresh by polling
         nextTick(() => searchInputRef.value?.focus());
         isModifierPressed.value = true;
+        
+        // Check for updates in background (non-blocking)
+        // Only refresh if mtime indicates new data
+        checkAndRefreshIfNeeded();
+    }
+}
+
+async function checkAndRefreshIfNeeded() {
+    try {
+        const mtimeJson = await invoke("get_mtime");
+        const mtime = JSON.parse(mtimeJson);
+        if (mtime.id && mtime.id !== lastKnownId) {
+            lastKnownId = mtime.id;
+            await loadTotalItems();
+            await loadItems();
+        }
+    } catch (e) {
+        // Silently fail - polling will catch up
     }
 }
 

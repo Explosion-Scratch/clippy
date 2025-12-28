@@ -214,26 +214,39 @@ pub fn get_configured_shortcut(app: AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn add_cli_to_path(app: AppHandle) -> Result<String, String> {
-    let resource_path = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
-
-    let arch = if cfg!(target_arch = "aarch64") {
-        "aarch64"
-    } else {
-        "x86_64"
-    };
-    let sidecar_name = format!("get_clipboard-{}-apple-darwin", arch);
-
-    let sidecar_path = resource_path.join("binaries").join(&sidecar_name);
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to get current executable path: {}", e))?;
+    
+    let macos_dir = current_exe
+        .parent()
+        .ok_or("Failed to get MacOS directory")?;
+    
+    let sidecar_path = macos_dir.join("get_clipboard");
 
     if !sidecar_path.exists() {
+        let arch = if cfg!(target_arch = "aarch64") {
+            "aarch64"
+        } else {
+            "x86_64"
+        };
+        let sidecar_name = format!("get_clipboard-{}-apple-darwin", arch);
+        let alt_path = macos_dir.join(&sidecar_name);
+        
+        if alt_path.exists() {
+            return create_symlink(&app, &alt_path);
+        }
+        
         return Err(format!(
-            "Sidecar binary not found at: {}",
-            sidecar_path.display()
+            "Sidecar binary not found at: {} or {}",
+            sidecar_path.display(),
+            alt_path.display()
         ));
     }
+    
+    create_symlink(&app, &sidecar_path)
+}
+
+fn create_symlink(app: &AppHandle, sidecar_path: &std::path::Path) -> Result<String, String> {
 
     let home = std::env::var("HOME").map_err(|_| "HOME not set")?;
     let bin_dir = PathBuf::from(&home).join(".local").join("bin");

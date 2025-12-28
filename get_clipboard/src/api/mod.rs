@@ -728,7 +728,9 @@ async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
 }
 
 async fn get_mtime() -> Result<Json<MtimeResponse>, ApiError> {
-    let index = load_fresh_index()?;
+    // Use cached index for mtime checks to reduce disk I/O
+    // The watcher updates the index when new items are stored
+    let index = load_index().map_err(ApiError::from)?;
     if let Some(record) = index.values().max_by_key(|record| record.last_seen) {
         Ok(Json(MtimeResponse {
             last_modified: Some(format_iso(record.last_seen)),
