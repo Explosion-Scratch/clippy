@@ -248,7 +248,7 @@ impl ClipboardDatabase {
         let existing_id = match tx.query_row(
             "SELECT id FROM items WHERE content_hash = ?1",
             params![content_hash],
-            |row| row.get::<_, u64>(0),
+            |row| row.get::<_, i64>(0).map(|v| v as u64),
         ) {
             Ok(id) => Some(id),
             Err(rusqlite::Error::QueryReturnedNoRows) => None,
@@ -266,7 +266,7 @@ impl ClipboardDatabase {
             println!("Found duplicate content, updating existing item ID: {}", existing_id);
             match tx.execute(
                 "UPDATE items SET timestamp = ?1, copies = copies + 1 WHERE id = ?2",
-                params![db_item.timestamp, existing_id],
+                params![db_item.timestamp as i64, existing_id as i64],
             ) {
                 Ok(_) => existing_id,
                 Err(e) => {
@@ -284,10 +284,10 @@ impl ClipboardDatabase {
                 "INSERT INTO items (text, timestamp, first_copied, copies, byte_size, formats, content_hash, image_preview) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 params![
                     db_item.text,
-                    db_item.timestamp,
-                    db_item.first_copied,
-                    db_item.copies,
-                    db_item.byte_size,
+                    db_item.timestamp as i64,
+                    db_item.first_copied as i64,
+                    db_item.copies as i64,
+                    db_item.byte_size as i64,
                     serialized_formats,
                     content_hash,
                     db_item.formats.image_preview
@@ -350,12 +350,12 @@ impl ClipboardDatabase {
         let item_iter = stmt.query_map(
             params![count as i64, offset as i64],
             |row| {
-                let id: u64 = row.get(0)?;
+                let id: u64 = row.get::<_, i64>(0)? as u64;
                 let text: Option<String> = row.get(1)?;
-                let timestamp: u64 = row.get(2)?;
-                let first_copied: u64 = row.get(3)?;
-                let copies: u64 = row.get(4)?;
-                let byte_size: u64 = row.get(5)?;
+                let timestamp: u64 = row.get::<_, i64>(2)? as u64;
+                let first_copied: u64 = row.get::<_, i64>(3)? as u64;
+                let copies: u64 = row.get::<_, i64>(4)? as u64;
+                let byte_size: u64 = row.get::<_, i64>(5)? as u64;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
                 let image_preview: Option<String> = row.get(8)?;
@@ -403,12 +403,12 @@ impl ClipboardDatabase {
         let item_iter = stmt.query_map(
             params![search_pattern, count as i64],
             |row| {
-                let id: u64 = row.get(0)?;
+                let id: u64 = row.get::<_, i64>(0)? as u64;
                 let text: Option<String> = row.get(1)?;
-                let timestamp: u64 = row.get(2)?;
-                let first_copied: u64 = row.get(3)?;
-                let copies: u64 = row.get(4)?;
-                let byte_size: u64 = row.get(5)?;
+                let timestamp: u64 = row.get::<_, i64>(2)? as u64;
+                let first_copied: u64 = row.get::<_, i64>(3)? as u64;
+                let copies: u64 = row.get::<_, i64>(4)? as u64;
+                let byte_size: u64 = row.get::<_, i64>(5)? as u64;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
                 let image_preview: Option<String> = row.get(8)?;
@@ -445,7 +445,7 @@ impl ClipboardDatabase {
     pub fn delete_item(&mut self, id: u64) -> SaveResult {
         match self.conn.execute(
             "DELETE FROM items WHERE id = ?1",
-            params![id],
+            params![id as i64],
         ) {
             Ok(rows_affected) => {
                 if rows_affected > 0 {
@@ -504,14 +504,14 @@ impl ClipboardDatabase {
         )?;
 
         let item = stmt.query_row(
-            params![id],
+            params![id as i64],
             |row| {
-                let id: u64 = row.get(0)?;
+                let id: u64 = row.get::<_, i64>(0)? as u64;
                 let text: Option<String> = row.get(1)?;
-                let timestamp: u64 = row.get(2)?;
-                let first_copied: u64 = row.get(3)?;
-                let copies: u64 = row.get(4)?;
-                let byte_size: u64 = row.get(5)?;
+                let timestamp: u64 = row.get::<_, i64>(2)? as u64;
+                let first_copied: u64 = row.get::<_, i64>(3)? as u64;
+                let copies: u64 = row.get::<_, i64>(4)? as u64;
+                let byte_size: u64 = row.get::<_, i64>(5)? as u64;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
                 let image_preview: Option<String> = row.get(8)?;
@@ -547,7 +547,7 @@ impl ClipboardDatabase {
 
         match self.conn.execute(
             "UPDATE items SET copies = copies + 1, timestamp = ?1 WHERE id = ?2",
-            params![current_time, id],
+            params![current_time as i64, id as i64],
         ) {
             Ok(rows_affected) => {
                 if rows_affected > 0 {
@@ -736,12 +736,12 @@ pub fn db_export_all(app_handle: AppHandle) -> Result<String, String> {
     ).map_err(|e| format!("Failed to prepare statement: {}", e))?;
 
     let item_iter = stmt.query_map([], |row| {
-let id: u64 = row.get(0)?;
+let id: u64 = row.get::<_, i64>(0)? as u64;
                 let text: Option<String> = row.get(1)?;
-                let timestamp: u64 = row.get(2)?;
-                let first_copied: u64 = row.get(3)?;
-                let copies: u64 = row.get(4)?;
-                let byte_size: u64 = row.get(5)?;
+                let timestamp: u64 = row.get::<_, i64>(2)? as u64;
+                let first_copied: u64 = row.get::<_, i64>(3)? as u64;
+                let copies: u64 = row.get::<_, i64>(4)? as u64;
+                let byte_size: u64 = row.get::<_, i64>(5)? as u64;
                 let formats_json: String = row.get(6)?;
                 let content_hash: String = row.get(7)?;
                 let image_preview: Option<String> = row.get(8)?;
@@ -824,7 +824,7 @@ pub fn db_import_all(app_handle: AppHandle, json_data: String) -> Result<String,
         let existing_id = tx.query_row(
             "SELECT id FROM items WHERE content_hash = ?1",
             params![content_hash],
-            |row| row.get::<_, u64>(0),
+            |row| row.get::<_, i64>(0).map(|v| v as u64),
         );
 
         match existing_id {
@@ -838,10 +838,10 @@ pub fn db_import_all(app_handle: AppHandle, json_data: String) -> Result<String,
                     "INSERT INTO items (text, timestamp, first_copied, copies, byte_size, formats, content_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         db_item.text,
-                        db_item.timestamp,
-                        db_item.first_copied,
-                        db_item.copies,
-                        db_item.byte_size,
+                        db_item.timestamp as i64,
+                        db_item.first_copied as i64,
+                        db_item.copies as i64,
+                        db_item.byte_size as i64,
                         serialized_formats,
                         content_hash
                     ],

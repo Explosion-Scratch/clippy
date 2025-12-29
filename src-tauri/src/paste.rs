@@ -8,6 +8,8 @@ pub fn simulate_system_paste(app: AppHandle) -> Result<(), String> {
 /// Internal function to simulate system paste without Tauri command wrapper
 pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
     println!("Simulating system paste...");
+    // Wait for window focus to switch back to target app
+    std::thread::sleep(std::time::Duration::from_millis(150));
     #[cfg(target_os = "macos")]
     {
         // Use CGEvent for the most reliable and fastest keyboard simulation

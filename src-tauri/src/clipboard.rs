@@ -565,3 +565,37 @@ fn set_clipboard_item_internal(app_handle: AppHandle, id: u64) -> Result<String,
 
     Ok("Clipboard item set successfully".to_string())
 }
+
+#[tauri::command]
+pub fn write_to_clipboard(app_handle: AppHandle, text: String) -> Result<(), String> {
+    println!("=== WRITING PLAIN TEXT TO CLIPBOARD ===");
+    
+    // Check if we're currently listening and pause if needed
+    let was_listening = is_listening();
+    if was_listening {
+        println!("Pausing clipboard listener for text write");
+        if let Err(e) = stop_listen() {
+             eprintln!("Failed to pause clipboard: {}", e);
+        }
+    }
+
+    let ctx = ClipboardContext::new()
+         .map_err(|e| format!("Failed to create clipboard context: {}", e))?;
+    
+    if let Err(e) = ctx.set_text(text) {
+         eprintln!("Failed to set text: {}", e);
+         // Try to resume listener if failed
+         if was_listening { start_listen(app_handle).ok(); }
+         return Err(format!("Failed to write to clipboard: {}", e));
+    }
+    
+    // Resume listening
+    if was_listening {
+         std::thread::spawn(move || {
+             std::thread::sleep(std::time::Duration::from_millis(500));
+             start_listen(app_handle).ok();
+         });
+    }
+
+    Ok(())
+}

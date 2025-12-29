@@ -222,6 +222,30 @@ pub async fn paste_item(app: AppHandle, selector: String) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub async fn paste_item_plain_text(app: AppHandle, id: String) -> Result<(), String> {
+    // 1. Copy to system clipboard as plain text via API (incrementing copy count)
+    let client = reqwest::Client::new();
+    let url = api::item_copy_plain_url(&id);
+    let response = client.post(&url).send().await.map_err(|e| e.to_string())?;
+
+    if !response.status().is_success() {
+        return Err(format!("API error during copy_plain: {}", response.status()));
+    }
+
+    // 2. Simulate system paste using the main app process which has permissions
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Small delay to allow window hiding/focus switching to complete
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        if let Err(e) = simulate_system_paste_internal(&app_clone) {
+            eprintln!("Failed to simulate paste: {}", e);
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn delete_item(_app: AppHandle, selector: String) -> Result<(), String> {
     let client = reqwest::Client::new();
     let url = api::item_delete_url(&selector);
@@ -262,7 +286,7 @@ pub async fn configure_data_dir(app: AppHandle) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn db_get_count(_app: AppHandle) -> Result<usize, String> {
     let client = reqwest::Client::new();
     let url = api::stats_url();
@@ -277,7 +301,7 @@ pub async fn db_get_count(_app: AppHandle) -> Result<usize, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn db_get_size(_app: AppHandle) -> Result<u64, String> {
     let client = reqwest::Client::new();
     let url = api::stats_url();
@@ -292,7 +316,7 @@ pub async fn db_get_size(_app: AppHandle) -> Result<u64, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     // Get all items (summary) to get IDs
@@ -325,7 +349,7 @@ pub async fn db_export_all(_app: AppHandle) -> Result<String, String> {
     serde_json::to_string_pretty(&full_items).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String, String> {
     let client = reqwest::Client::new();
     let items: Vec<serde_json::Value> =
@@ -353,7 +377,7 @@ pub async fn db_import_all(_app: AppHandle, json_data: String) -> Result<String,
     Ok(format!("Imported {} items. Failed: {}", success, failed))
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn db_delete_all(_app: AppHandle) -> Result<String, String> {
     let client = reqwest::Client::new();
     let items_url = api::items_url(1000000);

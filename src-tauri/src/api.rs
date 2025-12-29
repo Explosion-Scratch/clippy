@@ -21,6 +21,14 @@ pub fn item_copy_url(id: &str) -> String {
     format!("{}/item/{}/copy", API_BASE, id)
 }
 
+pub fn item_copy_plain_url(id: &str) -> String {
+    format!("{}/item/{}/copy_plain", API_BASE, id)
+}
+
+pub fn item_paste_plain_url(id: &str) -> String {
+    format!("{}/item/{}/paste_plain", API_BASE, id)
+}
+
 pub fn item_delete_url(id: &str) -> String {
     format!("{}/item/{}", API_BASE, id)
 }

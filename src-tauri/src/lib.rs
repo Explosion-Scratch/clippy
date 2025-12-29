@@ -12,9 +12,12 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 mod accessibility;
 mod api;
+mod clipboard;
+mod db;
 mod paste;
 mod settings;
 mod sidecar;
+mod structs;
 mod visibility;
 
 // Shared state for tray menu clipboard items
@@ -340,6 +343,8 @@ async fn get_item_data(id: String) -> Result<serde_json::Value, String> {
         .send()
         .await
         .map_err(|e| format!("Failed to fetch item data: {}", e))?;
+    
+    println!("get_item_data response status: {}", response.status());
 
     if !response.status().is_success() {
         return Err(format!("HTTP error: {}", response.status()));
@@ -435,8 +440,10 @@ pub fn run() {
             sidecar::get_mtime,
             sidecar::copy_item,
             sidecar::paste_item,
+            sidecar::paste_item_plain_text,
             sidecar::delete_item,
             sidecar::configure_data_dir,
+            clipboard::write_to_clipboard,
             sidecar::db_get_count,
             sidecar::db_get_size,
             sidecar::db_export_all,
