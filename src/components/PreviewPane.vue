@@ -25,6 +25,7 @@ const emit = defineEmits(["refresh"]);
 
 const previewContent = ref("");
 const isLoading = ref(false);
+const loadingText = ref("");
 const error = ref(null);
 const isEditing = ref(false);
 const editedText = ref("");
@@ -42,6 +43,7 @@ let messageHandler = null;
 
 function resetState() {
     previewContent.value = "";
+    loadingText.value = "";
     error.value = null;
     isEditing.value = false;
     editedText.value = "";
@@ -126,9 +128,21 @@ async function loadPreview(id) {
     const signal = abortController.signal;
 
     isLoading.value = true;
+    loadingText.value = "";
     error.value = null;
     isEditing.value = false;
     previewContent.value = "";
+
+
+    invoke("get_item_data", { id })
+        .then(data => {
+            if (signal.aborted) return;
+            const textPlugin = data?.plugins?.find(p => p.id === 'text');
+            if (textPlugin?.data && isLoading.value) {
+                loadingText.value = textPlugin.data;
+            }
+        })
+        .catch(() => {});
 
     try {
         const data = await invoke("get_preview_content", { id });
@@ -156,6 +170,7 @@ async function loadPreview(id) {
 
         if (signal.aborted) return;
 
+        loadingText.value = "";
         previewContent.value = html || "<div class='empty'>No preview available</div>";
         originalText.value = text || "";
         editedText.value = text || "";
@@ -165,6 +180,7 @@ async function loadPreview(id) {
         if (signal.aborted) return;
         console.error("Failed to fetch preview:", e);
         error.value = "Failed to load preview";
+        loadingText.value = "";
     } finally {
         if (!signal.aborted) {
             isLoading.value = false;
@@ -291,8 +307,13 @@ defineExpose({
 <template>
     <div class="preview-pane">
         <div v-if="isLoading" class="loading-state">
-            <div class="spinner"></div>
-            <span>Loading preview...</span>
+            <template v-if="loadingText">
+                <pre class="loading-text-preview">{{ loadingText }}</pre>
+            </template>
+            <template v-else>
+                <div class="spinner"></div>
+                <span>Loading preview...</span>
+            </template>
         </div>
         <div v-else-if="error && !isEditing" class="error-state">
             {{ error }}
@@ -380,6 +401,27 @@ defineExpose({
     color: var(--text-secondary, #6b7280);
     gap: 10px;
     font-size: 12px;
+}
+
+.loading-state:has(.loading-text-preview) {
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+}
+
+.loading-text-preview {
+    flex: 1;
+    margin: 0;
+    padding: 8px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8em;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    background: var(--bg-input, #ffffff);
+    color: var(--text-primary, #111827);
+    border-radius: 4px;
 }
 
 .error-state {

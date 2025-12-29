@@ -81,6 +81,10 @@ const codeToKeyMap = {
   Digit5: '5', Digit6: '6', Digit7: '7', Digit8: '8', Digit9: '9',
   F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4', F5: 'F5', F6: 'F6',
   F7: 'F7', F8: 'F8', F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
+  Period: '.', Comma: ',', Slash: '/', Backslash: '\\',
+  BracketLeft: '[', BracketRight: ']',
+  Semicolon: ';', Quote: "'", Backquote: '`',
+  Minus: '-', Equal: '='
 };
 
 function parseShortcutString(shortcutStr) {
@@ -359,6 +363,13 @@ watch(searchQuery, () => {
     loadItems();
 }, { debounce: 300 });
 
+watch(allLoadedItems, async (items) => {
+    if (items.length === 0) {
+        globalSelectedIndex.value = -1;
+        await hidePreview();
+    }
+});
+
 watch(loadMoreSentinel, (el, prev) => {
     if (!loadMoreObserver) return;
     if (prev) loadMoreObserver.unobserve(prev);
@@ -614,17 +625,14 @@ async function copyItemToSystem(item) {
 }
 
 async function getItemPlainText(item) {
-    if (item.text) return item.text;
     try {
-        const response = await fetch(`http://localhost:3016/item/${item.id}/data`);
-        if (response.ok) {
-            const data = await response.json();
-            const textPlugin = data.plugins?.find(p => p.id === 'text');
-            if (textPlugin?.data) return textPlugin.data;
-        }
+        const data = await invoke("get_item_data", { id: item.id.toString() });
+        const textPlugin = data.plugins?.find(p => p.id === 'text');
+        if (textPlugin?.data) return textPlugin.data;
     } catch (e) {
         console.error("Failed to fetch item data:", e);
     }
+    if (item.text) return item.text;
     return null;
 }
 

@@ -642,7 +642,7 @@ fn output_single_item(item: &HistoryItem, mode: OutputMode) -> Result<bool> {
                 clean_summary(&raw_summary)
             };
             let line = format!(
-                "{} ({}) [{} x{}]   {}",
+                " {:>3} ({:>3}) [{} x{}]   {}",
                 item.offset, item.global_offset, timestamp, copies, summary
             );
             write_line(&line)
@@ -724,7 +724,7 @@ fn output_history(items: &[HistoryItem], mode: OutputMode) -> Result<()> {
                     clean_summary(&raw_summary)
                 };
                 let line = format!(
-                    "{} ({}) [{} x{}]   {}",
+                    " {:>3} ({:>3}) [{} x{}]   {}",
                     item.offset, item.global_offset, timestamp, copies, summary
                 );
                 if !write_line(&line)? {

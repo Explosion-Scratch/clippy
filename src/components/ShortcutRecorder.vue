@@ -38,7 +38,18 @@ const keyDisplayMap = {
   Delete: '⌦',
   Enter: '↵',
   Tab: '⇥',
-  Space: 'Space'
+  Space: 'Space',
+  '.': '.',
+  ',': ',',
+  '/': '/',
+  '\\': '\\',
+  '[': '[',
+  ']': ']',
+  ';': ';',
+  "'": "'",
+  '`': '`',
+  '-': '-',
+  '=': '='
 };
 
 const codeToKeyMap = {
@@ -57,7 +68,11 @@ const codeToKeyMap = {
   ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown',
   ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight',
   Delete: 'Delete', Home: 'Home', End: 'End',
-  PageUp: 'PageUp', PageDown: 'PageDown'
+  PageUp: 'PageUp', PageDown: 'PageDown',
+  Period: '.', Comma: ',', Slash: '/', Backslash: '\\',
+  BracketLeft: '[', BracketRight: ']',
+  Semicolon: ';', Quote: "'", Backquote: '`',
+  Minus: '-', Equal: '='
 };
 
 function formatShortcutDisplay(shortcutStr) {

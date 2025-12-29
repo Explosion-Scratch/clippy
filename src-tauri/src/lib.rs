@@ -329,6 +329,30 @@ async fn get_preview_content(id: String) -> Result<serde_json::Value, String> {
     Ok(json)
 }
 
+// Command to fetch item data (used by frontend for plain text fetching)
+#[tauri::command]
+async fn get_item_data(id: String) -> Result<serde_json::Value, String> {
+    let url = api::item_data_url(&id);
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch item data: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let json = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    Ok(json)
+}
+
 // Command to open item in dashboard
 #[tauri::command]
 fn open_in_dashboard(app: tauri::AppHandle, id: String) -> Result<(), String> {
@@ -402,6 +426,7 @@ pub fn run() {
             focus_preview,
             is_preview_visible,
             get_preview_content,
+            get_item_data,
             open_in_dashboard,
             sidecar::init_service,
             sidecar::stop_service,
