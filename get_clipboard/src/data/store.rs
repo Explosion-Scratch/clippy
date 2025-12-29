@@ -683,6 +683,139 @@ pub fn copy_by_selector(hash: &str) -> Result<EntryMetadata> {
     Ok(metadata)
 }
 
+pub fn copy_plain_by_selector(hash: &str) -> Result<EntryMetadata> {
+    let metadata = load_metadata(hash)?;
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+
+    let (order, map) = match plugins::extract_plugin_meta(&metadata)? {
+        Some(x) => x,
+        None => return Err(anyhow!("No plugin metadata found")),
+    };
+
+    // Check what plugins are available
+    let has_text = order.iter().any(|id| id == "text");
+    let has_image = order.iter().any(|id| id == "image");
+    let has_html = order.iter().any(|id| id == "html");
+    let has_rtf = order.iter().any(|id| id == "rtf");
+    let has_files = order.iter().any(|id| id == "files");
+
+    // If item is an image-only item, paste as normal (no text available)
+    if has_image && !has_text && !has_html && !has_rtf && !has_files {
+        // Fall back to normal paste for image-only items
+        let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
+        let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+        ctx.set(contents).map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+        return Ok(metadata);
+    }
+
+    let mut text_content: Option<String> = None;
+
+    // Priority 1: Prefer "text" plugin if available
+    if has_text {
+        if let Some(plugin_meta) = map.get("text") {
+            if let Some(plugin) = plugins::plugin_by_id("text") {
+                let stored_files = plugins::load_plugin_files(&item_dir, plugin_meta)?;
+                let ctx = plugins::PluginContext {
+                    metadata: &metadata,
+                    plugin_meta,
+                    item_dir: &item_dir,
+                    stored_files: &stored_files,
+                };
+                if let Ok(content) = plugin.to_clipboard_items(&ctx) {
+                    for item in content {
+                        if let clipboard_rs::common::ClipboardContent::Text(t) = item {
+                            text_content = Some(t);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Priority 2: If no text but has HTML, extract HTML content as plain text
+    if text_content.is_none() && has_html {
+        if let Some(plugin_meta) = map.get("html") {
+            if let Some(plugin) = plugins::plugin_by_id("html") {
+                let stored_files = plugins::load_plugin_files(&item_dir, plugin_meta)?;
+                let ctx = plugins::PluginContext {
+                    metadata: &metadata,
+                    plugin_meta,
+                    item_dir: &item_dir,
+                    stored_files: &stored_files,
+                };
+                if let Ok(content) = plugin.to_clipboard_items(&ctx) {
+                    for item in content {
+                        if let clipboard_rs::common::ClipboardContent::Html(h) = item {
+                            text_content = Some(h);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Priority 3: If no text/HTML but has RTF, extract RTF content as plain text
+    if text_content.is_none() && has_rtf {
+        if let Some(plugin_meta) = map.get("rtf") {
+            if let Some(plugin) = plugins::plugin_by_id("rtf") {
+                let stored_files = plugins::load_plugin_files(&item_dir, plugin_meta)?;
+                let ctx = plugins::PluginContext {
+                    metadata: &metadata,
+                    plugin_meta,
+                    item_dir: &item_dir,
+                    stored_files: &stored_files,
+                };
+                if let Ok(content) = plugin.to_clipboard_items(&ctx) {
+                    for item in content {
+                        if let clipboard_rs::common::ClipboardContent::Rtf(r) = item {
+                            text_content = Some(r);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Priority 4: If still no text and has files, paste file paths as text
+    if text_content.is_none() && has_files {
+        if let Some(plugin_meta) = map.get("files") {
+            // Extract file paths from plugin metadata
+            if let Some(entries) = plugin_meta.get("entries").and_then(|v| v.as_array()) {
+                let paths: Vec<String> = entries
+                    .iter()
+                    .filter_map(|entry| {
+                        entry.get("source_path")
+                            .or_else(|| entry.get("path"))
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                    })
+                    .collect();
+                if !paths.is_empty() {
+                    text_content = Some(paths.join("\n"));
+                }
+            }
+        }
+    }
+
+    // If we found text content, set it as plain text
+    if let Some(text) = text_content {
+        let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+        ctx.set_text(text).map_err(|e| anyhow!("Failed to set clipboard text: {e}"))?;
+        return Ok(metadata);
+    }
+
+    // Last resort: fall back to normal paste if nothing else worked
+    let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
+    let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+    ctx.set(contents).map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+    Ok(metadata)
+}
+
 pub fn delete_entry(hash: &str) -> Result<()> {
     let metadata = load_metadata(hash)?;
     let config = load_config()?;

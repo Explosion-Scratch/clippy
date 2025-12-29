@@ -96,7 +96,9 @@ fn router() -> Router {
         )
         .route("/item/:selector/preview", get(preview_item))
         .route("/item/:selector/copy", post(copy_item))
+        .route("/item/:selector/copy_plain", post(copy_item_plain))
         .route("/item/:selector/paste", post(paste_item))
+        .route("/item/:selector/paste_plain", post(paste_item_plain))
         .route("/search", get(search_items))
         .route("/stats", get(get_stats))
         .route("/mtime", get(get_mtime))
@@ -477,6 +479,20 @@ async fn copy_item(
     Ok((StatusCode::OK, Json(item)))
 }
 
+async fn copy_item_plain(
+    Path(selector): Path<String>,
+) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
+    let index = load_fresh_index()?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
+    crate::data::store::copy_plain_by_selector(&hash).map_err(ApiError::from)?;
+    let metadata = increment_copy_count(&hash).map_err(ApiError::from)?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let item = json_from_metadata(&metadata, offset, &data_dir).map_err(ApiError::from)?;
+    Ok((StatusCode::OK, Json(item)))
+}
+
+
 async fn paste_item(
     Path(selector): Path<String>,
 ) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
@@ -484,6 +500,20 @@ async fn paste_item(
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     copy_by_selector(&hash).map_err(ApiError::from)?;
+    paste::simulate_paste().map_err(ApiError::from)?;
+    let metadata = increment_copy_count(&hash).map_err(ApiError::from)?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let item = json_from_metadata(&metadata, offset, &data_dir).map_err(ApiError::from)?;
+    Ok((StatusCode::OK, Json(item)))
+}
+
+async fn paste_item_plain(
+    Path(selector): Path<String>,
+) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
+    let index = load_fresh_index()?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
+    crate::data::store::copy_plain_by_selector(&hash).map_err(ApiError::from)?;
     paste::simulate_paste().map_err(ApiError::from)?;
     let metadata = increment_copy_count(&hash).map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
