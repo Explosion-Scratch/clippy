@@ -8,6 +8,7 @@ export const ITEM_SHORTCUTS = {
     id: 'paste',
     label: 'Paste',
     key: 'Enter',
+    code: 'Enter',
     modifiers: { metaKey: false, altKey: false, shiftKey: false, ctrlKey: false },
     description: 'Paste the selected item'
   },
@@ -15,6 +16,7 @@ export const ITEM_SHORTCUTS = {
     id: 'copy',
     label: 'Copy',
     key: 'Enter',
+    code: 'Enter',
     modifiers: { metaKey: true, altKey: false, shiftKey: false, ctrlKey: false },
     description: 'Copy the selected item without pasting'
   },
@@ -22,6 +24,7 @@ export const ITEM_SHORTCUTS = {
     id: 'openDashboard',
     label: 'Open in dashboard',
     key: 'Enter',
+    code: 'Enter',
     modifiers: { shiftKey: true, metaKey: false, altKey: false, ctrlKey: false },
     description: 'Open the selected item in the web dashboard'
   },
@@ -29,6 +32,7 @@ export const ITEM_SHORTCUTS = {
     id: 'pastePlain',
     label: 'Paste as plain text',
     key: 'Enter',
+    code: 'Enter',
     modifiers: { altKey: true, metaKey: false, shiftKey: false, ctrlKey: false },
     description: 'Paste the selected item as plain text without formatting'
   },
@@ -36,6 +40,7 @@ export const ITEM_SHORTCUTS = {
     id: 'copyPlain',
     label: 'Copy as plain text',
     key: 'Enter',
+    code: 'Enter',
     modifiers: { altKey: true, shiftKey: true, metaKey: false, ctrlKey: false },
     description: 'Copy the selected item as plain text without pasting'
   }
@@ -43,12 +48,17 @@ export const ITEM_SHORTCUTS = {
 
 /**
  * Check if a keyboard event matches a shortcut definition.
+ * Uses event.code for reliable matching (e.key can change with modifier keys on macOS)
+ * Handles NumpadEnter as equivalent to Enter.
  * @param {KeyboardEvent} event 
  * @param {Object} shortcut 
  * @returns {boolean}
  */
 export function matchesShortcut(event, shortcut) {
-  if (event.key !== shortcut.key) return false
+  const codeMatches = event.code === shortcut.code || 
+    (shortcut.code === 'Enter' && event.code === 'NumpadEnter')
+    
+  if (!codeMatches) return false
   
   const mods = shortcut.modifiers
   return (

@@ -511,7 +511,7 @@ function handleKeyDown(e) {
         } else if (e.key === "ArrowUp") { 
             e.preventDefault(); 
             handleArrowUp(); 
-        } else if (e.key === "Enter") {
+        } else if (e.code === "Enter" || e.code === "NumpadEnter") {
             const currentItem = globalSelectedIndex.value >= 0 ? clipboardItems.value[globalSelectedIndex.value] : null;
             const handled = handleItemShortcuts(e, currentItem, {
                 paste: (item) => pasteItemToSystem(item),
@@ -638,17 +638,12 @@ async function getItemPlainText(item) {
 
 async function pasteItemPlainText(item) {
     try {
-        const text = await getItemPlainText(item);
-        if (!text) {
-            showToast("No plain text available", { timeout: 2000, bottom: "20px" });
-            return;
-        }
-        await navigator.clipboard.writeText(text);
         await invoke("hide_app");
-        await invoke("simulate_system_paste");
+        await invoke("paste_item_plain_text", { id: item.id.toString() });
         loadItems(false, item.id);
     } catch (error) {
         console.error("Failed to paste plain text:", error);
+        showToast("Failed to paste: " + error, { timeout: 3000, bottom: "20px" });
     }
 }
 
@@ -659,7 +654,7 @@ async function copyItemPlainText(item) {
             showToast("No plain text available", { timeout: 2000, bottom: "20px" });
             return;
         }
-        await navigator.clipboard.writeText(text);
+        await invoke("write_to_clipboard", { text });
         showToast("Copied as plain text", { timeout: 1500, bottom: "20px" });
         await invoke("hide_app");
     } catch (error) {
