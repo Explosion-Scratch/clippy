@@ -1,7 +1,14 @@
 use std::fs;
 
 use anyhow::{Result, anyhow};
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde_json::json;
+
+static COLOR_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)^#([0-9a-f]{3}|[0-9a-f]{6})$|^rgb\s*\(|^rgba\s*\(|^hsl\s*\(|^hsla\s*\(")
+        .expect("Invalid color regex pattern")
+});
 
 use crate::clipboard::snapshot::ClipboardSnapshot;
 use crate::clipboard::snapshot::{FileOutput, truncate_summary};
@@ -146,8 +153,7 @@ impl ClipboardPlugin for TextPlugin {
         let trimmed = text_content.trim();
         let is_svg = trimmed.starts_with("<svg") && trimmed.ends_with("</svg>");
 
-        let color_re = regex::Regex::new(r"(?i)^#([0-9a-f]{3}|[0-9a-f]{6})$|^rgb\s*\(|^rgba\s*\(|^hsl\s*\(|^hsla\s*\(").unwrap();
-        let is_color = color_re.is_match(trimmed);
+        let is_color = COLOR_RE.is_match(trimmed);
 
         let content = if is_svg {
             text_content.clone()

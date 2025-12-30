@@ -17,7 +17,6 @@ const INLINE_PREVIEW_MIN_WIDTH = 500;
 const DIR_CHECK_DELAY_MS = 1000;
 const HOVER_LOCK_DURATION_MS = 180;
 const LOADING_INDICATOR_DELAY_MS = 300;
-const POLL_INTERVAL_MS = 1500;
 const RESIZE_DEBOUNCE_MS = 50;
 
 const allLoadedItems = ref([]);
@@ -39,7 +38,6 @@ const windowHeight = ref(400);
 
 let loadingTimer = null;
 let windowResizeObserver = null;
-let pollingInterval = null;
 let lastKnownId = null;
 let loadMoreObserver = null;
 let listScrollCleanup = null;
@@ -49,6 +47,7 @@ let keyupHandler = null;
 let resizeDebounceTimer = null;
 let focusUnlisten = null;
 let previewChangedUnlisten = null;
+let clipboardChangedUnlisten = null;
 
 const showInlinePreview = computed(() => windowWidth.value >= INLINE_PREVIEW_MIN_WIDTH);
 
@@ -385,35 +384,6 @@ async function deleteItem(id) {
         }
     } catch (error) {
         console.error("Failed to delete item:", error);
-    }
-}
-
-async function pollForChanges() {
-    try {
-        const mtimeJson = await invoke("get_mtime");
-        const mtime = JSON.parse(mtimeJson);
-        consecutiveApiFailures = 0;
-        if (apiStatus.value === 'error') {
-            apiStatus.value = 'connected';
-        }
-        // Refresh items when mtime changes and no active search
-        // When window is focused, this ensures new items appear in real-time
-        // When window is hidden, this keeps the cache ready for next open
-        if (mtime.id && mtime.id !== lastKnownId && !searchQuery.value) {
-            // Only preserve selection if window is focused; otherwise let it reset on next open
-            const preserveId = isWindowFocused.value ? selectedItem.value?.id : null;
-            await loadItems(false, preserveId);
-            await loadTotalItems();
-        }
-        // Always update lastKnownId regardless of focus state
-        if (mtime.id) {
-            lastKnownId = mtime.id;
-        }
-    } catch (e) {
-        consecutiveApiFailures++;
-        if (consecutiveApiFailures >= API_FAILURE_THRESHOLD && apiStatus.value !== 'error') {
-            apiStatus.value = 'error';
-        }
     }
 }
 
@@ -765,9 +735,9 @@ async function handleFocusChange(focused) {
     } else {
         unregisterGlobalShortcut();
         
-        // Reset state when window gains focus - always start fresh
+        // Reset UI state when window gains focus - data is kept fresh by backend events
         searchQuery.value = "";
-        globalSelectedIndex.value = 0;
+        globalSelectedIndex.value = allLoadedItems.value.length > 0 ? 0 : -1;
         
         // Reset scroll position
         if (clipboardListRef.value) {
@@ -779,32 +749,9 @@ async function handleFocusChange(focused) {
             inlinePreviewRef.value.resetState?.();
         }
         
-        // Focus input immediately - data is kept fresh by polling
+        // Focus input immediately
         nextTick(() => searchInputRef.value?.focus());
         isModifierPressed.value = true;
-        
-        // Refresh data if needed (will reset to first item)
-        checkAndRefreshIfNeeded();
-    }
-}
-
-async function checkAndRefreshIfNeeded() {
-    try {
-        const mtimeJson = await invoke("get_mtime");
-        const mtime = JSON.parse(mtimeJson);
-        if (mtime.id && mtime.id !== lastKnownId) {
-            lastKnownId = mtime.id;
-            await loadTotalItems();
-            // Don't preserve selection - always reset to first item
-            await loadItems(false, null);
-        }
-        // Always reset selection and scroll after focus refresh
-        globalSelectedIndex.value = allLoadedItems.value.length > 0 ? 0 : -1;
-        if (clipboardListRef.value) {
-            clipboardListRef.value.scrollTop = 0;
-        }
-    } catch (e) {
-        // Silently fail - polling will catch up
     }
 }
 
@@ -825,6 +772,10 @@ function cleanup() {
         previewChangedUnlisten();
         previewChangedUnlisten = null;
     }
+    if (clipboardChangedUnlisten) {
+        clipboardChangedUnlisten();
+        clipboardChangedUnlisten = null;
+    }
     if (windowResizeObserver) {
         windowResizeObserver.disconnect();
         windowResizeObserver = null;
@@ -833,10 +784,7 @@ function cleanup() {
         loadMoreObserver.disconnect();
         loadMoreObserver = null;
     }
-    if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-    }
+
     if (listScrollCleanup) {
         listScrollCleanup();
         listScrollCleanup = null;
@@ -933,7 +881,19 @@ onMounted(async () => {
         };
     }
 
-    pollingInterval = setInterval(pollForChanges, POLL_INTERVAL_MS);
+    clipboardChangedUnlisten = await listen("clipboard-changed", async (event) => {
+        const newId = event.payload;
+        consecutiveApiFailures = 0;
+        if (apiStatus.value === 'error') {
+            apiStatus.value = 'connected';
+        }
+        if (newId && newId !== lastKnownId && !searchQuery.value) {
+            lastKnownId = newId;
+            const preserveId = isWindowFocused.value ? selectedItem.value?.id : null;
+            await loadItems(false, preserveId);
+            await loadTotalItems();
+        }
+    });
 });
 
 onUnmounted(() => {

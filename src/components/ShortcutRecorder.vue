@@ -105,6 +105,11 @@ function handleKeyDown(e) {
   e.preventDefault();
   e.stopPropagation();
   
+  if (e.code === 'Escape') {
+    cancelRecording();
+    return;
+  }
+  
   if (['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'ShiftLeft', 'ShiftRight', 'MetaLeft', 'MetaRight'].includes(e.code)) {
     return;
   }

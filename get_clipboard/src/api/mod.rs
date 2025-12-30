@@ -81,7 +81,6 @@ pub async fn serve(port: u16) -> Result<()> {
 }
 
 fn router() -> Router {
-    use axum::routing::patch;
     Router::new()
         .route("/", get(get_docs))
         .route("/version", get(get_version))
@@ -572,7 +571,7 @@ async fn patch_item(
             if !plugin.is_editable() {
                 return Err(ApiError::bad_request(format!("Plugin {} is not editable", plugin_id)));
             }
-            let import = plugin.edit_item(new_text)
+            let _import = plugin.edit_item(new_text)
                 .map_err(ApiError::from)?;
             new_formats.push(plugins::ClipboardJsonFormat {
                 plugin_id: plugin.id().to_string(),

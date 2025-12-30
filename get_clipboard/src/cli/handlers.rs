@@ -243,8 +243,7 @@ fn run_dir(command: DirCommand) -> Result<()> {
 }
 
 fn export_command(path: &Path) -> Result<()> {
-    use crate::data::store::store_json_item;
-    use serde::{Deserialize, Serialize};
+    use serde::Serialize;
     use std::fs::File;
     use std::io::Write;
 
@@ -355,7 +354,6 @@ fn import_command(path: &Path) -> Result<()> {
 fn run_stats(json: &bool) -> Result<()> {
     use std::collections::HashMap;
     use serde::Serialize;
-    use std::fs;
 
     #[derive(Serialize)]
     struct StatsOutput {

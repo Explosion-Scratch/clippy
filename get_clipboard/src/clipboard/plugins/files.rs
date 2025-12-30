@@ -132,13 +132,11 @@ impl ClipboardPlugin for FilesPlugin {
 
         let mut records = Vec::new();
         let mut lines = Vec::new();
-        let mut total_size = 0u64;
 
         for raw_path in &paths {
             let path_buf = PathBuf::from(raw_path);
             let metadata = fs::metadata(&path_buf).ok();
             let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-            total_size += size;
             let name = path_buf
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())

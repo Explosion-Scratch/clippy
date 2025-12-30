@@ -21,6 +21,7 @@ const shortcut = ref('Control+P');
 const displayShortcut = ref('⌃P');
 const isSavingShortcut = ref(false);
 const isRecordingShortcut = ref(false);
+let escCancelledRecording = false;
 
 const accentColor = ref('#20b2aa');
 
@@ -266,6 +267,10 @@ onMounted(async () => {
   document.addEventListener('keyup', async (e) => {
     if (e.key === 'Escape') {
       if (isRecordingShortcut.value) return;
+      if (escCancelledRecording) {
+        escCancelledRecording = false;
+        return;
+      }
       await closeSettings();
     }
   });
@@ -321,7 +326,7 @@ onUnmounted(() => {
           v-model="shortcut"
           compact
           @change="onShortcutChange"
-          @recording="(val) => isRecordingShortcut = val"
+          @recording="(val) => { if (!val && isRecordingShortcut) escCancelledRecording = true; isRecordingShortcut = val; }"
         />
       </div>
 

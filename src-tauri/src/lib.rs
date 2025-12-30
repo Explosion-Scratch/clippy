@@ -481,7 +481,8 @@ pub fn run() {
 
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let window = app_handle.get_webview_window("main").unwrap();
+            let window = app_handle.get_webview_window("main")
+                .ok_or("Failed to get main window during setup")?;
 
             // Shared state for clipboard items in tray
             let tray_items: TrayClipboardItems = Arc::new(Mutex::new(Vec::new()));
@@ -506,20 +507,19 @@ pub fn run() {
                 MenuItemBuilder::with_id("stats", format!("clippy v{VERSION}")).enabled(false).build(app)?;
 
             // Create clipboard item menu entries (initially hidden)
-            let clip_items: Vec<tauri::menu::MenuItem<tauri::Wry>> = (0..10)
-                .map(|i| {
-                    let key = if i == 9 {
-                        "0".to_string()
-                    } else {
-                        (i + 1).to_string()
-                    };
-                    MenuItemBuilder::with_id(format!("clip_{}", i), "")
-                        .accelerator(format!("CmdOrCtrl+{}", key))
-                        .enabled(false)
-                        .build(app)
-                        .unwrap()
-                })
-                .collect();
+            let mut clip_items: Vec<tauri::menu::MenuItem<tauri::Wry>> = Vec::with_capacity(10);
+            for i in 0..10 {
+                let key = if i == 9 {
+                    "0".to_string()
+                } else {
+                    (i + 1).to_string()
+                };
+                let item = MenuItemBuilder::with_id(format!("clip_{}", i), "")
+                    .accelerator(format!("CmdOrCtrl+{}", key))
+                    .enabled(false)
+                    .build(app)?;
+                clip_items.push(item);
+            }
 
             // Build menu: clipboard items first, then nav items at bottom
             let mut menu_builder = MenuBuilder::new(app);
@@ -644,8 +644,11 @@ pub fn run() {
             // Store tray items in app state for menu event handler
             app.manage(tray_items.clone());
 
+            let default_icon = app.default_window_icon()
+                .ok_or("No default window icon available")?
+                .clone();
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(default_icon)
                 .menu(&menu)
                 .on_menu_event(move |app, event| {
                     let event_id = event.id().as_ref();
@@ -810,6 +813,46 @@ pub fn run() {
                     }
                 } else {
                     eprintln!("Failed to find sidecar");
+                }
+            });
+
+            // Start background mtime polling loop
+            let app_handle_clone = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let client = reqwest::Client::new();
+                let mtime_url = api::mtime_url();
+                let mut last_known_id: Option<String> = None;
+
+                // Wait for API to be ready
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                    match client.get(&mtime_url).send().await {
+                        Ok(response) => {
+                            if let Ok(json) = response.json::<serde_json::Value>().await {
+                                if let Some(id) = json["id"].as_str() {
+                                    let id_str = id.to_string();
+                                    let should_emit = match &last_known_id {
+                                        Some(known) => known != &id_str,
+                                        None => true,
+                                    };
+
+                                    if should_emit {
+                                        last_known_id = Some(id_str.clone());
+                                        println!("Clipboard changed: {}", id_str);
+                                        if let Err(e) = app_handle_clone.emit("clipboard-changed", id_str) {
+                                            eprintln!("Failed to emit clipboard-changed event: {}", e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // API not available, silently continue
+                        }
+                    }
                 }
             });
 
