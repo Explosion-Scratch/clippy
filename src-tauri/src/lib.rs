@@ -21,6 +21,8 @@ mod visibility;
 // Shared state for tray menu clipboard items
 type TrayClipboardItems = Arc<Mutex<Vec<(String, String)>>>; // (id, summary)
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -501,7 +503,7 @@ pub fn run() {
 
             // Create stats item (shown at bottom with clipboard items count)
             let stats_item =
-                MenuItemBuilder::with_id("stats", "clippy v0.1.0").enabled(false).build(app)?;
+                MenuItemBuilder::with_id("stats", format!("clippy v{VERSION}")).enabled(false).build(app)?;
 
             // Create clipboard item menu entries (initially hidden)
             let clip_items: Vec<tauri::menu::MenuItem<tauri::Wry>> = (0..10)
@@ -565,12 +567,12 @@ pub fn run() {
                                     format!("{:.1}mb", size as f64 / (1024.0 * 1024.0))
                                 };
 
-                                let text = format!("clippy v0.1.0 · {} items · {}", count, size_str);
+                                let text = format!("clippy v{VERSION} · {} items · {}", count, size_str);
                                 let _ = stats_item_handle.set_text(text);
                             }
                         }
                         Err(_) => {
-                            let _ = stats_item_handle.set_text("clippy v0.1.0 · ⚠ API not connected");
+                            let _ = stats_item_handle.set_text(format!("clippy v{VERSION} · ⚠ API not connected"));
                         }
                     }
 
