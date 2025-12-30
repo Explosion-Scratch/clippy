@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::AppHandle;
-use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use tauri_plugin_store::StoreExt;
 

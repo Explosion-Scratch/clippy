@@ -13,11 +13,9 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 mod accessibility;
 mod api;
 mod clipboard;
-mod db;
 mod paste;
 mod settings;
 mod sidecar;
-mod structs;
 mod visibility;
 
 // Shared state for tray menu clipboard items
@@ -362,11 +360,12 @@ async fn get_item_data(id: String) -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn open_in_dashboard(app: tauri::AppHandle, id: String) -> Result<(), String> {
     use tauri::Manager;
+    use tauri_plugin_opener::OpenerExt;
 
     // Open URL in default browser
     let url = api::dashboard_item_url(&id);
-    app.shell()
-        .open(&url, None)
+    app.opener()
+        .open_url(&url, None::<&str>)
         .map_err(|e| format!("Failed to open URL: {}", e))?;
 
     // Hide preview window
@@ -655,7 +654,8 @@ pub fn run() {
                             }
                         }
                         "dashboard" => {
-                            let _ = app.shell().open(&api::dashboard_url(), None);
+                            use tauri_plugin_opener::OpenerExt;
+                            let _ = app.opener().open_url(&api::dashboard_url(), None::<&str>);
                         }
                         "settings" => {
                             if let Err(e) = open_settings_window(app.clone()) {
