@@ -74,6 +74,7 @@ await invoke('get_items').then(data => items.value = data)
 - **FS-Based Storage**: Items stored in `~/Library/Application Support/com.clipboard/data/` with hash-based directory nesting
 - **Version Sync**: Use `just increment-version` to update versions across `tauri.conf.json`, `Cargo.toml`, and `package.json`
 - **macOS Native**: Use vibrancy, transparency, and hidden title bars for native feel
+- **Event-Driven Sync**: Favor event-based updates (e.g., `listen('clipboard-changed')`) over polling for state synchronization between backend and frontend.
 
 ## Boundaries
 
@@ -92,4 +93,5 @@ await invoke('get_items').then(data => items.value = data)
   - Add SQLite or any database (use file-system storage)
   - Edit version fields manually (use `just increment-version`)
   - Access filesystem directly from Vue (use Tauri commands)
-  - Use `.unwrap()` in production Rust code
+  - Use `.unwrap()` or `.expect()` (use proper error handling)
+  - Use polling for state synchronization when event-based listeners are available

@@ -111,6 +111,7 @@ fn get_preview_data(&self, ctx: &PluginContext<'_>) -> Result<Value> {
 - **Files Over Memory**: Store content in files, not plugin metadata
 - **Idempotent Capture**: Same clipboard content should produce same capture
 - **Template Naming**: Use `{plugin_name}.hbs` in `templates/`
+- **Regex Optimization**: Use `std::sync::OnceLock` for regex compilation to avoid overhead.
 
 ## Adding a New Plugin
 

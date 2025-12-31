@@ -1,146 +1,177 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick, onUnmounted, reactive } from "vue";
+import { ref, computed, onMounted, watch, nextTick, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { listen, emit as tauriEmit } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { useRouter } from "vue-router";
 import ClipboardItem from "./ClipboardItem.vue";
 import InlinePreview from "./InlinePreview.vue";
 import { showToast } from "../utils/ui";
-import { handleItemShortcuts, ITEM_SHORTCUTS, getFilteredShortcuts } from "../utils/itemShortcuts";
+import { handleItemShortcuts, getFilteredShortcuts } from "../utils/itemShortcuts";
+import {
+    useClipboardItems,
+    useKeyboardHandling,
+    useClipboardCycling,
+    useWindowFocus,
+    useClipboardPreview,
+    useClipboardActions,
+    useClipboardChangeEvent,
+    usePreviewChangeEvent,
+    useListSelection
+} from "../composables";
 
 const router = useRouter();
 
-const BATCH_SIZE = 30;
 const WINDOW_STATE_KEY = 'clipboardManagerWindowState';
 const INLINE_PREVIEW_MIN_WIDTH = 500;
 const DIR_CHECK_DELAY_MS = 1000;
-const HOVER_LOCK_DURATION_MS = 180;
 const LOADING_INDICATOR_DELAY_MS = 300;
 const RESIZE_DEBOUNCE_MS = 50;
 
-const allLoadedItems = ref([]);
-const searchQuery = ref("");
-const isLoading = ref(false);
-const isLoadingMore = ref(false);
-const showLoadingStatus = ref(false);
-const globalSelectedIndex = ref(-1);
-const selectedIndex = ref(-1);
 const clipboardManager = ref(null);
 const clipboardListRef = ref(null);
 const loadMoreSentinel = ref(null);
 const searchInputRef = ref(null);
 const inlinePreviewRef = ref(null);
-const clipboardItems = computed(() => allLoadedItems.value);
-const totalItems = ref(0);
 const windowWidth = ref(400);
 const windowHeight = ref(400);
+const showLoadingStatus = ref(false);
 
 let loadingTimer = null;
 let windowResizeObserver = null;
-let lastKnownId = null;
 let loadMoreObserver = null;
 let listScrollCleanup = null;
-let hoverLockUntil = 0;
-let keydownHandler = null;
-let keyupHandler = null;
 let resizeDebounceTimer = null;
-let focusUnlisten = null;
-let previewChangedUnlisten = null;
-let clipboardChangedUnlisten = null;
+let lastKnownId = null;
 
 const showInlinePreview = computed(() => windowWidth.value >= INLINE_PREVIEW_MIN_WIDTH);
-
 const showDirModal = ref(false);
 const mismatchDirs = ref({ current: "", expected: "" });
 
-const isCycling = ref(false);
-const isModifierPressed = ref(false);
-const isWindowFocused = ref(true);
+const {
+    items: clipboardItems,
+    allLoadedItems,
+    totalItems,
+    isLoading,
+    isLoadingMore,
+    searchQuery,
+    apiStatus,
+    hasMore,
+    isEmpty,
+    loadItems: loadItemsBase,
+    loadMore,
+    loadTotal,
+    deleteItem: deleteItemBase,
+    restartApi: restartApiBase,
+    dismissApiError
+} = useClipboardItems();
 
-const keyboardState = reactive({
-    currentlyPressed: [],
-    itemShortcuts: getFilteredShortcuts([])
+const {
+    selectedIndex: globalSelectedIndex,
+    selectedItem,
+    selectNext,
+    selectPrev,
+    selectIndex,
+    selectFirst,
+    handleMouseEnter,
+    scrollIntoView,
+    reset: resetSelection
+} = useListSelection(allLoadedItems, {
+    listRef: clipboardListRef,
+    initialIndex: -1,
+    onLoadMore: loadMore
 });
 
-const apiStatus = ref('connected');
-let consecutiveApiFailures = 0;
-const API_FAILURE_THRESHOLD = 3;
+const {
+    configuredShortcut,
+    isModifierPressed,
+    state: keyboardState,
+    loadConfiguredShortcut,
+    matchesConfiguredShortcut,
+    hasAnyShortcutModifier,
+    resetState: resetKeyboardState,
+    unregisterGlobalShortcut,
+    registerGlobalShortcut
+} = useKeyboardHandling({ 
+    autoRegister: false,
+    emitToPreview: computed(() => !showInlinePreview.value)
+});
 
-const configuredShortcut = ref({ ctrl: true, alt: false, shift: false, meta: false, code: 'KeyP' });
+const {
+    pasteItem,
+    copyItem,
+    pasteAsPlainText,
+    copyAsPlainText,
+    hideApp,
+    openSettings
+} = useClipboardActions();
 
-const codeToKeyMap = {
-  KeyA: 'A', KeyB: 'B', KeyC: 'C', KeyD: 'D', KeyE: 'E',
-  KeyF: 'F', KeyG: 'G', KeyH: 'H', KeyI: 'I', KeyJ: 'J',
-  KeyK: 'K', KeyL: 'L', KeyM: 'M', KeyN: 'N', KeyO: 'O',
-  KeyP: 'P', KeyQ: 'Q', KeyR: 'R', KeyS: 'S', KeyT: 'T',
-  KeyU: 'U', KeyV: 'V', KeyW: 'W', KeyX: 'X', KeyY: 'Y',
-  KeyZ: 'Z',
-  Digit0: '0', Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4',
-  Digit5: '5', Digit6: '6', Digit7: '7', Digit8: '8', Digit9: '9',
-  F1: 'F1', F2: 'F2', F3: 'F3', F4: 'F4', F5: 'F5', F6: 'F6',
-  F7: 'F7', F8: 'F8', F9: 'F9', F10: 'F10', F11: 'F11', F12: 'F12',
-  Period: '.', Comma: ',', Slash: '/', Backslash: '\\',
-  BracketLeft: '[', BracketRight: ']',
-  Semicolon: ';', Quote: "'", Backquote: '`',
-  Minus: '-', Equal: '='
-};
+const preview = useClipboardPreview({
+    useInlinePreview: showInlinePreview
+});
 
-function parseShortcutString(shortcutStr) {
-  const parts = shortcutStr.split('+');
-  const result = { ctrl: false, alt: false, shift: false, meta: false, code: 'KeyP' };
-  
-  for (const part of parts) {
-    switch (part) {
-      case 'Control': case 'Ctrl': result.ctrl = true; break;
-      case 'Alt': case 'Option': result.alt = true; break;
-      case 'Shift': result.shift = true; break;
-      case 'Meta': case 'Cmd': case 'Command': result.meta = true; break;
-      default:
-        for (const [code, key] of Object.entries(codeToKeyMap)) {
-          if (key === part.toUpperCase()) {
-            result.code = code;
-            break;
-          }
+const {
+    isCycling,
+    activeIndex: cyclingIndex,
+    startCycling,
+    cycleNext,
+    endCycling,
+    cancelCycling
+} = useClipboardCycling(clipboardItems, {
+    onCycleStart: (item, index) => {
+        globalSelectedIndex.value = index;
+        scrollIntoView();
+    },
+    onSelect: (item, index) => {
+        globalSelectedIndex.value = index;
+        scrollIntoView();
+    },
+    onCycleEnd: async (item) => {
+        await pasteItemToSystem(item);
+    }
+});
+
+const { isFocused: isWindowFocused } = useWindowFocus({
+    onFocus: async () => {
+        unregisterGlobalShortcut();
+        searchQuery.value = "";
+        selectFirst();
+        if (clipboardListRef.value) clipboardListRef.value.scrollTop = 0;
+        if (inlinePreviewRef.value) inlinePreviewRef.value.resetState?.();
+        nextTick(() => searchInputRef.value?.focus());
+        isModifierPressed.value = true;
+    },
+    onBlur: async () => {
+        searchQuery.value = "";
+        selectFirst();
+        if (clipboardListRef.value) clipboardListRef.value.scrollTop = 0;
+        if (inlinePreviewRef.value) inlinePreviewRef.value.resetState?.();
+        await preview.hide();
+        if (isCycling.value) {
+            cancelCycling();
+            isModifierPressed.value = false;
         }
-        break;
+        resetKeyboardState();
+        registerGlobalShortcut();
+        saveWindowState();
     }
-  }
-  
-  return result;
-}
+});
 
-async function loadConfiguredShortcut() {
-  try {
-    const shortcutStr = await invoke('get_configured_shortcut');
-    configuredShortcut.value = parseShortcutString(shortcutStr);
-  } catch (e) {
-    console.error('Failed to load configured shortcut:', e);
-  }
-}
-
-function matchesConfiguredShortcut(e) {
-  const s = configuredShortcut.value;
-  return e.ctrlKey === s.ctrl &&
-         e.altKey === s.alt &&
-         e.shiftKey === s.shift &&
-         e.metaKey === s.meta &&
-         e.code === s.code;
-}
-
-function hasAnyModifierPressed(e) {
-  const s = configuredShortcut.value;
-  return (s.ctrl && e.ctrlKey) ||
-         (s.alt && e.altKey) ||
-         (s.shift && e.shiftKey) ||
-         (s.meta && e.metaKey);
-}
-
-const selectedItem = computed(() => {
-    if (globalSelectedIndex.value >= 0 && allLoadedItems.value[globalSelectedIndex.value]) {
-        return allLoadedItems.value[globalSelectedIndex.value];
+useClipboardChangeEvent(async (newId) => {
+    if (apiStatus.value === 'error') {
+        apiStatus.value = 'connected';
     }
-    return null;
+    if (newId && newId !== lastKnownId && !searchQuery.value) {
+        lastKnownId = newId;
+        const preserveId = isWindowFocused.value ? selectedItem.value?.id : null;
+        await loadItems(false, preserveId);
+        await loadTotal();
+    }
+});
+
+usePreviewChangeEvent(async (newId) => {
+    if (newId) {
+        await loadItems(false, newId);
+    }
 });
 
 const searchPlaceholder = computed(() => `Search ${totalItems.value} items`);
@@ -214,14 +245,11 @@ async function handleDirChoice(choice) {
 }
 
 function startLoading() {
-    isLoading.value = true;
-    showLoadingStatus.value = false;
     if (loadingTimer) clearTimeout(loadingTimer);
     loadingTimer = setTimeout(() => { showLoadingStatus.value = true; }, LOADING_INDICATOR_DELAY_MS);
 }
 
 function stopLoading() {
-    isLoading.value = false;
     showLoadingStatus.value = false;
     if (loadingTimer) { 
         clearTimeout(loadingTimer); 
@@ -230,121 +258,76 @@ function stopLoading() {
 }
 
 async function loadItems(appendMode = false, preserveId = null) {
-    try {
-        if (!appendMode) startLoading();
-        else isLoadingMore.value = true;
+    if (!appendMode) startLoading();
+    
+    const targetId = preserveId || (appendMode ? null : selectedItem.value?.id);
+    await loadItemsBase({ append: appendMode, preserveId: targetId });
+    
+    if (!appendMode) {
+        if (allLoadedItems.value.length > 0) lastKnownId = allLoadedItems.value[0].id;
         
-        const query = searchQuery.value.trim();
-        const offset = appendMode ? allLoadedItems.value.length : 0;
-        const jsonStr = await invoke("get_history", { 
-            query: query || null, 
-            limit: BATCH_SIZE, 
-            offset: offset 
-        });
-        
-        const rawItems = JSON.parse(jsonStr);
-        const items = rawItems.map(mapApiItem);
-        const targetId = preserveId || (appendMode ? null : selectedItem.value?.id);
-        
-        if (!appendMode) {
-            allLoadedItems.value = items;
-            if (items.length > 0) lastKnownId = items[0].id;
-
-            if (isCycling.value) {
-                // Don't reset selection during cycling mode
-            } else if (targetId) {
-                const idx = items.findIndex((it) => it.id === targetId);
-                globalSelectedIndex.value = idx >= 0 ? idx : (items.length > 0 ? 0 : -1);
+        if (!isCycling.value) {
+            if (targetId) {
+                const idx = allLoadedItems.value.findIndex((it) => it.id === targetId);
+                globalSelectedIndex.value = idx >= 0 ? idx : (allLoadedItems.value.length > 0 ? 0 : -1);
             } else {
-                globalSelectedIndex.value = items.length > 0 ? 0 : -1;
+                selectFirst();
             }
-            
-            if (!isCycling.value) {
-                await syncPreviewWindow();
-            }
-        } else {
-            allLoadedItems.value = [...allLoadedItems.value, ...items];
+            await syncPreviewWindow();
         }
-    } catch (error) {
-        console.error("Failed to load items:", error);
-    } finally {
-        stopLoading();
-        isLoadingMore.value = false;
     }
-}
-
-async function loadMoreItems() {
-    if (isLoadingMore.value || allLoadedItems.value.length >= totalItems.value) return;
-    await loadItems(true);
-}
-
-async function loadTotalItems() {
-    try {
-        const count = await invoke("db_get_count");
-        totalItems.value = count;
-    } catch (e) {
-        console.error("Failed to load total items:", e);
-        totalItems.value = 0;
-    }
+    
+    stopLoading();
 }
 
 async function syncPreviewWindow() {
     if (!selectedItem.value) return;
-    await showPreview(selectedItem.value.id.toString());
-}
-
-function mapApiItem(item) {
-    const id = item.hash || item.id;
-    const idx = item.offset !== undefined ? item.offset : item.index;
-    const itemType = item.type;
-
-    return {
-        id: id,
-        index: idx,
-        text: item.summary,
-        timestamp: new Date(item.lastSeen || item.date || Date.now()).getTime(),
-        byteSize: item.byteSize || item.size || 0,
-        copies: item.copyCount || 0,
-        firstCopied: item.timestamp ? new Date(item.timestamp).getTime() / 1000 : (new Date(item.date).getTime() / 1000),
-        data: item.data,
-        formats: {
-            imageData: itemType === "image",
-            files: (itemType === "file" || itemType === "files") ? [item.summary] : [],
-        }
-    };
+    await preview.show(selectedItem.value.id);
 }
 
 watch(selectedItem, async (newItem) => {
     if (!newItem) return;
-    await showPreview(newItem.id.toString());
+    await preview.show(newItem.id);
 });
 
 watch(showInlinePreview, async () => {
     if (!selectedItem.value) return;
-    await showPreview(selectedItem.value.id.toString());
+    await preview.show(selectedItem.value.id);
 });
 
-async function showPreview(id) {
-    if (!id) {
-        await hidePreview();
-        return;
+watch(searchQuery, () => {
+    globalSelectedIndex.value = -1;
+    loadItems();
+}, { debounce: 300 });
+
+watch(allLoadedItems, async (items) => {
+    if (items.length === 0) {
+        globalSelectedIndex.value = -1;
+        await preview.hide();
     }
-    if (showInlinePreview.value) {
-        await hidePreview();
-    } else {
-        try {
-            await invoke("preview_item", { id: id.toString() });
-        } catch (e) {
-            console.error("Failed to show preview:", e);
-        }
+});
+
+watch(loadMoreSentinel, (el, prev) => {
+    if (!loadMoreObserver) return;
+    if (prev) loadMoreObserver.unobserve(prev);
+    if (el) loadMoreObserver.observe(el);
+});
+
+async function deleteItem(id) {
+    const success = await deleteItemBase(id);
+    if (success && globalSelectedIndex.value >= allLoadedItems.value.length) {
+        globalSelectedIndex.value = Math.max(0, allLoadedItems.value.length - 1);
     }
 }
 
-async function hidePreview() {
-    try {
-        await invoke("hide_preview");
-    } catch (e) {
-        console.error("Failed to hide preview window:", e);
+async function restartApi() {
+    showToast("Restarting API...", { timeout: 2000 });
+    const success = await restartApiBase();
+    if (success) {
+        await loadItems();
+        showToast("API restarted successfully", { timeout: 2000 });
+    } else {
+        showToast("Failed to restart API", { timeout: 4000 });
     }
 }
 
@@ -357,83 +340,6 @@ function handleToastEvent(e) {
     }
 }
 
-watch(searchQuery, () => {
-    globalSelectedIndex.value = -1;
-    loadItems();
-}, { debounce: 300 });
-
-watch(allLoadedItems, async (items) => {
-    if (items.length === 0) {
-        globalSelectedIndex.value = -1;
-        await hidePreview();
-    }
-});
-
-watch(loadMoreSentinel, (el, prev) => {
-    if (!loadMoreObserver) return;
-    if (prev) loadMoreObserver.unobserve(prev);
-    if (el) loadMoreObserver.observe(el);
-});
-
-async function deleteItem(id) {
-    try {
-        await invoke("delete_item", { selector: id.toString() });
-        allLoadedItems.value = allLoadedItems.value.filter(item => item.id !== id);
-        if (globalSelectedIndex.value >= allLoadedItems.value.length) {
-            globalSelectedIndex.value = Math.max(0, allLoadedItems.value.length - 1);
-        }
-    } catch (error) {
-        console.error("Failed to delete item:", error);
-    }
-}
-
-async function restartApi() {
-    showToast("Restarting API...", { timeout: 2000 });
-    try {
-        await invoke("restart_api");
-        apiStatus.value = 'connected';
-        consecutiveApiFailures = 0;
-        await loadItems();
-        showToast("API restarted successfully", { timeout: 2000 });
-    } catch (e) {
-        showToast("Failed to restart API: " + e, { timeout: 4000 });
-    }
-}
-
-function dismissApiError() {
-    apiStatus.value = 'dismissed';
-}
-
-function updateKeyboardState(e) {
-    const pressed = [];
-    if (e.ctrlKey) pressed.push('Control');
-    if (e.altKey) pressed.push('Alt');
-    if (e.shiftKey) pressed.push('Shift');
-    if (e.metaKey) pressed.push('Meta');
-    
-    keyboardState.currentlyPressed = pressed;
-    keyboardState.itemShortcuts = getFilteredShortcuts(pressed);
-    
-    if (!showInlinePreview.value) {
-        tauriEmit("keyboard-state-changed", {
-            currentlyPressed: pressed,
-            itemShortcuts: keyboardState.itemShortcuts
-        }).catch(err => console.error("Failed to emit keyboard state:", err));
-    }
-}
-
-function resetKeyboardState() {
-    keyboardState.currentlyPressed = [];
-    keyboardState.itemShortcuts = getFilteredShortcuts([]);
-    
-    if (!showInlinePreview.value) {
-        tauriEmit("keyboard-state-changed", {
-            currentlyPressed: [],
-            itemShortcuts: keyboardState.itemShortcuts
-        }).catch(err => console.error("Failed to emit keyboard state:", err));
-    }
-}
-
 function handleSearchKeyDown(e) {
     if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
@@ -441,16 +347,17 @@ function handleSearchKeyDown(e) {
 }
 
 function handleKeyDown(e) {
-    updateKeyboardState(e);
-    
     if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
-        if (!isCycling.value) startCyclingMode();
-        else cycleToNext();
+        if (!isCycling.value) {
+            startCycling();
+        } else {
+            cycleNext();
+        }
         return;
     }
     
-    if (hasAnyModifierPressed(e)) {
+    if (hasAnyShortcutModifier(e)) {
         isModifierPressed.value = true;
     }
     
@@ -459,9 +366,7 @@ function handleKeyDown(e) {
         
         if (key === ",") {
             e.preventDefault();
-            invoke("open_settings").catch(err => {
-                console.error("Failed to open settings:", err);
-            });
+            openSettings();
             return;
         }
         
@@ -477,34 +382,31 @@ function handleKeyDown(e) {
     if (!isCycling.value) {
         if (e.key === "ArrowDown") { 
             e.preventDefault(); 
-            handleArrowDown(); 
+            selectNext(); 
         } else if (e.key === "ArrowUp") { 
             e.preventDefault(); 
-            handleArrowUp(); 
+            selectPrev(); 
         } else if (e.code === "Enter" || e.code === "NumpadEnter") {
-            const currentItem = globalSelectedIndex.value >= 0 ? clipboardItems.value[globalSelectedIndex.value] : null;
+            const currentItem = selectedItem.value;
             const handled = handleItemShortcuts(e, currentItem, {
                 paste: (item) => pasteItemToSystem(item),
                 copy: (item) => copyItemToSystem(item),
                 pastePlain: (item) => pasteItemPlainText(item),
                 copyPlain: (item) => copyItemPlainText(item),
                 openDashboard: (item) => {
-                    invoke("open_in_dashboard", { id: item.id.toString() })
-                        .catch(err => console.error("Failed to open in dashboard:", err));
-                    invoke("hide_app");
+                    preview.openInDashboard(item.id);
+                    hideApp();
                 }
             });
             if (!handled && currentItem) {
                 e.preventDefault();
-                handleEnter();
+                pasteItemToSystem(currentItem);
             }
         }
     }
 }
 
 function handleKeyUp(e) {
-    updateKeyboardState(e);
-    
     const s = configuredShortcut.value;
     const modifierReleased = 
         (s.ctrl && e.key === 'Control') ||
@@ -514,7 +416,9 @@ function handleKeyUp(e) {
     
     if (modifierReleased) {
         isModifierPressed.value = false;
-        if (isCycling.value) endCycling();
+        if (isCycling.value) {
+            endCycling();
+        }
     }
     if (e.key === "Escape") {
         if (showDirModal.value) {
@@ -523,112 +427,34 @@ function handleKeyUp(e) {
             loadItems();
             return;
         }
-        invoke("hide_app");
-    }
-}
-
-function scrollSelectedIntoView() {
-    nextTick(() => {
-        const selectedEl = clipboardListRef.value?.querySelector('.clipboard-item.is-selected');
-        if (selectedEl) {
-            selectedEl.scrollIntoView({ block: 'nearest', behavior: 'auto' });
-        }
-    });
-}
-
-function lockHoverSelection() {
-    hoverLockUntil = Date.now() + HOVER_LOCK_DURATION_MS;
-}
-
-function handleMouseEnter(index) {
-    if (Date.now() < hoverLockUntil) return;
-    globalSelectedIndex.value = index;
-}
-
-async function handleArrowDown() {
-    if (allLoadedItems.value.length === 0) return;
-    lockHoverSelection();
-    
-    if (globalSelectedIndex.value < allLoadedItems.value.length - 1) {
-        globalSelectedIndex.value++;
-        scrollSelectedIntoView();
-        
-        if (globalSelectedIndex.value >= allLoadedItems.value.length - 5) {
-            await loadMoreItems();
-        }
-    }
-}
-
-function handleArrowUp() {
-    if (allLoadedItems.value.length === 0) return;
-    lockHoverSelection();
-    
-    if (globalSelectedIndex.value > 0) {
-        globalSelectedIndex.value--;
-        scrollSelectedIntoView();
-    }
-}
-
-function handleEnter() {
-    if (selectedItem.value) {
-        pasteItemToSystem(selectedItem.value);
+        hideApp();
     }
 }
 
 async function pasteItemToSystem(item) {
-    try {
-        await invoke("hide_app");
-        await invoke("paste_item", { selector: item.id.toString() });
-        loadItems(false, item.id);
-    } catch (error) {
-        console.error("Failed to inject item:", error);
-    }
+    await pasteItem(item);
+    loadItems(false, item.id);
 }
 
 async function copyItemToSystem(item) {
-    try {
-        await invoke("copy_item", { selector: item.id.toString() });
-        await invoke("hide_app");
-    } catch (error) {
-        console.error("Failed to copy item:", error);
-    }
-}
-
-async function getItemPlainText(item) {
-    try {
-        const data = await invoke("get_item_data", { id: item.id.toString() });
-        const textPlugin = data.plugins?.find(p => p.id === 'text');
-        if (textPlugin?.data) return textPlugin.data;
-    } catch (e) {
-        console.error("Failed to fetch item data:", e);
-    }
-    if (item.text) return item.text;
-    return null;
+    await copyItem(item);
 }
 
 async function pasteItemPlainText(item) {
-    try {
-        await invoke("hide_app");
-        await invoke("paste_item_plain_text", { id: item.id.toString() });
+    const success = await pasteAsPlainText(item);
+    if (success) {
         loadItems(false, item.id);
-    } catch (error) {
-        console.error("Failed to paste plain text:", error);
-        showToast("Failed to paste: " + error, { timeout: 3000, bottom: "20px" });
+    } else {
+        showToast("Failed to paste as plain text", { timeout: 3000, bottom: "20px" });
     }
 }
 
 async function copyItemPlainText(item) {
-    try {
-        const text = await getItemPlainText(item);
-        if (!text) {
-            showToast("No plain text available", { timeout: 2000, bottom: "20px" });
-            return;
-        }
-        await invoke("write_to_clipboard", { text });
+    const success = await copyAsPlainText(item);
+    if (success) {
         showToast("Copied as plain text", { timeout: 1500, bottom: "20px" });
-        await invoke("hide_app");
-    } catch (error) {
-        console.error("Failed to copy plain text:", error);
+    } else {
+        showToast("No plain text available", { timeout: 2000, bottom: "20px" });
     }
 }
 
@@ -636,11 +462,6 @@ async function refreshItem(id) {
     const targetId = id || selectedItem.value?.id;
     if (!targetId) return;
     await loadItems(false, targetId);
-}
-
-function resetSelection() {
-    globalSelectedIndex.value = -1;
-    searchQuery.value = "";
 }
 
 function formatFirstCopied(firstCopied) {
@@ -654,47 +475,6 @@ function formatFirstCopied(firstCopied) {
     return `${month}/${day} @ ${displayHours}:${minutes}${ampm}`;
 }
 
-function getItemInfo(item) {
-    if (!item) return null;
-    if (item.formats?.imageData) return { type: "image", size: item.byteSize, label: "Image" };
-    if (item.formats?.files && item.formats.files.length > 0) return { type: "files", size: `${item.formats.files.length} files`, label: "Files" };
-    const wordCount = item.text ? item.text.trim().split(/\s+/).length : 0;
-    return { type: "text", size: `${wordCount} words`, label: "Text" };
-}
-
-async function unregisterGlobalShortcut() { 
-    await invoke("unregister_main_shortcut").catch(console.error); 
-}
-
-async function registerGlobalShortcut() { 
-    await invoke("register_main_shortcut").catch(console.error); 
-}
-
-function startCyclingMode() {
-    if (clipboardItems.value.length === 0) return;
-    isCycling.value = true;
-    selectedIndex.value = clipboardItems.value.length > 1 ? 1 : 0;
-    globalSelectedIndex.value = selectedIndex.value;
-    scrollSelectedIntoView();
-}
-
-function cycleToNext() {
-    if (!isCycling.value || clipboardItems.value.length === 0) return;
-    selectedIndex.value = (selectedIndex.value + 1) % clipboardItems.value.length;
-    globalSelectedIndex.value = selectedIndex.value;
-    scrollSelectedIntoView();
-}
-
-async function endCycling() {
-    if (!isCycling.value) return;
-    isCycling.value = false;
-    globalSelectedIndex.value = selectedIndex.value;
-    if (selectedIndex.value >= 0 && clipboardItems.value[selectedIndex.value]) {
-        await pasteItemToSystem(clipboardItems.value[selectedIndex.value]);
-    }
-    selectedIndex.value = -1;
-}
-
 function handleDebouncedResize(width, height) {
     if (resizeDebounceTimer) {
         clearTimeout(resizeDebounceTimer);
@@ -706,76 +486,7 @@ function handleDebouncedResize(width, height) {
     }, RESIZE_DEBOUNCE_MS);
 }
 
-async function handleFocusChange(focused) {
-    isWindowFocused.value = focused;
-    
-    if (!focused) {
-        searchQuery.value = "";
-        globalSelectedIndex.value = 0;
-        
-        // Reset scroll position
-        if (clipboardListRef.value) {
-            clipboardListRef.value.scrollTop = 0;
-        }
-
-        // Reset preview state
-        if (inlinePreviewRef.value) {
-            inlinePreviewRef.value.resetState?.();
-        }
-        await hidePreview();
-        
-        if (isCycling.value) {
-            isCycling.value = false;
-            isModifierPressed.value = false;
-        }
-        
-        resetKeyboardState();
-        registerGlobalShortcut();
-        saveWindowState();
-    } else {
-        unregisterGlobalShortcut();
-        
-        // Reset UI state when window gains focus - data is kept fresh by backend events
-        searchQuery.value = "";
-        globalSelectedIndex.value = allLoadedItems.value.length > 0 ? 0 : -1;
-        
-        // Reset scroll position
-        if (clipboardListRef.value) {
-            clipboardListRef.value.scrollTop = 0;
-        }
-        
-        // Reset preview state
-        if (inlinePreviewRef.value) {
-            inlinePreviewRef.value.resetState?.();
-        }
-        
-        // Focus input immediately
-        nextTick(() => searchInputRef.value?.focus());
-        isModifierPressed.value = true;
-    }
-}
-
 function cleanup() {
-    if (keydownHandler) {
-        document.removeEventListener("keydown", keydownHandler);
-        keydownHandler = null;
-    }
-    if (keyupHandler) {
-        document.removeEventListener("keyup", keyupHandler);
-        keyupHandler = null;
-    }
-    if (focusUnlisten) {
-        focusUnlisten();
-        focusUnlisten = null;
-    }
-    if (previewChangedUnlisten) {
-        previewChangedUnlisten();
-        previewChangedUnlisten = null;
-    }
-    if (clipboardChangedUnlisten) {
-        clipboardChangedUnlisten();
-        clipboardChangedUnlisten = null;
-    }
     if (windowResizeObserver) {
         windowResizeObserver.disconnect();
         windowResizeObserver = null;
@@ -784,7 +495,6 @@ function cleanup() {
         loadMoreObserver.disconnect();
         loadMoreObserver = null;
     }
-
     if (listScrollCleanup) {
         listScrollCleanup();
         listScrollCleanup = null;
@@ -822,25 +532,11 @@ onMounted(async () => {
         console.error("Failed to read window size:", e);
     }
     
-    keydownHandler = handleKeyDown;
-    keyupHandler = handleKeyUp;
-    document.addEventListener("keydown", keydownHandler);
-    document.addEventListener("keyup", keyupHandler);
-    
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
     window.addEventListener('show-toast', handleToastEvent);
-    
-    focusUnlisten = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-        handleFocusChange(focused);
-    });
 
-    previewChangedUnlisten = await listen("preview-item-changed", async (event) => {
-        const newId = event.payload;
-        if (newId) {
-            await loadItems(false, newId);
-        }
-    });
-
-    await loadTotalItems();
+    await loadTotal();
     await loadItems();
     await checkDataDirectory();
 
@@ -859,7 +555,7 @@ onMounted(async () => {
 
     loadMoreObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting && !isLoadingMore.value) {
-            loadMoreItems();
+            loadMore();
         }
     }, { threshold: 0.1, root: clipboardListRef.value || undefined });
 
@@ -872,7 +568,7 @@ onMounted(async () => {
             const el = clipboardListRef.value;
             if (!el) return;
             if (el.scrollTop + el.clientHeight >= el.scrollHeight - 8) {
-                loadMoreItems();
+                loadMore();
             }
         };
         clipboardListRef.value.addEventListener("scroll", handleListScroll, { passive: true });
@@ -880,23 +576,11 @@ onMounted(async () => {
             clipboardListRef.value?.removeEventListener("scroll", handleListScroll);
         };
     }
-
-    clipboardChangedUnlisten = await listen("clipboard-changed", async (event) => {
-        const newId = event.payload;
-        consecutiveApiFailures = 0;
-        if (apiStatus.value === 'error') {
-            apiStatus.value = 'connected';
-        }
-        if (newId && newId !== lastKnownId && !searchQuery.value) {
-            lastKnownId = newId;
-            const preserveId = isWindowFocused.value ? selectedItem.value?.id : null;
-            await loadItems(false, preserveId);
-            await loadTotalItems();
-        }
-    });
 });
 
 onUnmounted(() => {
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keyup", handleKeyUp);
     cleanup();
 });
 </script>
@@ -930,7 +614,7 @@ onUnmounted(() => {
                     <button @click="restartApi" class="restart-btn">Restart API</button>
                     <button @click="dismissApiError" class="dismiss-btn">×</button>
                 </div>
-                <div v-if="allLoadedItems?.length === 0 && !isLoading" class="empty-state">
+                <div v-if="isEmpty" class="empty-state">
                     <div class="empty-icon">
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 256 256"><path fill="currentColor" d="M200,32H163.74a47.92,47.92,0,0,0-71.48,0H56A16,16,0,0,0,40,48V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm-72,0a32,32,0,0,1,32,32H96A32,32,0,0,1,128,32Zm72,184H56V48H82.75A47.93,47.93,0,0,0,80,64v8a8,8,0,0,0,8,8h80a8,8,0,0,0,8-8V64a47.93,47.93,0,0,0-2.75-16H200Z"/></svg>
                     </div>
@@ -946,7 +630,7 @@ onUnmounted(() => {
                         @delete="deleteItem(item.id)" 
                         @select="pasteItemToSystem(item)" 
                     />
-                    <div v-if="allLoadedItems.length < totalItems" ref="loadMoreSentinel" class="load-more-sentinel">
+                    <div v-if="hasMore" ref="loadMoreSentinel" class="load-more-sentinel">
                         <div v-if="isLoadingMore" class="loading-more">
                             <div class="spinner"></div>
                         </div>

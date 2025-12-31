@@ -73,6 +73,8 @@ async function showFloatingPreview(id) {
 - **Preview Architecture**: `PreviewPane` is inline, `PreviewWindow` is a separate Tauri window
 - **Keyboard First**: All major actions must have keyboard shortcuts
 - **Theming**: Use LESS variables that reference CSS custom properties
+- **Event-Driven Sync**: Use `listen` from `@tauri-apps/api/event` to keep UI in sync with backend state rather than polling.
+- **Focus Management**: Reset UI state (search, selection) when the window gains focus to provide a fresh starting point.
 
 ## Boundaries
 
@@ -81,6 +83,7 @@ async function showFloatingPreview(id) {
   - Use `defineEmits` for all events
   - Keep styles scoped with `lang="less"`
   - Support keyboard navigation
+  - Use Tauri event listeners for real-time data updates
 
 - ⚠️ **Ask first:**
   - Splitting large components (they may be intentionally monolithic)

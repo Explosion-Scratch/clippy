@@ -89,6 +89,15 @@ pub fn simulate_paste() -> Result<(), String> {
 }
 ```
 
+### Static Initialization
+```rust
+// Use OnceLock for efficient static resource initialization
+static REGEX: OnceLock<Regex> = OnceLock::new();
+fn get_regex() -> &'static Regex {
+    REGEX.get_or_init(|| Regex::new("pattern").unwrap())
+}
+```
+
 ## Boundaries
 
 - ✅ **Always do:**
