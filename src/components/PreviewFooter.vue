@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from "vue";
-import { formatShortcut } from "../utils/itemShortcuts";
+import { formatShortcut, ITEM_SHORTCUTS } from "../utils/itemShortcuts";
 
 const props = defineProps({
     keyboardState: {
@@ -10,17 +10,34 @@ const props = defineProps({
     isEditable: {
         type: Boolean,
         default: true
+    },
+    isInline: {
+        type: Boolean,
+        default: false
     }
 });
 
 const displayShortcuts = computed(() => {
     return props.keyboardState.itemShortcuts || [];
 });
+
+const showDefaultHint = computed(() => {
+    return displayShortcuts.value.length === 0;
+});
 </script>
 
 <template>
-    <div class="preview-footer">
-        <template v-if="displayShortcuts.length > 0">
+    <div class="preview-footer" :class="{ 'inline-footer': isInline }">
+        <template v-if="showDefaultHint">
+            <div v-if="isEditable" class="shortcut-group hint">
+                <span class="shortcut-label">Double-click to edit</span>
+            </div>
+            <div class="shortcut-group">
+                <span class="shortcut-label">{{ ITEM_SHORTCUTS.paste.label }}</span>
+                <span class="shortcut-key">{{ formatShortcut(ITEM_SHORTCUTS.paste) }}</span>
+            </div>
+        </template>
+        <template v-else>
             <div 
                 v-for="shortcut in displayShortcuts" 
                 :key="shortcut.id" 
@@ -28,12 +45,6 @@ const displayShortcuts = computed(() => {
             >
                 <span class="shortcut-label">{{ shortcut.label }}</span>
                 <span class="shortcut-key">{{ formatShortcut(shortcut) }}</span>
-            </div>
-        </template>
-        <template v-else>
-            <div class="shortcut-group hint">
-                <span v-if="isEditable" class="shortcut-label">Double-click to edit</span>
-                <span v-else class="shortcut-label">Preview</span>
             </div>
         </template>
     </div>
@@ -53,8 +64,14 @@ const displayShortcuts = computed(() => {
     user-select: none;
     flex-shrink: 0;
     font-family: system-ui, sans-serif;
-    border-radius: 0 0 6px 6px;
+    border-radius: 6px;
     gap: 8px;
+}
+
+.preview-footer.inline-footer {
+    --inline-bg: #fff5;
+    background-color: var(--inline-bg);
+    border-top: none;
 }
 
 .shortcut-group {
@@ -81,6 +98,12 @@ const displayShortcuts = computed(() => {
         --footer-bg: #00000033;
         --footer-border: #3e3e3e33;
         --footer-text: #9ca3af;
+    }
+    
+    .preview-footer.inline-footer {
+        --inline-bg: #fff1;
+        background-color: var(--inline-bg);
+        border-top: none;
     }
 }
 </style>

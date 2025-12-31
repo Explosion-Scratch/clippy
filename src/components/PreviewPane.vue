@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick, onUnmounted, onMounted } from "vue";
+import { ref, watch, nextTick, onUnmounted, onMounted, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { showToast } from "../utils/ui";
 import PreviewFooter from "./PreviewFooter.vue";
@@ -30,12 +30,18 @@ const error = ref(null);
 const isEditing = ref(false);
 const editedText = ref("");
 const originalText = ref("");
+const plainTextContent = ref("");
 const isEditable = ref(true);
 const itemKind = ref("text");
 const currentId = ref(null);
 const frameRef = ref(null);
 const isSaving = ref(false);
 const editTextareaRef = ref(null);
+
+const isAltPressed = computed(() => {
+    const pressed = props.keyboardState.currentlyPressed || [];
+    return pressed.includes('Alt');
+});
 
 let abortController = null;
 let frameDblHandler = null;
@@ -48,6 +54,7 @@ function resetState() {
     isEditing.value = false;
     editedText.value = "";
     originalText.value = "";
+    plainTextContent.value = "";
     itemKind.value = "text";
     isEditable.value = true;
     isSaving.value = false;
@@ -155,13 +162,26 @@ async function loadPreview(id) {
         const formatsOrder = data.formatsOrder || [];
         const dataMap = data.data || {};
 
+        const isTextFormatId = (id) => {
+            const lower = id.toLowerCase();
+            return lower.includes('text') || 
+                   lower.includes('utf8') || 
+                   lower.includes('plain') || 
+                   lower.includes('rtf') ||
+                   lower === 'public.utf8-plain-text';
+        };
+
         let html = "";
         let text = "";
+        let pureText = "";
         for (const formatId of formatsOrder) {
             const formatData = dataMap[formatId];
             if (!formatData) continue;
             if (!html && formatData.html) html = formatData.html;
             if (!text && formatData.text) text = formatData.text;
+            if (!pureText && formatData.text && (!formatData.html || isTextFormatId(formatId))) {
+                pureText = formatData.text;
+            }
         }
 
         if (html) {
@@ -174,6 +194,7 @@ async function loadPreview(id) {
         previewContent.value = html || "<div class='empty'>No preview available</div>";
         originalText.value = text || "";
         editedText.value = text || "";
+        plainTextContent.value = pureText || text || "";
 
         await nextTick();
     } catch (e) {
@@ -325,7 +346,7 @@ defineExpose({
                     ref="editTextareaRef"
                     v-model="editedText" 
                     class="edit-textarea"
-                    @keydown.escape="cancelEdit"
+                    @keydown.escape.stop="cancelEdit"
                     :disabled="isSaving"
                 ></textarea>
                 <div class="edit-actions">
@@ -338,13 +359,18 @@ defineExpose({
         </template>
         <template v-else-if="previewContent">
             <div class="frame-shell" @dblclick.stop="startEdit">
-                <iframe 
-                    class="content-frame"
-                    ref="frameRef"
-                    :srcdoc="previewContent"
-                    sandbox="allow-same-origin allow-scripts"
-                    @load="handleFrameLoad"
-                ></iframe>
+                <template v-if="isAltPressed && plainTextContent">
+                    <pre class="plain-text-preview">{{ plainTextContent }}</pre>
+                </template>
+                <template v-else>
+                    <iframe 
+                        class="content-frame"
+                        ref="frameRef"
+                        :srcdoc="previewContent"
+                        sandbox="allow-same-origin allow-scripts"
+                        @load="handleFrameLoad"
+                    ></iframe>
+                </template>
             </div>
         </template>
         <template v-else-if="isInline">
@@ -358,7 +384,8 @@ defineExpose({
         <PreviewFooter 
             v-if="!isEditing"
             :keyboard-state="keyboardState" 
-            :is-editable="isEditable && !!previewContent" 
+            :is-editable="isEditable && !!previewContent"
+            :is-inline="isInline"
         />
     </div>
 </template>
@@ -410,6 +437,21 @@ defineExpose({
 }
 
 .loading-text-preview {
+    flex: 1;
+    margin: 0;
+    padding: 8px;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8em;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    background: var(--bg-input, #ffffff);
+    color: var(--text-primary, #111827);
+    border-radius: 4px;
+}
+
+.plain-text-preview {
     flex: 1;
     margin: 0;
     padding: 8px;

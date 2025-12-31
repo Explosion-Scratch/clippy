@@ -1,6 +1,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { emit as tauriEmit } from "@tauri-apps/api/event";
+import { getFilteredShortcuts } from "../utils/itemShortcuts";
 
 const CODE_TO_KEY_MAP = {
     KeyA: 'A', KeyB: 'B', KeyC: 'C', KeyD: 'D', KeyE: 'E',
@@ -72,7 +73,8 @@ export function useKeyboardHandling(options = {}) {
         alt: false,
         shift: false,
         meta: false,
-        currentlyPressed: []
+        currentlyPressed: [],
+        itemShortcuts: []
     });
 
     let keydownHandler = null;
@@ -118,10 +120,12 @@ export function useKeyboardHandling(options = {}) {
         if (event.shiftKey) pressed.push('Shift');
         if (event.metaKey) pressed.push('Meta');
         state.currentlyPressed = pressed;
+        state.itemShortcuts = getFilteredShortcuts(pressed);
         
         if (emitToPreview) {
             tauriEmit("keyboard-state-changed", {
                 currentlyPressed: pressed,
+                itemShortcuts: state.itemShortcuts,
                 ctrl: state.ctrl,
                 alt: state.alt,
                 shift: state.shift,
@@ -136,11 +140,13 @@ export function useKeyboardHandling(options = {}) {
         state.shift = false;
         state.meta = false;
         state.currentlyPressed = [];
+        state.itemShortcuts = [];
         isModifierPressed.value = false;
         
         if (emitToPreview) {
             tauriEmit("keyboard-state-changed", {
                 currentlyPressed: [],
+                itemShortcuts: [],
                 ctrl: false,
                 alt: false,
                 shift: false,

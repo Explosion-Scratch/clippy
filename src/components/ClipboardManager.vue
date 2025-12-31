@@ -88,6 +88,7 @@ const {
     loadConfiguredShortcut,
     matchesConfiguredShortcut,
     hasAnyShortcutModifier,
+    updateState: updateKeyboardState,
     resetState: resetKeyboardState,
     unregisterGlobalShortcut,
     registerGlobalShortcut
@@ -347,6 +348,8 @@ function handleSearchKeyDown(e) {
 }
 
 function handleKeyDown(e) {
+    updateKeyboardState(e);
+    
     if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
         if (!isCycling.value) {
@@ -407,6 +410,8 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
+    updateKeyboardState(e);
+    
     const s = configuredShortcut.value;
     const modifierReleased = 
         (s.ctrl && e.key === 'Control') ||

@@ -93,7 +93,7 @@ increment-version:
     }
     
     APP_VERSION=$(bump_cargo_version "src-tauri/Cargo.toml")
-    # SIDECAR_VERSION=$(bump_cargo_version "get_clipboard/Cargo.toml")
+    SIDECAR_VERSION=$(bump_cargo_version "get_clipboard/Cargo.toml")
     
     # Update tauri.conf.json to match app version
     perl -i -pe "s/\"version\": \"[0-9.]+\"/\"version\": \"${APP_VERSION}\"/" src-tauri/tauri.conf.json
