@@ -1,4 +1,4 @@
-import { ref, computed, toValue, onUnmounted } from "vue";
+import { ref, computed, toValue } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
 const PAGE_SIZE = 30;
@@ -39,7 +39,7 @@ export function useClipboardItems() {
             data: item.data,
             formats: {
                 imageData: itemType === "image",
-                files: (itemType === "file" || itemType === "files") ? [item.summary] : [],
+                files: ['file', 'files'].includes(itemType) ? [item.summary] : [],
             }
         };
     }

@@ -11,8 +11,12 @@ export function useClipboardActions() {
     const isProcessing = ref(false);
     const error = ref(null);
 
+    function extractId(itemOrId) {
+        return typeof itemOrId === 'object' ? itemOrId?.id : toValue(itemOrId);
+    }
+
     async function pasteItem(itemOrId) {
-        const id = typeof itemOrId === 'object' ? itemOrId.id : toValue(itemOrId);
+        const id = extractId(itemOrId);
         if (!id) return false;
         
         isProcessing.value = true;
@@ -32,7 +36,7 @@ export function useClipboardActions() {
     }
 
     async function copyItem(itemOrId) {
-        const id = typeof itemOrId === 'object' ? itemOrId.id : toValue(itemOrId);
+        const id = extractId(itemOrId);
         if (!id) return false;
         
         isProcessing.value = true;
@@ -52,8 +56,8 @@ export function useClipboardActions() {
     }
 
     async function getPlainText(itemOrId) {
+        const id = extractId(itemOrId);
         const item = typeof itemOrId === 'object' ? itemOrId : null;
-        const id = item ? item.id : toValue(itemOrId);
         if (!id) return null;
         
         try {
@@ -69,7 +73,7 @@ export function useClipboardActions() {
     }
 
     async function pasteAsPlainText(itemOrId) {
-        const id = typeof itemOrId === 'object' ? itemOrId.id : toValue(itemOrId);
+        const id = extractId(itemOrId);
         if (!id) return false;
         
         isProcessing.value = true;
@@ -89,8 +93,8 @@ export function useClipboardActions() {
     }
 
     async function copyAsPlainText(itemOrId) {
+        const id = extractId(itemOrId);
         const item = typeof itemOrId === 'object' ? itemOrId : null;
-        const id = item ? item.id : toValue(itemOrId);
         if (!id) return false;
         
         isProcessing.value = true;

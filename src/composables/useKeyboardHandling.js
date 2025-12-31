@@ -1,4 +1,4 @@
-import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, toValue } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { emit as tauriEmit } from "@tauri-apps/api/event";
 import { getFilteredShortcuts } from "../utils/itemShortcuts";
@@ -29,10 +29,10 @@ export function parseShortcutString(shortcutStr) {
     const result = { ctrl: false, alt: false, shift: false, meta: false, code: '' };
     
     for (const part of parts) {
-        if (part === 'control' || part === 'ctrl') result.ctrl = true;
-        else if (part === 'alt' || part === 'option') result.alt = true;
+        if (['control', 'ctrl'].includes(part)) result.ctrl = true;
+        else if (['alt', 'option'].includes(part)) result.alt = true;
         else if (part === 'shift') result.shift = true;
-        else if (part === 'super' || part === 'meta' || part === 'cmd' || part === 'command') result.meta = true;
+        else if (['super', 'meta', 'cmd', 'command'].includes(part)) result.meta = true;
         else {
             for (const [code, key] of Object.entries(CODE_TO_KEY_MAP)) {
                 if (key.toLowerCase() === part || code.toLowerCase() === part) {
@@ -122,7 +122,7 @@ export function useKeyboardHandling(options = {}) {
         state.currentlyPressed = pressed;
         state.itemShortcuts = getFilteredShortcuts(pressed);
         
-        if (emitToPreview) {
+        if (toValue(emitToPreview)) {
             tauriEmit("keyboard-state-changed", {
                 currentlyPressed: pressed,
                 itemShortcuts: state.itemShortcuts,
@@ -143,7 +143,7 @@ export function useKeyboardHandling(options = {}) {
         state.itemShortcuts = [];
         isModifierPressed.value = false;
         
-        if (emitToPreview) {
+        if (toValue(emitToPreview)) {
             tauriEmit("keyboard-state-changed", {
                 currentlyPressed: [],
                 itemShortcuts: [],

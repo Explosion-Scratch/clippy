@@ -61,20 +61,12 @@ function resetState() {
 }
 
 async function startEdit() {
-    console.log("[PreviewPane] startEdit called", { originalText: !!originalText.value, isEditable: isEditable.value });
-    if (!originalText.value || !isEditable.value) {
-        console.log("[PreviewPane] startEdit aborted - not editable");
-        return;
-    }
+    if (!originalText.value || !isEditable.value) return;
     isEditing.value = true;
-    console.log("[PreviewPane] isEditing set to true, calling focus_preview");
     try {
         await invoke("focus_preview");
-        console.log("[PreviewPane] focus_preview completed");
         await nextTick();
-        console.log("[PreviewPane] focusing textarea", editTextareaRef.value);
         editTextareaRef.value?.focus();
-        console.log("[PreviewPane] textarea focus called");
     } catch (e) {
         console.error("[PreviewPane] Failed to focus preview:", e);
     }
@@ -162,15 +154,6 @@ async function loadPreview(id) {
         const formatsOrder = data.formatsOrder || [];
         const dataMap = data.data || {};
 
-        const isTextFormatId = (id) => {
-            const lower = id.toLowerCase();
-            return lower.includes('text') || 
-                   lower.includes('utf8') || 
-                   lower.includes('plain') || 
-                   lower.includes('rtf') ||
-                   lower === 'public.utf8-plain-text';
-        };
-
         let html = "";
         let text = "";
         let pureText = "";
@@ -179,7 +162,7 @@ async function loadPreview(id) {
             if (!formatData) continue;
             if (!html && formatData.html) html = formatData.html;
             if (!text && formatData.text) text = formatData.text;
-            if (!pureText && formatData.text && (!formatData.html || isTextFormatId(formatId))) {
+            if (!pureText && formatId === "text" && formatData.text) {
                 pureText = formatData.text;
             }
         }
@@ -192,9 +175,9 @@ async function loadPreview(id) {
 
         loadingText.value = "";
         previewContent.value = html || "<div class='empty'>No preview available</div>";
-        originalText.value = text || "";
-        editedText.value = text || "";
         plainTextContent.value = pureText || text || "";
+        originalText.value = plainTextContent.value;
+        editedText.value = plainTextContent.value;
 
         await nextTick();
     } catch (e) {
@@ -244,11 +227,9 @@ watch(() => props.itemId, (id) => {
 }, { immediate: true });
 
 function attachFrameDblclick() {
-    console.log("[PreviewPane] attachFrameDblclick called", { frameRef: !!frameRef.value });
     if (!frameRef.value) return;
     
     const doc = frameRef.value.contentDocument || frameRef.value.contentWindow?.document;
-    console.log("[PreviewPane] iframe doc", { doc: !!doc, body: !!doc?.body });
     if (!doc || !doc.body) return;
     
     if (frameDblHandler) {
@@ -256,13 +237,11 @@ function attachFrameDblclick() {
     }
     
     frameDblHandler = (event) => {
-        console.log("[PreviewPane] iframe dblclick handler fired");
         event.preventDefault();
         event.stopPropagation();
         startEdit();
     };
     doc.addEventListener("dblclick", frameDblHandler);
-    console.log("[PreviewPane] dblclick listener attached to iframe doc");
 }
 
 function handleFrameLoad() {
@@ -296,11 +275,7 @@ function handlePostMessage(event) {
     }
 
     if (event.data.type !== "preview-dblclick") return;
-    console.log("[PreviewPane] handlePostMessage received preview-dblclick", event.data);
-    if (event.data.id && currentId.value && event.data.id !== currentId.value) {
-        console.log("[PreviewPane] ID mismatch, ignoring", { eventId: event.data.id, currentId: currentId.value });
-        return;
-    }
+    if (event.data.id && currentId.value && event.data.id !== currentId.value) return;
     startEdit();
 }
 

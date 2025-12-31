@@ -296,10 +296,14 @@ watch(showInlinePreview, async () => {
     await preview.show(selectedItem.value.id);
 });
 
+let searchDebounceTimer = null;
 watch(searchQuery, () => {
     globalSelectedIndex.value = -1;
-    loadItems();
-}, { debounce: 300 });
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+        loadItems();
+    }, 300);
+});
 
 watch(allLoadedItems, async (items) => {
     if (items.length === 0) {
@@ -350,6 +354,14 @@ function handleSearchKeyDown(e) {
 function handleKeyDown(e) {
     updateKeyboardState(e);
     
+    const target = e.target;
+    const isSearchInput = target === searchInputRef.value;
+    const isEditing = (['TEXTAREA', 'INPUT'].includes(target.tagName) || target.isContentEditable) && !isSearchInput;
+    
+    if (isEditing && (['Enter', 'NumpadEnter'].includes(e.code) || ['ArrowUp', 'ArrowDown'].includes(e.key))) {
+        return;
+    }
+    
     if (matchesConfiguredShortcut(e)) {
         e.preventDefault();
         if (!isCycling.value) {
@@ -389,7 +401,7 @@ function handleKeyDown(e) {
         } else if (e.key === "ArrowUp") { 
             e.preventDefault(); 
             selectPrev(); 
-        } else if (e.code === "Enter" || e.code === "NumpadEnter") {
+        } else if (['Enter', 'NumpadEnter'].includes(e.code)) {
             const currentItem = selectedItem.value;
             const handled = handleItemShortcuts(e, currentItem, {
                 paste: (item) => pasteItemToSystem(item),
@@ -511,6 +523,10 @@ function cleanup() {
     if (resizeDebounceTimer) {
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = null;
+    }
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = null;
     }
     window.removeEventListener('show-toast', handleToastEvent);
 }
