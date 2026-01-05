@@ -6,6 +6,7 @@ import { save, open as openDialog, ask } from '@tauri-apps/plugin-dialog';
 import { writeFile, readFile } from '@tauri-apps/plugin-fs';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { enable, disable, isEnabled } from '@tauri-apps/plugin-autostart';
 import ShortcutRecorder from './ShortcutRecorder.vue';
 import AccentColorPicker from './AccentColorPicker.vue';
 
@@ -24,6 +25,8 @@ const isRecordingShortcut = ref(false);
 let escCancelledRecording = false;
 
 const accentColor = ref('#20b2aa');
+const launchOnLogin = ref(false);
+const isUpdatingAutostart = ref(false);
 
 const modifierMap = {
   Control: '⌃',
@@ -113,6 +116,32 @@ async function reloadAllSettings() {
   await loadShortcut();
   await loadStats();
   await loadAccentColor();
+  await loadLaunchOnLogin();
+}
+
+async function loadLaunchOnLogin() {
+  try {
+    launchOnLogin.value = await isEnabled();
+  } catch (error) {
+    console.error('Failed to check autostart status:', error);
+  }
+}
+
+async function onLaunchOnLoginChange(enabled) {
+  try {
+    isUpdatingAutostart.value = true;
+    if (enabled) {
+      await enable();
+    } else {
+      await disable();
+    }
+    launchOnLogin.value = enabled;
+  } catch (error) {
+    console.error('Failed to update autostart:', error);
+    launchOnLogin.value = !enabled;
+  } finally {
+    isUpdatingAutostart.value = false;
+  }
 }
 
 function onAccentColorChange(hex) {
@@ -338,6 +367,23 @@ onUnmounted(() => {
           v-model="accentColor"
           @change="onAccentColorChange"
         />
+      </div>
+
+      <div class="section">
+        <h2>Startup</h2>
+        <div class="setting-row">
+          <label class="setting-label">Open on Login</label>
+          <label class="toggle">
+            <input 
+              type="checkbox" 
+              :checked="launchOnLogin"
+              :disabled="isUpdatingAutostart"
+              @change="onLaunchOnLoginChange($event.target.checked)"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p class="setting-hint">Automatically start Clippy when you log in to your computer.</p>
       </div>
 
       <div class="section">
@@ -657,6 +703,75 @@ onUnmounted(() => {
         font-size: 11px;
         color: var(--text-secondary);
         margin: 2px 0;
+      }
+      
+      .setting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+      
+      .setting-label {
+        font-size: 12px;
+        color: var(--text-primary);
+      }
+      
+      .setting-hint {
+        margin: 0 !important;
+        font-size: 10px !important;
+        color: var(--text-secondary);
+      }
+      
+      .toggle {
+        position: relative;
+        display: inline-block;
+        width: 36px;
+        height: 20px;
+        
+        input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+          
+          &:checked + .toggle-slider {
+            background: var(--accent);
+          }
+          
+          &:checked + .toggle-slider:before {
+            transform: translateX(16px);
+          }
+          
+          &:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+        }
+        
+        .toggle-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(120, 120, 128, 0.36);
+          border-radius: 10px;
+          transition: 0.2s;
+          
+          &:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+          }
+        }
       }
     }
   }

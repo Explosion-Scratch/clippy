@@ -13,6 +13,7 @@ pub struct AppSettings {
     pub welcome_shown: bool,
     pub cli_in_path: bool,
     pub accent_color: String,
+    pub launch_on_login: bool,
 }
 
 impl AppSettings {
@@ -150,6 +151,10 @@ pub fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
             .get("accent_color")
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_else(AppSettings::default_accent_color),
+        launch_on_login: store
+            .get("launch_on_login")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     };
 
     Ok(settings)
@@ -170,6 +175,7 @@ pub fn set_settings(app: AppHandle, settings: AppSettings) -> Result<(), String>
     );
     store.set("cli_in_path", serde_json::json!(settings.cli_in_path));
     store.set("accent_color", serde_json::json!(settings.accent_color));
+    store.set("launch_on_login", serde_json::json!(settings.launch_on_login));
     store.save().map_err(|e| e.to_string())?;
 
     Ok(())
