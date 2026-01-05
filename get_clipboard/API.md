@@ -366,6 +366,44 @@ curl {{URL}}/item/0/data
 
 ---
 
+#### GET /item/:selector/text
+
+Retrieve just the plain text content for a single clipboard item. This is a lightweight endpoint optimized for fast loading, used for displaying text previews while the full preview is still loading.
+
+**Path Parameters:**
+- `selector` (string): Item ID (hash) or offset index
+
+**Response:** JSON object with text content
+
+```json
+{
+  "text": "Plain text content here...",
+  "isRaw": false
+}
+```
+
+**Fields:**
+- `text` (string|null): Plain text content, or null if no text available
+- `isRaw` (boolean, optional): If true, the text is raw HTML content (when no plain text format was available)
+
+**Example:**
+```bash
+curl {{URL}}/item/0/text
+```
+
+**Behavior:**
+- Reads `text.txt` directly from the item directory (fastest path)
+- Falls back to `html.txt` raw content if no text file exists (sets `isRaw: true`)
+- Returns `null` if no text content is available
+- Does NOT render previews, fetch link metadata, or process plugins
+
+**Use Cases:**
+- Fast initial text loading for preview pane
+- Showing text content immediately while full preview loads
+- Lightweight text extraction for search or export
+
+---
+
 #### GET /item/:selector/preview
 
 Retrieve preview data for a single clipboard item. Returns pre-rendered HTML for each available format.

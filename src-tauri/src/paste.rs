@@ -9,7 +9,7 @@ pub fn simulate_system_paste(app: AppHandle) -> Result<(), String> {
 pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
     println!("Simulating system paste...");
     // Wait for window focus to switch back to target app
-    std::thread::sleep(std::time::Duration::from_millis(150));
+    std::thread::sleep(std::time::Duration::from_millis(50));
     #[cfg(target_os = "macos")]
     {
         // Use CGEvent for the most reliable and fastest keyboard simulation
@@ -60,13 +60,13 @@ pub fn simulate_system_paste_internal(_app: &AppHandle) -> Result<(), String> {
         CGEvent::set_flags(Some(&v_up_event), cmd_flags);
         CGEvent::set_flags(Some(&cmd_up_event), cmd_flags);
 
-        // Post events to HID event tap with proper timing
+        // Post events to HID event tap with minimal timing
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_down_event));
-        std::thread::sleep(std::time::Duration::from_micros(15000));
+        std::thread::sleep(std::time::Duration::from_micros(5000));
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_down_event));
-        std::thread::sleep(std::time::Duration::from_micros(15000));
+        std::thread::sleep(std::time::Duration::from_micros(5000));
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_up_event));
-        std::thread::sleep(std::time::Duration::from_micros(15000));
+        std::thread::sleep(std::time::Duration::from_micros(5000));
         CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_up_event));
     }
     Ok(())

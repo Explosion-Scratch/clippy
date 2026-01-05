@@ -167,6 +167,29 @@ pub async fn get_item_data(id: String) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+pub async fn get_item_text(id: String) -> Result<serde_json::Value, String> {
+    let url = api::item_text_url(&id);
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch item text: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let json = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    Ok(json)
+}
+
+#[tauri::command]
 pub fn open_in_dashboard(app: tauri::AppHandle, id: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 

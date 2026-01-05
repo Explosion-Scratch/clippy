@@ -89,6 +89,7 @@ fn router() -> Router {
         .route("/dashboard/*path", get(serve_dashboard))
         .route("/items", get(get_items))
         .route("/item/:selector/data", get(get_item_data))
+        .route("/item/:selector/text", get(get_item_text))
         .route(
             "/item/:selector",
             get(get_item).delete(axum_delete(delete_item)).put(put_item).patch(patch_item),
@@ -462,6 +463,50 @@ async fn preview_item(
         kind: kind_str.to_string(),
         formats_order,
         data,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TextResponse {
+    text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    is_raw: Option<bool>,
+}
+
+async fn get_item_text(
+    Path(selector): Path<String>,
+) -> Result<Json<TextResponse>, ApiError> {
+    let index = load_fresh_index()?;
+    let data_dir = data_dir_path().map_err(ApiError::from)?;
+    let (ordered, offsets) = ordered_index(&index);
+    let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
+    let metadata = load_metadata(&hash).map_err(ApiError::from)?;
+    let item_dir = data_dir.join(&metadata.relative_path);
+
+    let text_path = item_dir.join("text.txt");
+    if text_path.exists() {
+        let text = std::fs::read_to_string(&text_path)
+            .map_err(|e| ApiError::Internal(e.into()))?;
+        return Ok(Json(TextResponse {
+            text: Some(text),
+            is_raw: None,
+        }));
+    }
+
+    let html_path = item_dir.join("html.txt");
+    if html_path.exists() {
+        let html = std::fs::read_to_string(&html_path)
+            .map_err(|e| ApiError::Internal(e.into()))?;
+        return Ok(Json(TextResponse {
+            text: Some(html),
+            is_raw: Some(true),
+        }));
+    }
+
+    Ok(Json(TextResponse {
+        text: None,
+        is_raw: None,
     }))
 }
 

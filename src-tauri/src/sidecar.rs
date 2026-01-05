@@ -212,7 +212,7 @@ pub async fn paste_item(app: AppHandle, selector: String) -> Result<(), String> 
     let app_clone = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         // Small delay to allow window hiding/focus switching to complete
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(25));
         if let Err(e) = simulate_system_paste_internal(&app_clone) {
             eprintln!("Failed to simulate paste: {}", e);
         }
@@ -236,7 +236,7 @@ pub async fn paste_item_plain_text(app: AppHandle, id: String) -> Result<(), Str
     let app_clone = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         // Small delay to allow window hiding/focus switching to complete
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(25));
         if let Err(e) = simulate_system_paste_internal(&app_clone) {
             eprintln!("Failed to simulate paste: {}", e);
         }

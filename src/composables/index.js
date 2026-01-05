@@ -6,3 +6,4 @@ export { useClipboardPreview } from './useClipboardPreview.js';
 export { useClipboardActions } from './useClipboardActions.js';
 export { useTauriEvent, useClipboardChangeEvent, usePreviewChangeEvent } from './useTauriEvent.js';
 export { useListSelection } from './useListSelection.js';
+export { usePreviewLoader } from './usePreviewLoader.js';

@@ -302,7 +302,7 @@ watch(searchQuery, () => {
     if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => {
         loadItems();
-    }, 300);
+    }, 100);
 });
 
 watch(allLoadedItems, async (items) => {

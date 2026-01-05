@@ -87,6 +87,7 @@ pub fn run() {
             preview::is_preview_visible,
             preview::get_preview_content,
             preview::get_item_data,
+            preview::get_item_text,
             preview::open_in_dashboard,
             sidecar::init_service,
             sidecar::stop_service,
