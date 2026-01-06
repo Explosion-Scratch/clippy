@@ -9,18 +9,22 @@ You are a Rust specialist working on Clippy's Tauri backend modules.
 
 ### Module Responsibilities
 
-| File | Lines | Responsibility |
-|------|-------|----------------|
-| `lib.rs` | 821 | Main entry, all Tauri commands, window/tray setup |
-| `sidecar.rs` | ~500 | Sidecar process management and API proxy |
-| `settings.rs` | ~300 | User settings persistence |
-| `visibility.rs` | ~150 | macOS window visibility helpers |
-| `paste.rs` | ~100 | CoreGraphics keyboard simulation |
-| `shortcut.rs` | ~50 | Global hotkey utilities |
-| `accessibility.rs` | ~80 | macOS accessibility checks |
-| `api.rs` | ~50 | API URL helpers |
-| `clipboard.rs` | ~20 | Clipboard utilities |
-| `main.rs` | ~10 | Binary entry point |
+| File | Responsibility |
+|------|----------------|
+| `lib.rs` | Main entry, plugin setup, Tauri commands |
+| `sidecar.rs` | Sidecar process management and API proxy |
+| `settings.rs` | User settings persistence |
+| `tray.rs` | System tray menu and icon management |
+| `preview.rs` | Preview window content and rendering |
+| `visibility.rs` | macOS window visibility helpers |
+| `windows.rs` | Window creation and management |
+| `paste.rs` | CoreGraphics keyboard simulation |
+| `accessibility.rs` | macOS accessibility checks |
+| `api.rs` | API URL helpers |
+| `polling.rs` | Clipboard change polling |
+| `shortcut.rs` | Global hotkey utilities |
+| `clipboard.rs` | Clipboard utilities |
+| `main.rs` | Binary entry point |
 
 ## Code Style
 

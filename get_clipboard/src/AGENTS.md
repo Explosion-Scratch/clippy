@@ -21,7 +21,7 @@ You are a Rust specialist working on the get_clipboard source modules.
 | `search/` | Search index and queries |
 | `service/` | Background clipboard monitoring |
 | `tui/` | Terminal UI (Ratatui) |
-| `util/` | Shared utilities |
+| `util/` | Shared utilities |\n| `website_fetcher.rs` | URL metadata and preview fetching |
 
 ### Entry Points
 

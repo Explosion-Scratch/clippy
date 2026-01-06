@@ -16,6 +16,7 @@ You are a Vue 3 specialist working on the main Clippy app interface.
 | `router.js` | View routing (Manager, Settings, Preview) |
 | `main.js` | Vue app bootstrap |
 | `components/` | UI components |
+| `composables/` | Reactive logic (clipboard actions, items, preview, keyboard, etc.) |
 | `utils/` | Shared utilities |
 
 ## Commands

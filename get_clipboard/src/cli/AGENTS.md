@@ -14,7 +14,7 @@ You are a Rust CLI specialist working on get_clipboard's command-line interface.
 |------|---------|
 | `mod.rs` | Module exports |
 | `args.rs` | Clap argument definitions |
-| `handlers.rs` | Command implementations (~30KB) |
+| `handlers.rs` | Command implementations |
 
 ## Commands
 

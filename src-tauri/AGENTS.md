@@ -12,7 +12,7 @@ You are a Rust/Tauri specialist working on Clippy's native macOS backend.
 
 | Module | Purpose |
 |--------|---------|
-| `lib.rs` | Main entry, Tauri commands, window/tray setup |
+| `lib.rs` | Main entry, Tauri commands, plugin setup |
 | `sidecar.rs` | Spawns and manages `get_clipboard` process |
 | `visibility.rs` | macOS-specific window show/hide logic |
 | `paste.rs` | Simulates Cmd+V via CoreGraphics |
@@ -21,6 +21,10 @@ You are a Rust/Tauri specialist working on Clippy's native macOS backend.
 | `accessibility.rs` | macOS accessibility permission checks |
 | `api.rs` | Sidecar API endpoint helpers |
 | `clipboard.rs` | Clipboard utilities |
+| `polling.rs` | Clipboard change polling |
+| `preview.rs` | Preview window content management |
+| `tray.rs` | System tray menu and icon |
+| `windows.rs` | Window creation and management |
 
 ## Commands
 

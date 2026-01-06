@@ -12,7 +12,7 @@ You are a Rust web API specialist working on get_clipboard's HTTP API.
 
 | File | Purpose |
 |------|---------|
-| `mod.rs` | Router, handlers, types (~1000 lines) |
+| `mod.rs` | Router, handlers, types |
 
 ## Commands
 

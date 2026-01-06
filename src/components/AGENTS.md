@@ -9,16 +9,18 @@ You are a Vue 3 component specialist working on Clippy's UI components.
 
 ### Component Overview
 
-| Component | Purpose | Size |
-|-----------|---------|------|
-| `ClipboardManager.vue` | Main list view, search, keyboard navigation | Large (39KB) |
-| `ClipboardItem.vue` | Individual item row with preview | Medium |
-| `PreviewPane.vue` | Inline preview panel | Medium |
-| `PreviewWindow.vue` | Standalone preview window | Small |
-| `Settings.vue` | App settings form | Large |
-| `ShortcutRecorder.vue` | Keyboard shortcut input | Medium |
-| `AccentColorPicker.vue` | Theme color selector | Medium |
-| `Welcome.vue` | Onboarding wizard | Medium |
+| Component | Purpose |
+|-----------|---------|
+| `ClipboardManager.vue` | Main list view, search, keyboard navigation |
+| `Settings.vue` | App settings form |
+| `PreviewPane.vue` | Inline preview panel |
+| `ClipboardItem.vue` | Individual item row with preview |
+| `Welcome.vue` | Onboarding wizard |
+| `ShortcutRecorder.vue` | Keyboard shortcut input |
+| `AccentColorPicker.vue` | Theme color selector |
+| `PreviewFooter.vue` | Preview panel footer with actions |
+| `PreviewWindow.vue` | Standalone preview window |
+| `InlinePreview.vue` | Simple inline preview component |
 
 ## Code Style
 

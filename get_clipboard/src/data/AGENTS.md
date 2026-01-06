@@ -14,7 +14,7 @@ You are a Rust specialist working on get_clipboard's file-system storage layer.
 |------|---------|
 | `mod.rs` | Module exports |
 | `model.rs` | Data structures (EntryMetadata, SearchIndex) |
-| `store.rs` | Storage operations (~1150 lines) |
+| `store.rs` | Storage operations |
 
 ### Storage Layout
 ```
