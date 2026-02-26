@@ -168,7 +168,7 @@ async fn serve_dashboard_file(path: String) -> impl IntoResponse + use<> {
 async fn get_items(
     Query(params): Query<ItemsQuery>,
 ) -> Result<Json<Vec<plugins::ClipboardJsonItem>>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
 
     if let Some(ids) = params.ids.as_ref() {
@@ -342,7 +342,7 @@ async fn get_item(
     Path(selector): Path<String>,
     Query(params): Query<ItemQuery>,
 ) -> Result<Json<plugins::ClipboardJsonItem>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
 
     let mut filter = crate::search::SelectionFilter::default();
@@ -370,7 +370,7 @@ async fn get_item_data(
     Path(selector): Path<String>,
     Query(params): Query<ItemQuery>,
 ) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
 
     let mut filter = crate::search::SelectionFilter::default();
@@ -419,7 +419,7 @@ async fn preview_item(
     Path(selector): Path<String>,
     Query(params): Query<PreviewQuery>,
 ) -> Result<Json<PreviewResponse>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
@@ -477,7 +477,7 @@ struct TextResponse {
 async fn get_item_text(
     Path(selector): Path<String>,
 ) -> Result<Json<TextResponse>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
@@ -513,7 +513,7 @@ async fn get_item_text(
 async fn copy_item(
     Path(selector): Path<String>,
 ) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     copy_by_selector(&hash).map_err(ApiError::from)?;
@@ -526,7 +526,7 @@ async fn copy_item(
 async fn copy_item_plain(
     Path(selector): Path<String>,
 ) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     crate::data::store::copy_plain_by_selector(&hash).map_err(ApiError::from)?;
@@ -540,7 +540,7 @@ async fn copy_item_plain(
 async fn paste_item(
     Path(selector): Path<String>,
 ) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     copy_by_selector(&hash).map_err(ApiError::from)?;
@@ -554,7 +554,7 @@ async fn paste_item(
 async fn paste_item_plain(
     Path(selector): Path<String>,
 ) -> Result<(StatusCode, Json<plugins::ClipboardJsonItem>), ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     crate::data::store::copy_plain_by_selector(&hash).map_err(ApiError::from)?;
@@ -566,7 +566,7 @@ async fn paste_item_plain(
 }
 
 async fn delete_item(Path(selector): Path<String>) -> Result<StatusCode, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
     delete_entry(&hash).map_err(ApiError::from)?;
@@ -576,7 +576,7 @@ async fn delete_item(Path(selector): Path<String>) -> Result<StatusCode, ApiErro
 async fn put_item(
     Path(selector): Path<String>,
 ) -> Result<Json<plugins::ClipboardJsonItem>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, offset) = resolve_selector(&ordered, &offsets, &selector)?;
     let metadata = increment_copy_count(&hash).map_err(ApiError::from)?;
@@ -595,7 +595,7 @@ async fn patch_item(
     Path(selector): Path<String>,
     Json(payload): Json<EditItemRequest>,
 ) -> Result<Json<plugins::ClipboardJsonFullItem>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
     let (ordered, offsets) = ordered_index(&index);
     let (hash, _) = resolve_selector(&ordered, &offsets, &selector)?;
@@ -687,7 +687,7 @@ async fn search_items(
             "query, formats, or sort parameter must be provided",
         ));
     }
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
     let data_dir = data_dir_path().map_err(ApiError::from)?;
 
     let (parsed_query, is_regex, selection_filter) =
@@ -751,7 +751,7 @@ async fn search_items(
 }
 
 async fn get_stats() -> Result<Json<StatsResponse>, ApiError> {
-    let index = load_fresh_index()?;
+    let index = load_index().map_err(ApiError::from)?;
 
     let total_items = index.len();
     let total_size = index.values().map(|r| r.byte_size).sum();

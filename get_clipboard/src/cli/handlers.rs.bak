@@ -8,7 +8,7 @@ use crate::config::{self, ensure_data_dir, load_config};
 use crate::data::model::EntryMetadata;
 use crate::data::store::{
     HistoryItem, SelectionFilter, copy_by_selector, delete_entry, human_size, load_history_items,
-    load_index, load_metadata, resolve_selector, stream_history_items,
+    load_index, load_metadata, refresh_index, resolve_selector, stream_history_items,
 };
 use crate::search::SearchOptions;
 use crate::service::{self, ServiceStatus, permissions, watch};
@@ -120,7 +120,7 @@ fn copy_entry(selector: &str, filters: &FilterFlags) -> Result<()> {
 }
 
 fn delete_item(selector: &str, filters: &FilterFlags) -> Result<()> {
-    let _index = load_index()?;
+    refresh_index()?;
     let index = load_index()?;
     let selection_filter = build_selection_filter(filters, None);
     let target = resolve_selector(&index, selector, &selection_filter)
@@ -136,7 +136,7 @@ fn delete_item(selector: &str, filters: &FilterFlags) -> Result<()> {
 }
 
 fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
-    let _index = load_index()?;
+    refresh_index()?;
     let index = load_index()?;
     let selection_filter = build_selection_filter(filters, None);
     let target = resolve_selector(&index, selector, &selection_filter)
@@ -252,7 +252,7 @@ fn export_command(path: &Path) -> Result<()> {
         items: Vec<plugins::ClipboardJsonFullItem>,
     }
 
-    let _index = load_index()?;
+    refresh_index()?;
     let index = load_index()?;
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
@@ -371,7 +371,7 @@ fn run_stats(json: &bool) -> Result<()> {
         summary: Option<String>,
     }
 
-    let _index = load_index()?;
+    refresh_index()?;
     let index = load_index()?;
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
@@ -504,7 +504,7 @@ fn compute_dir_storage(path: &Path) -> u64 {
 }
 
 fn print_history(args: HistoryArgs, mode: OutputMode) -> Result<()> {
-    let _index = load_index()?;
+    refresh_index()?;
     let index = load_index()?;
     let HistoryArgs {
         limit,
@@ -547,7 +547,7 @@ fn print_history(args: HistoryArgs, mode: OutputMode) -> Result<()> {
 }
 
 fn run_search(args: SearchArgs, mode: OutputMode) -> Result<()> {
-    let _index = load_index()?;
+    refresh_index()?;
     let index = load_index()?;
     let SearchArgs {
         query,

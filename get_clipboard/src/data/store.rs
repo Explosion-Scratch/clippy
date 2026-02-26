@@ -17,7 +17,12 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-static INDEX_CACHE: OnceCell<RwLock<SearchIndex>> = OnceCell::new();
+struct IndexCacheData {
+    pub index: SearchIndex,
+    pub mtime: Option<std::time::SystemTime>,
+}
+
+static INDEX_CACHE: OnceCell<RwLock<IndexCacheData>> = OnceCell::new();
 const MAX_SEARCH_TEXT_CHARS: usize = 65536;
 const MAX_SEARCH_TEXT_SEGMENTS: usize = 4;
 
@@ -32,19 +37,86 @@ pub fn ensure_index() -> Result<SearchIndex> {
     load_index_from_disk(&data_path)
 }
 
-fn index_cell() -> &'static RwLock<SearchIndex> {
-    INDEX_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+fn write_index_file(path: &Path, index: &SearchIndex) {
+    if let Ok(bytes) = serde_json::to_vec_pretty(index) {
+        let _ = std::fs::write(path, bytes);
+    }
+}
+
+fn index_cell() -> &'static RwLock<IndexCacheData> {
+    INDEX_CACHE.get_or_init(|| RwLock::new(IndexCacheData {
+        index: HashMap::new(),
+        mtime: None,
+    }))
 }
 
 pub fn load_index() -> Result<SearchIndex> {
-    Ok(index_cell().read().clone())
+    {
+        // Try reading fast without a write lock first
+        let guard = index_cell().read();
+        if let Ok(config) = load_config() {
+            if let Ok(data_dir) = ensure_data_dir(&config) {
+                let index_file = data_dir.join("index.json");
+                let current_mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+                if !guard.index.is_empty() && current_mtime == guard.mtime {
+                    return Ok(guard.index.clone());
+                }
+            }
+        }
+    }
+
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+    let index_file = data_dir.join("index.json");
+    
+    let mut guard = index_cell().write();
+    let current_mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+    
+    let needs_reload = guard.index.is_empty() || (current_mtime.is_some() && current_mtime != guard.mtime);
+    
+    if needs_reload {
+        if index_file.exists() {
+            match std::fs::read(&index_file) {
+                Ok(bytes) => {
+                    match serde_json::from_slice::<SearchIndex>(&bytes) {
+                        Ok(new_index) => {
+                            guard.index = new_index;
+                            guard.mtime = current_mtime;
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Corrupted index.json: {}", e);
+                            guard.index = load_index_from_disk(&data_dir)?;
+                            write_index_file(&index_file, &guard.index);
+                            guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to read index.json: {}", e);
+                    guard.index = load_index_from_disk(&data_dir)?;
+                    write_index_file(&index_file, &guard.index);
+                    guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+                }
+            }
+        } else {
+            guard.index = load_index_from_disk(&data_dir)?;
+            write_index_file(&index_file, &guard.index);
+            guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+        }
+    }
+    
+    Ok(guard.index.clone())
 }
 
 pub fn refresh_index() -> Result<()> {
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
     let new_index = load_index_from_disk(&data_dir)?;
-    *index_cell().write() = new_index;
+    let index_file = data_dir.join("index.json");
+    write_index_file(&index_file, &new_index);
+    let mut guard = index_cell().write();
+    guard.index = new_index;
+    guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
     Ok(())
 }
 
@@ -452,8 +524,9 @@ fn relative_item_path(paths: &EntryPaths) -> Result<String> {
 }
 
 fn update_index(metadata: EntryMetadata) {
+    let _ = load_index(); // Ensure cache is populated before we mutate it
     let mut guard = index_cell().write();
-    guard.insert(
+    guard.index.insert(
         metadata.hash.clone(),
         SearchIndexRecord {
             hash: metadata.hash,
@@ -467,6 +540,13 @@ fn update_index(metadata: EntryMetadata) {
             relative_path: metadata.relative_path,
         },
     );
+    if let Ok(config) = load_config() {
+        if let Ok(data_dir) = ensure_data_dir(&config) {
+            let index_file = data_dir.join("index.json");
+            write_index_file(&index_file, &guard.index);
+            guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -585,8 +665,8 @@ pub fn history_stream(
 }
 
 pub fn load_metadata(hash: &str) -> Result<EntryMetadata> {
-    let index = index_cell().read();
-    if let Some(record) = index.get(hash) {
+    let guard = index_cell().read();
+    if let Some(record) = guard.index.get(hash) {
         let config = load_config()?;
         let data_dir = ensure_data_dir(&config)?;
         let metadata_path = data_dir.join(&record.relative_path).join("metadata.json");
@@ -672,14 +752,29 @@ pub fn resolve_selector(
 }
 
 pub fn copy_by_selector(hash: &str) -> Result<EntryMetadata> {
+    let start = std::time::Instant::now();
     let metadata = load_metadata(hash)?;
+    println!("load_metadata took: {:?}", start.elapsed());
+    
+    let t2 = std::time::Instant::now();
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
+    println!("config/dir took: {:?}", t2.elapsed());
+    
+    let t3 = std::time::Instant::now();
     let item_dir = data_dir.join(&metadata.relative_path);
     let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
+    println!("rebuild_clipboard_contents took: {:?}", t3.elapsed());
+    
+    let t4 = std::time::Instant::now();
     let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+    println!("ClipboardContext::new took: {:?}", t4.elapsed());
+    
+    let t5 = std::time::Instant::now();
     ctx.set(contents)
         .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+    println!("ctx.set took: {:?}", t5.elapsed());
+    
     Ok(metadata)
 }
 
@@ -824,7 +919,12 @@ pub fn delete_entry(hash: &str) -> Result<()> {
     if item_dir.exists() {
         fs::remove_dir_all(&item_dir)?;
     }
-    index_cell().write().remove(hash);
+    let _ = load_index(); // Ensure cache is populated before we mutate and flush
+    let mut guard = index_cell().write();
+    guard.index.remove(hash);
+    let index_file = data_dir.join("index.json");
+    write_index_file(&index_file, &guard.index);
+    guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
     Ok(())
 }
 
