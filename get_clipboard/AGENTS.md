@@ -15,6 +15,7 @@ get_clipboard/
 ├── src/
 │   ├── main.rs          # CLI entry point
 │   ├── lib.rs           # Library exports
+│   ├── website_fetcher.rs # Web page details fetcher
 │   ├── api/             # HTTP API server (Axum)
 │   ├── bin/             # Additional binaries
 │   ├── cli/             # CLI argument parsing and handlers

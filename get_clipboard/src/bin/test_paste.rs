@@ -12,9 +12,9 @@ fn main() {
     println!("1...");
     thread::sleep(Duration::from_secs(1));
     
-    println!("Pasting now!");
+    let start = std::time::Instant::now();
     match paste::simulate_paste() {
-        Ok(_) => println!("Paste simulation command sent."),
+        Ok(_) => println!("Paste simulation command sent in {:?}", start.elapsed()),
         Err(e) => eprintln!("Failed to simulate paste: {}", e),
     }
 }

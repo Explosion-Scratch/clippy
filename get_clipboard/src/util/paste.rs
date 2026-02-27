@@ -40,11 +40,11 @@ pub fn simulate_paste() -> Result<()> {
     // before calling this, otherwise we might paste into ourselves.
     
     CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_down_event));
-    thread::sleep(Duration::from_micros(15000));
+    thread::sleep(Duration::from_micros(2000));
     CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_down_event));
-    thread::sleep(Duration::from_micros(15000));
+    thread::sleep(Duration::from_micros(2000));
     CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&v_up_event));
-    thread::sleep(Duration::from_micros(15000));
+    thread::sleep(Duration::from_micros(2000));
     CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&cmd_up_event));
 
     Ok(())
