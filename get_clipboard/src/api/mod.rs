@@ -12,7 +12,7 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use handlebars::Handlebars;
@@ -1085,7 +1085,7 @@ fn data_dir_path() -> Result<PathBuf> {
     ensure_data_dir(&config)
 }
 
-fn load_fresh_index() -> Result<SearchIndex, ApiError> {
+fn load_fresh_index() -> Result<Arc<SearchIndex>, ApiError> {
     refresh_index().map_err(ApiError::from)?;
     load_index().map_err(ApiError::from)
 }

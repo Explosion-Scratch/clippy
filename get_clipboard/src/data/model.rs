@@ -78,3 +78,80 @@ pub struct SearchIndexRecord {
 }
 
 pub type SearchIndex = HashMap<String, SearchIndexRecord>;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "op")]
+pub enum JournalEntry {
+    #[serde(rename = "add")]
+    Add {
+        hash: String,
+        #[serde(with = "timestamp")]
+        last_seen: OffsetDateTime,
+        kind: EntryKind,
+        copy_count: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search_text: Option<String>,
+        detected_formats: Vec<String>,
+        byte_size: u64,
+    },
+    #[serde(rename = "del")]
+    Delete {
+        hash: String,
+    },
+}
+
+impl JournalEntry {
+    pub fn from_record(record: &SearchIndexRecord) -> Self {
+        JournalEntry::Add {
+            hash: record.hash.clone(),
+            last_seen: record.last_seen,
+            kind: record.kind.clone(),
+            copy_count: record.copy_count,
+            summary: record.summary.clone(),
+            search_text: record.search_text.clone(),
+            detected_formats: record.detected_formats.clone(),
+            byte_size: record.byte_size,
+        }
+    }
+
+    pub fn delete(hash: &str) -> Self {
+        JournalEntry::Delete {
+            hash: hash.to_string(),
+        }
+    }
+
+    pub fn to_record(&self) -> Option<SearchIndexRecord> {
+        match self {
+            JournalEntry::Add {
+                hash,
+                last_seen,
+                kind,
+                copy_count,
+                summary,
+                search_text,
+                detected_formats,
+                byte_size,
+            } => Some(SearchIndexRecord {
+                hash: hash.clone(),
+                last_seen: *last_seen,
+                kind: kind.clone(),
+                copy_count: *copy_count,
+                summary: summary.clone(),
+                search_text: search_text.clone(),
+                detected_formats: detected_formats.clone(),
+                byte_size: *byte_size,
+                relative_path: crate::fs::layout::relative_path_for_hash(hash),
+            }),
+            JournalEntry::Delete { .. } => None,
+        }
+    }
+
+    pub fn hash(&self) -> &str {
+        match self {
+            JournalEntry::Add { hash, .. } => hash,
+            JournalEntry::Delete { hash } => hash,
+        }
+    }
+}

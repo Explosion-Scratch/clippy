@@ -11,6 +11,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{ExecutableCommand, execute};
 use std::io::{Stdout, stdout};
+use std::sync::Arc;
 use std::time::Duration;
 
 const PAGE_SIZE: usize = 100;
@@ -28,7 +29,7 @@ pub fn start(query: Option<String>) -> Result<()> {
     terminal.draw(|frame| draw_frame(frame, &state))?;
     refresh_index()?;
     let mut index = load_index()?;
-    let _ = rebuild_items_streaming(&mut terminal, &mut state, &mut index)?;
+    let _ = rebuild_items_streaming(&mut terminal, &mut state, &index)?;
     ensure_preview(&mut state)?;
     terminal.draw(|frame| draw_frame(frame, &state))?;
     event_loop(&mut terminal, &mut state, &mut index)?;
@@ -52,7 +53,7 @@ fn teardown_terminal(stdout: &mut Stdout) -> Result<()> {
     Ok(())
 }
 
-fn rebuild_items(state: &mut AppState, index: &mut SearchIndex) -> Result<()> {
+fn rebuild_items(state: &mut AppState, index: &mut Arc<SearchIndex>) -> Result<()> {
     *index = load_index()?;
     let (items, has_more) = fetch_page(index, state, 0)?;
     state.set_items(items, has_more);
@@ -285,7 +286,7 @@ fn copy_status(snippet: &str) -> String {
 fn event_loop(
     terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<&mut Stdout>>,
     state: &mut AppState,
-    index: &mut SearchIndex,
+    index: &mut Arc<SearchIndex>,
 ) -> Result<()> {
     loop {
         if state.should_reload(Duration::from_millis(SEARCH_DEBOUNCE_MS)) {

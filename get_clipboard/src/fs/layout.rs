@@ -1,7 +1,36 @@
-use crate::config::AppConfig;
-use crate::util::time::OffsetDateTime;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
+
+pub fn objects_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join("objects")
+}
+
+pub fn item_dir(data_dir: &Path, hash: &str) -> PathBuf {
+    objects_dir(data_dir)
+        .join(&hash[..2])
+        .join(&hash[2..4])
+        .join(hash)
+}
+
+pub fn metadata_path(data_dir: &Path, hash: &str) -> PathBuf {
+    item_dir(data_dir, hash).join("metadata.json")
+}
+
+pub fn relative_path_for_hash(hash: &str) -> String {
+    format!("objects/{}/{}/{}", &hash[..2], &hash[2..4], hash)
+}
+
+pub fn journal_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("journal.jsonl")
+}
+
+pub fn snapshot_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("journal.snapshot")
+}
+
+pub fn legacy_index_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("index.json")
+}
 
 #[derive(Debug, Clone)]
 pub struct EntryPaths {
@@ -11,36 +40,16 @@ pub struct EntryPaths {
     pub content: PathBuf,
 }
 
-pub fn entry_paths(
-    config: &AppConfig,
-    hash: &str,
-    timestamp: OffsetDateTime,
-    ext: Option<&str>,
-) -> Result<EntryPaths> {
-    let data_dir = config.data_dir();
-    let year = timestamp.year();
-    let month = timestamp.month() as u8;
-    let chars: Vec<char> = hash.chars().collect();
-    let first = chars.get(0).copied().unwrap_or('0');
-    let next_two: String = chars.get(1..3).unwrap_or(&[]).iter().collect();
-    let rest: String = chars.get(3..).unwrap_or(&[]).iter().collect();
-    let item_dir = data_dir
-        .join(format!("{year:04}"))
-        .join(format!("{month:02}"))
-        .join(first.to_string())
-        .join(next_two)
-        .join(rest);
-    let metadata = item_dir.join("metadata.json");
-    let content = item_dir.join(match ext {
-        Some(extension) => format!("item.{extension}"),
-        None => "item.bin".to_string(),
-    });
-    Ok(EntryPaths {
-        base_dir: data_dir,
-        item_dir,
+pub fn entry_paths_for_hash(data_dir: &Path, hash: &str, content_filename: &str) -> EntryPaths {
+    let dir = item_dir(data_dir, hash);
+    let metadata = dir.join("metadata.json");
+    let content = dir.join(content_filename);
+    EntryPaths {
+        base_dir: data_dir.to_path_buf(),
+        item_dir: dir,
         metadata,
         content,
-    })
+    }
 }
 
 pub fn determine_extension(content_type: &str) -> Option<&'static str> {

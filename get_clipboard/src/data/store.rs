@@ -1,28 +1,33 @@
 use crate::clipboard::{plugins, ClipboardSnapshot};
 use crate::clipboard::plugins::PluginCapture;
 use crate::config::{ensure_data_dir, load_config};
-use crate::data::model::{EntryKind, EntryMetadata, SearchIndex, SearchIndexRecord};
-use crate::fs::{EntryPaths, entry_paths};
+use crate::data::model::{EntryKind, EntryMetadata, JournalEntry, SearchIndex, SearchIndexRecord};
+use crate::fs::layout;
 pub use crate::search::SelectionFilter;
 use crate::search::{SearchOptions, search};
 use crate::util::time::{self, OffsetDateTime};
 use anyhow::{Context, Result, anyhow};
 use clipboard_rs::{Clipboard, ClipboardContext};
 use image::ImageReader;
-use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use serde_json::{self, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-struct IndexCacheData {
-    pub index: SearchIndex,
-    pub mtime: Option<std::time::SystemTime>,
+struct SharedState {
+    index: Arc<SearchIndex>,
+    sorted_hashes: Vec<String>,
+    sorted_valid: bool,
+    journal_len: u64,
 }
 
-static INDEX_CACHE: OnceCell<RwLock<IndexCacheData>> = OnceCell::new();
+static STATE: parking_lot::Once = parking_lot::Once::new();
+static STATE_LOCK: RwLock<Option<SharedState>> = RwLock::new(None);
+
+const COMPACT_THRESHOLD: u64 = 500;
 const MAX_SEARCH_TEXT_CHARS: usize = 65536;
 const MAX_SEARCH_TEXT_SEGMENTS: usize = 4;
 
@@ -31,163 +36,353 @@ enum CopyCountMode {
     Override(u64),
 }
 
-pub fn ensure_index() -> Result<SearchIndex> {
-    let config = load_config()?;
-    let data_path = ensure_data_dir(&config)?;
-    load_index_from_disk(&data_path)
-}
-
-fn write_index_file(path: &Path, index: &SearchIndex) {
-    if let Ok(bytes) = serde_json::to_vec_pretty(index) {
-        let _ = std::fs::write(path, bytes);
-    }
-}
-
-fn index_cell() -> &'static RwLock<IndexCacheData> {
-    INDEX_CACHE.get_or_init(|| RwLock::new(IndexCacheData {
-        index: HashMap::new(),
-        mtime: None,
-    }))
-}
-
-pub fn load_index() -> Result<SearchIndex> {
-    {
-        // Try reading fast without a write lock first
-        let guard = index_cell().read();
-        if let Ok(config) = load_config() {
-            if let Ok(data_dir) = ensure_data_dir(&config) {
-                let index_file = data_dir.join("index.json");
-                let current_mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
-                if !guard.index.is_empty() && current_mtime == guard.mtime {
-                    return Ok(guard.index.clone());
-                }
+fn init_state() {
+    STATE.call_once(|| {
+        let index = match load_from_journal() {
+            Ok(idx) => idx,
+            Err(e) => {
+                eprintln!("Warning: Failed to load journal, starting fresh: {e}");
+                HashMap::new()
             }
-        }
-    }
+        };
+        let mut guard = STATE_LOCK.write();
+        *guard = Some(SharedState {
+            index: Arc::new(index),
+            sorted_hashes: Vec::new(),
+            sorted_valid: false,
+            journal_len: 0,
+        });
+    });
+}
 
-    let config = load_config()?;
-    let data_dir = ensure_data_dir(&config)?;
-    let index_file = data_dir.join("index.json");
-    
-    let mut guard = index_cell().write();
-    let current_mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
-    
-    let needs_reload = guard.index.is_empty() || (current_mtime.is_some() && current_mtime != guard.mtime);
-    
-    if needs_reload {
-        if index_file.exists() {
-            match std::fs::read(&index_file) {
-                Ok(bytes) => {
-                    match serde_json::from_slice::<SearchIndex>(&bytes) {
-                        Ok(new_index) => {
-                            guard.index = new_index;
-                            guard.mtime = current_mtime;
-                        }
-                        Err(e) => {
-                            eprintln!("Warning: Corrupted index.json: {}", e);
-                            guard.index = load_index_from_disk(&data_dir)?;
-                            write_index_file(&index_file, &guard.index);
-                            guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Warning: Failed to read index.json: {}", e);
-                    guard.index = load_index_from_disk(&data_dir)?;
-                    write_index_file(&index_file, &guard.index);
-                    guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
-                }
-            }
-        } else {
-            guard.index = load_index_from_disk(&data_dir)?;
-            write_index_file(&index_file, &guard.index);
-            guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+fn with_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&SharedState) -> R,
+{
+    init_state();
+    let guard = STATE_LOCK.read();
+    f(guard.as_ref().expect("state initialized"))
+}
+
+fn with_state_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut SharedState) -> R,
+{
+    init_state();
+    let mut guard = STATE_LOCK.write();
+    f(guard.as_mut().expect("state initialized"))
+}
+
+pub fn load_index() -> Result<Arc<SearchIndex>> {
+    Ok(with_state(|s| Arc::clone(&s.index)))
+}
+
+pub fn ensure_index() -> Result<Arc<SearchIndex>> {
+    load_index()
+}
+
+pub fn sorted_hashes() -> Vec<String> {
+    with_state_mut(|state| {
+        if !state.sorted_valid {
+            let idx = &state.index;
+            let mut hashes: Vec<String> = idx.keys().cloned().collect();
+            hashes.sort_by(|a, b| {
+                let ra = idx.get(a).unwrap();
+                let rb = idx.get(b).unwrap();
+                rb.last_seen.cmp(&ra.last_seen)
+            });
+            state.sorted_hashes = hashes;
+            state.sorted_valid = true;
         }
-    }
-    
-    Ok(guard.index.clone())
+        state.sorted_hashes.clone()
+    })
 }
 
 pub fn refresh_index() -> Result<()> {
-    let config = load_config()?;
-    let data_dir = ensure_data_dir(&config)?;
-    let new_index = load_index_from_disk(&data_dir)?;
-    let index_file = data_dir.join("index.json");
-    write_index_file(&index_file, &new_index);
-    let mut guard = index_cell().write();
-    guard.index = new_index;
-    guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+    let new_index = load_from_journal()?;
+    with_state_mut(|state| {
+        state.index = Arc::new(new_index);
+        state.sorted_valid = false;
+    });
     Ok(())
 }
 
-fn load_index_from_disk(data_dir: &Path) -> Result<SearchIndex> {
-    let mut index = HashMap::new();
-    if !data_dir.exists() {
-        return Ok(index);
-    }
-    for year in read_dir_sorted(data_dir)? {
-        let year_path = year.path();
-        if !year_path.is_dir() {
-            continue;
-        }
-        for month in read_dir_sorted(&year_path)? {
-            let month_path = month.path();
-            if !month_path.is_dir() {
+fn mutate_index<F>(f: F)
+where
+    F: FnOnce(&mut SearchIndex),
+{
+    with_state_mut(|state| {
+        let mut new_map = (*state.index).clone();
+        f(&mut new_map);
+        state.index = Arc::new(new_map);
+        state.sorted_valid = false;
+    });
+}
+
+// --- Journal persistence ---
+
+fn load_from_journal() -> Result<SearchIndex> {
+    let config = load_config()?;
+    let data_dir = ensure_data_dir(&config)?;
+
+    migrate_legacy_data(&data_dir)?;
+
+    let snapshot_file = layout::snapshot_path(&data_dir);
+    let journal_file = layout::journal_path(&data_dir);
+
+    let mut index: SearchIndex = if snapshot_file.exists() {
+        let bytes = fs::read(&snapshot_file)
+            .context("Failed to read journal snapshot")?;
+        serde_json::from_slice(&bytes)
+            .context("Failed to parse journal snapshot")?
+    } else {
+        HashMap::new()
+    };
+
+    if journal_file.exists() {
+        let file = fs::File::open(&journal_file)
+            .context("Failed to open journal")?;
+        let reader = std::io::BufReader::new(file);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
                 continue;
             }
+            match serde_json::from_str::<JournalEntry>(trimmed) {
+                Ok(entry) => apply_journal_entry(&mut index, &entry),
+                Err(e) => {
+                    eprintln!("Warning: Skipping corrupt journal line: {e}");
+                }
+            }
+        }
+    }
+
+    Ok(index)
+}
+
+fn apply_journal_entry(index: &mut SearchIndex, entry: &JournalEntry) {
+    match entry {
+        JournalEntry::Add { hash, .. } => {
+            if let Some(record) = entry.to_record() {
+                index.insert(hash.clone(), record);
+            }
+        }
+        JournalEntry::Delete { hash } => {
+            index.remove(hash);
+        }
+    }
+}
+
+fn append_journal(entry: &JournalEntry) {
+    if let Ok(config) = load_config() {
+        if let Ok(data_dir) = ensure_data_dir(&config) {
+            let journal_file = layout::journal_path(&data_dir);
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&journal_file)
+            {
+                if let Ok(line) = serde_json::to_string(entry) {
+                    let _ = writeln!(file, "{}", line);
+                }
+            }
+
+            let should_compact = with_state_mut(|state| {
+                state.journal_len += 1;
+                state.journal_len >= COMPACT_THRESHOLD
+            });
+            if should_compact {
+                let _ = compact_journal(&data_dir);
+            }
+        }
+    }
+}
+
+fn compact_journal(data_dir: &Path) -> Result<()> {
+    let index = with_state(|s| Arc::clone(&s.index));
+    let snapshot_file = layout::snapshot_path(data_dir);
+    let journal_file = layout::journal_path(data_dir);
+
+    let tmp_snapshot = snapshot_file.with_extension("snapshot.tmp");
+    let bytes = serde_json::to_vec(&*index)?;
+    fs::write(&tmp_snapshot, bytes)?;
+    fs::rename(&tmp_snapshot, &snapshot_file)?;
+
+    let _ = fs::write(&journal_file, b"");
+
+    with_state_mut(|state| {
+        state.journal_len = 0;
+    });
+    Ok(())
+}
+
+// --- Legacy migration ---
+
+fn migrate_legacy_data(data_dir: &Path) -> Result<()> {
+    let objects_dir = layout::objects_dir(data_dir);
+    if objects_dir.exists() {
+        return Ok(());
+    }
+
+    let legacy_index = layout::legacy_index_path(data_dir);
+    let has_legacy = legacy_index.exists() || has_year_dirs(data_dir);
+    if !has_legacy {
+        return Ok(());
+    }
+
+    eprintln!("Migrating clipboard data to new storage format...");
+
+    let old_index: SearchIndex = if legacy_index.exists() {
+        match fs::read(&legacy_index) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        }
+    } else {
+        scan_legacy_metadata(data_dir)?
+    };
+
+    let mut journal_entries = Vec::new();
+    let mut migrated = 0;
+
+    for (hash, record) in &old_index {
+        let old_dir = data_dir.join(&record.relative_path);
+        if !old_dir.exists() {
+            continue;
+        }
+
+        let new_dir = layout::item_dir(data_dir, hash);
+        if new_dir.exists() {
+            continue;
+        }
+
+        if let Some(parent) = new_dir.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::rename(&old_dir, &new_dir).or_else(|_| copy_dir_recursive(&old_dir, &new_dir))?;
+
+        let meta_path = new_dir.join("metadata.json");
+        if meta_path.exists() {
+            if let Ok(bytes) = fs::read(&meta_path) {
+                if let Ok(mut meta) = serde_json::from_slice::<EntryMetadata>(&bytes) {
+                    meta.relative_path = layout::relative_path_for_hash(hash);
+                    if let Ok(new_bytes) = serde_json::to_vec_pretty(&meta) {
+                        let _ = fs::write(&meta_path, new_bytes);
+                    }
+                }
+            }
+        }
+
+        journal_entries.push(JournalEntry::from_record(record));
+        migrated += 1;
+    }
+
+    if !journal_entries.is_empty() {
+        let snapshot_file = layout::snapshot_path(data_dir);
+        let mut new_index: SearchIndex = HashMap::new();
+        for entry in &journal_entries {
+            if let Some(mut record) = entry.to_record() {
+                record.relative_path = layout::relative_path_for_hash(&record.hash);
+                new_index.insert(record.hash.clone(), record);
+            }
+        }
+        let bytes = serde_json::to_vec(&new_index)?;
+        fs::write(&snapshot_file, bytes)?;
+    }
+
+    cleanup_legacy_dirs(data_dir);
+    let _ = fs::remove_file(&legacy_index);
+
+    eprintln!("Migration complete: {migrated} items moved to new format.");
+    Ok(())
+}
+
+fn has_year_dirs(data_dir: &Path) -> bool {
+    if let Ok(entries) = fs::read_dir(data_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.len() == 4 && name.chars().all(|c| c.is_ascii_digit()) && entry.path().is_dir() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn scan_legacy_metadata(data_dir: &Path) -> Result<SearchIndex> {
+    let mut index = HashMap::new();
+    for year in read_dir_sorted(data_dir)? {
+        let year_path = year.path();
+        if !year_path.is_dir() { continue; }
+        for month in read_dir_sorted(&year_path)? {
+            let month_path = month.path();
+            if !month_path.is_dir() { continue; }
             for first in read_dir_sorted(&month_path)? {
                 let first_path = first.path();
-                if !first_path.is_dir() {
-                    continue;
-                }
+                if !first_path.is_dir() { continue; }
                 for second in read_dir_sorted(&first_path)? {
                     let second_path = second.path();
-                    if !second_path.is_dir() {
-                        continue;
-                    }
+                    if !second_path.is_dir() { continue; }
                     for item in read_dir_sorted(&second_path)? {
                         let item_dir = item.path();
-                        if !item_dir.is_dir() {
-                            continue;
-                        }
+                        if !item_dir.is_dir() { continue; }
                         let metadata_path = item_dir.join("metadata.json");
-                        if !metadata_path.exists() {
-                            continue;
-                        }
+                        if !metadata_path.exists() { continue; }
                         let bytes = match fs::read(&metadata_path) {
                             Ok(b) => b,
-                            Err(e) => {
-                                eprintln!("Warning: Failed to read {}: {}", metadata_path.display(), e);
-                                continue;
-                            }
+                            Err(_) => continue,
                         };
                         let meta: EntryMetadata = match serde_json::from_slice(&bytes) {
                             Ok(m) => m,
-                            Err(e) => {
-                                eprintln!("Warning: Corrupt metadata at {}: {}", metadata_path.display(), e);
-                                continue;
-                            }
+                            Err(_) => continue,
                         };
-                        index.insert(
-                            meta.hash.clone(),
-                            SearchIndexRecord {
-                                hash: meta.hash.clone(),
-                                last_seen: meta.last_seen,
-                                kind: meta.kind.clone(),
-                                copy_count: meta.copy_count,
-                                summary: meta.summary.clone(),
-                                search_text: meta.search_text.clone(),
-                                detected_formats: meta.detected_formats.clone(),
-                                byte_size: meta.byte_size,
-                                relative_path: meta.relative_path.clone(),
-                            },
-                        );
+                        index.insert(meta.hash.clone(), SearchIndexRecord {
+                            hash: meta.hash.clone(),
+                            last_seen: meta.last_seen,
+                            kind: meta.kind.clone(),
+                            copy_count: meta.copy_count,
+                            summary: meta.summary.clone(),
+                            search_text: meta.search_text.clone(),
+                            detected_formats: meta.detected_formats.clone(),
+                            byte_size: meta.byte_size,
+                            relative_path: meta.relative_path.clone(),
+                        });
                     }
                 }
             }
         }
     }
     Ok(index)
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let dest = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest)?;
+        } else {
+            fs::copy(entry.path(), dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_legacy_dirs(data_dir: &Path) {
+    if let Ok(entries) = fs::read_dir(data_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.len() == 4 && name.chars().all(|c| c.is_ascii_digit()) && entry.path().is_dir() {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
 }
 
 fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>> {
@@ -202,6 +397,8 @@ fn read_dir_sorted(path: &Path) -> Result<Vec<fs::DirEntry>> {
     entries.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
     Ok(entries)
 }
+
+// --- Core storage operations ---
 
 pub fn store_snapshot(snapshot: ClipboardSnapshot) -> Result<EntryMetadata> {
     let plugin_captures = plugins::capture_plugins(&snapshot);
@@ -385,15 +582,16 @@ fn persist_entry(
     anyhow::ensure!(!plugin_captures.is_empty(), "No plugin captures available");
 
     let config = load_config()?;
-    let paths = entry_paths(&config, hash, timestamp, None)?;
-    crate::fs::layout::ensure_dir(&paths.item_dir)?;
+    let data_dir = ensure_data_dir(&config)?;
+    let item_dir = layout::item_dir(&data_dir, hash);
+    layout::ensure_dir(&item_dir)?;
 
     let mut wrote_file = false;
     for capture in plugin_captures {
         for output in &capture.files {
-            let dest = paths.item_dir.join(&output.filename);
+            let dest = item_dir.join(&output.filename);
             if let Some(parent) = dest.parent() {
-                crate::fs::layout::ensure_dir(parent)?;
+                layout::ensure_dir(parent)?;
             }
             fs::write(&dest, &output.bytes).with_context(|| {
                 format!("Failed to write snapshot content to {}", dest.display())
@@ -452,9 +650,11 @@ fn persist_entry(
     let extra = Value::Object(extra_root);
 
     let entry_kind = prioritized.entry_kind.clone();
+    let relative_path = layout::relative_path_for_hash(hash);
+    let metadata_path = item_dir.join("metadata.json");
 
-    let metadata = if paths.metadata.exists() {
-        let mut existing: EntryMetadata = serde_json::from_slice(&fs::read(&paths.metadata)?)?;
+    let metadata = if metadata_path.exists() {
+        let mut existing: EntryMetadata = serde_json::from_slice(&fs::read(&metadata_path)?)?;
         existing.last_seen = timestamp;
         existing.byte_size = total_byte_size;
         existing.summary = Some(summary.clone());
@@ -465,6 +665,7 @@ fn persist_entry(
         existing.content_filename = primary.clone();
         existing.extra = extra.clone();
         existing.kind = entry_kind.clone();
+        existing.relative_path = relative_path;
         match copy_mode {
             CopyCountMode::Increment => {
                 existing.copy_count = existing.copy_count.saturating_add(1);
@@ -491,15 +692,32 @@ fn persist_entry(
             summary: Some(summary.clone()),
             search_text: search_text.clone(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            relative_path: relative_item_path(&paths)?,
+            relative_path,
             content_filename: primary.clone(),
             files: combined_sources.clone(),
             extra: extra.clone(),
         }
     };
 
-    fs::write(&paths.metadata, serde_json::to_vec_pretty(&metadata)?)?;
-    update_index(metadata.clone());
+    fs::write(&metadata_path, serde_json::to_vec_pretty(&metadata)?)?;
+
+    let record = SearchIndexRecord {
+        hash: metadata.hash.clone(),
+        last_seen: metadata.last_seen,
+        kind: metadata.kind.clone(),
+        copy_count: metadata.copy_count,
+        summary: metadata.summary.clone(),
+        search_text: metadata.search_text.clone(),
+        detected_formats: metadata.detected_formats.clone(),
+        byte_size: metadata.byte_size,
+        relative_path: metadata.relative_path.clone(),
+    };
+    let journal_entry = JournalEntry::from_record(&record);
+    mutate_index(|idx| {
+        idx.insert(record.hash.clone(), record);
+    });
+    append_journal(&journal_entry);
+
     Ok(metadata)
 }
 
@@ -515,39 +733,7 @@ fn clip_search_text_to_max(input: &str, max_chars: usize) -> String {
     trimmed.chars().take(max_chars).collect::<String>()
 }
 
-fn relative_item_path(paths: &EntryPaths) -> Result<String> {
-    let relative = paths
-        .item_dir
-        .strip_prefix(&paths.base_dir)
-        .map_err(|_| anyhow!("Failed to compute relative path"))?;
-    Ok(relative.to_string_lossy().to_string())
-}
-
-fn update_index(metadata: EntryMetadata) {
-    let _ = load_index(); // Ensure cache is populated before we mutate it
-    let mut guard = index_cell().write();
-    guard.index.insert(
-        metadata.hash.clone(),
-        SearchIndexRecord {
-            hash: metadata.hash,
-            last_seen: metadata.last_seen,
-            kind: metadata.kind,
-            copy_count: metadata.copy_count,
-            summary: metadata.summary,
-            search_text: metadata.search_text,
-            detected_formats: metadata.detected_formats,
-            byte_size: metadata.byte_size,
-            relative_path: metadata.relative_path,
-        },
-    );
-    if let Ok(config) = load_config() {
-        if let Ok(data_dir) = ensure_data_dir(&config) {
-            let index_file = data_dir.join("index.json");
-            write_index_file(&index_file, &guard.index);
-            guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
-        }
-    }
-}
+// --- Query operations ---
 
 #[derive(Clone)]
 pub struct HistoryItem {
@@ -664,63 +850,19 @@ pub fn history_stream(
     Ok(items.into_iter())
 }
 
+/// O(1) metadata lookup — constructs path directly from hash
 pub fn load_metadata(hash: &str) -> Result<EntryMetadata> {
-    let guard = index_cell().read();
-    if let Some(record) = guard.index.get(hash) {
-        let config = load_config()?;
-        let data_dir = ensure_data_dir(&config)?;
-        let metadata_path = data_dir.join(&record.relative_path).join("metadata.json");
-        if metadata_path.exists() {
-            let meta: EntryMetadata = serde_json::from_slice(&fs::read(&metadata_path)?)
-                .with_context(|| format!("Failed to parse metadata at {}", metadata_path.display()))?;
-            return Ok(meta);
-        }
-    }
-    
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
-    let mut target_meta = None;
-    visit_metadata(&data_dir, |meta| {
-        if meta.hash == hash {
-            target_meta = Some(meta);
-        }
-    })?;
-    target_meta.ok_or_else(|| anyhow!("Metadata not found for {hash}"))
-}
+    let meta_path = layout::metadata_path(&data_dir, hash);
 
-fn visit_metadata<F>(data_dir: &Path, mut visitor: F) -> Result<()>
-where
-    F: FnMut(EntryMetadata),
-{
-    for year in read_dir_sorted(data_dir)? {
-        for month in read_dir_sorted(&year.path())? {
-            for first in read_dir_sorted(&month.path())? {
-                for second in read_dir_sorted(&first.path())? {
-                    for item in read_dir_sorted(&second.path())? {
-                        let item_dir = item.path();
-                        let metadata_path = item_dir.join("metadata.json");
-                        if metadata_path.exists() {
-                            let bytes = match fs::read(&metadata_path) {
-                                Ok(b) => b,
-                                Err(e) => {
-                                    eprintln!("Warning: Failed to read {}: {}", metadata_path.display(), e);
-                                    continue;
-                                }
-                            };
-                            match serde_json::from_slice::<EntryMetadata>(&bytes) {
-                                Ok(meta) => visitor(meta),
-                                Err(e) => {
-                                    eprintln!("Warning: Corrupt metadata at {}: {}", metadata_path.display(), e);
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    if meta_path.exists() {
+        let meta: EntryMetadata = serde_json::from_slice(&fs::read(&meta_path)?)
+            .with_context(|| format!("Failed to parse metadata for {hash}"))?;
+        return Ok(meta);
     }
-    Ok(())
+
+    Err(anyhow!("Metadata not found for {hash}"))
 }
 
 pub fn resolve_selector(
@@ -752,29 +894,14 @@ pub fn resolve_selector(
 }
 
 pub fn copy_by_selector(hash: &str) -> Result<EntryMetadata> {
-    let start = std::time::Instant::now();
     let metadata = load_metadata(hash)?;
-    println!("load_metadata took: {:?}", start.elapsed());
-    
-    let t2 = std::time::Instant::now();
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
-    println!("config/dir took: {:?}", t2.elapsed());
-    
-    let t3 = std::time::Instant::now();
     let item_dir = data_dir.join(&metadata.relative_path);
     let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
-    println!("rebuild_clipboard_contents took: {:?}", t3.elapsed());
-    
-    let t4 = std::time::Instant::now();
     let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
-    println!("ClipboardContext::new took: {:?}", t4.elapsed());
-    
-    let t5 = std::time::Instant::now();
     ctx.set(contents)
         .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
-    println!("ctx.set took: {:?}", t5.elapsed());
-    
     Ok(metadata)
 }
 
@@ -789,25 +916,23 @@ pub fn copy_plain_by_selector(hash: &str) -> Result<EntryMetadata> {
         None => return Err(anyhow!("No plugin metadata found")),
     };
 
-    // Check what plugins are available
     let has_text = order.iter().any(|id| id == "text");
     let has_image = order.iter().any(|id| id == "image");
     let has_html = order.iter().any(|id| id == "html");
     let has_rtf = order.iter().any(|id| id == "rtf");
     let has_files = order.iter().any(|id| id == "files");
 
-    // If item is an image-only item, paste as normal (no text available)
     if has_image && !has_text && !has_html && !has_rtf && !has_files {
-        // Fall back to normal paste for image-only items
         let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
-        let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
-        ctx.set(contents).map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+        let ctx =
+            ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+        ctx.set(contents)
+            .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
         return Ok(metadata);
     }
 
     let mut text_content: Option<String> = None;
 
-    // Priority 1: Prefer "text" plugin if available
     if has_text {
         if let Some(plugin_meta) = map.get("text") {
             if let Some(plugin) = plugins::plugin_by_id("text") {
@@ -830,7 +955,6 @@ pub fn copy_plain_by_selector(hash: &str) -> Result<EntryMetadata> {
         }
     }
 
-    // Priority 2: If no text but has HTML, extract HTML content as plain text
     if text_content.is_none() && has_html {
         if let Some(plugin_meta) = map.get("html") {
             if let Some(plugin) = plugins::plugin_by_id("html") {
@@ -853,7 +977,6 @@ pub fn copy_plain_by_selector(hash: &str) -> Result<EntryMetadata> {
         }
     }
 
-    // Priority 3: If no text/HTML but has RTF, extract RTF content as plain text
     if text_content.is_none() && has_rtf {
         if let Some(plugin_meta) = map.get("rtf") {
             if let Some(plugin) = plugins::plugin_by_id("rtf") {
@@ -876,15 +999,14 @@ pub fn copy_plain_by_selector(hash: &str) -> Result<EntryMetadata> {
         }
     }
 
-    // Priority 4: If still no text and has files, paste file paths as text
     if text_content.is_none() && has_files {
         if let Some(plugin_meta) = map.get("files") {
-            // Extract file paths from plugin metadata
             if let Some(entries) = plugin_meta.get("entries").and_then(|v| v.as_array()) {
                 let paths: Vec<String> = entries
                     .iter()
                     .filter_map(|entry| {
-                        entry.get("source_path")
+                        entry
+                            .get("source_path")
                             .or_else(|| entry.get("path"))
                             .and_then(|v| v.as_str())
                             .map(String::from)
@@ -897,34 +1019,32 @@ pub fn copy_plain_by_selector(hash: &str) -> Result<EntryMetadata> {
         }
     }
 
-    // If we found text content, set it as plain text
     if let Some(text) = text_content {
-        let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
-        ctx.set_text(text).map_err(|e| anyhow!("Failed to set clipboard text: {e}"))?;
+        let ctx =
+            ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
+        ctx.set_text(text)
+            .map_err(|e| anyhow!("Failed to set clipboard text: {e}"))?;
         return Ok(metadata);
     }
 
-    // Last resort: fall back to normal paste if nothing else worked
     let contents = plugins::rebuild_clipboard_contents(&metadata, &item_dir)?;
     let ctx = ClipboardContext::new().map_err(|e| anyhow!("Failed to access clipboard: {e}"))?;
-    ctx.set(contents).map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
+    ctx.set(contents)
+        .map_err(|e| anyhow!("Failed to set clipboard: {e}"))?;
     Ok(metadata)
 }
 
 pub fn delete_entry(hash: &str) -> Result<()> {
-    let metadata = load_metadata(hash)?;
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
-    let item_dir = data_dir.join(metadata.relative_path);
+    let item_dir = layout::item_dir(&data_dir, hash);
     if item_dir.exists() {
         fs::remove_dir_all(&item_dir)?;
     }
-    let _ = load_index(); // Ensure cache is populated before we mutate and flush
-    let mut guard = index_cell().write();
-    guard.index.remove(hash);
-    let index_file = data_dir.join("index.json");
-    write_index_file(&index_file, &guard.index);
-    guard.mtime = std::fs::metadata(&index_file).and_then(|m| m.modified()).ok();
+    mutate_index(|idx| {
+        idx.remove(hash);
+    });
+    append_journal(&JournalEntry::delete(hash));
     Ok(())
 }
 
@@ -933,10 +1053,26 @@ pub fn increment_copy_count(hash: &str) -> Result<EntryMetadata> {
     metadata.copy_count = metadata.copy_count.saturating_add(1);
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
-    let item_dir = data_dir.join(&metadata.relative_path);
+    let item_dir = layout::item_dir(&data_dir, hash);
     let metadata_path = item_dir.join("metadata.json");
     fs::write(&metadata_path, serde_json::to_vec_pretty(&metadata)?)?;
-    update_index(metadata.clone());
+
+    let record = SearchIndexRecord {
+        hash: metadata.hash.clone(),
+        last_seen: metadata.last_seen,
+        kind: metadata.kind.clone(),
+        copy_count: metadata.copy_count,
+        summary: metadata.summary.clone(),
+        search_text: metadata.search_text.clone(),
+        detected_formats: metadata.detected_formats.clone(),
+        byte_size: metadata.byte_size,
+        relative_path: metadata.relative_path.clone(),
+    };
+    let journal_entry = JournalEntry::from_record(&record);
+    mutate_index(|idx| {
+        idx.insert(record.hash.clone(), record);
+    });
+    append_journal(&journal_entry);
     Ok(metadata)
 }
 
@@ -1073,7 +1209,7 @@ fn read_text_preview(path: &Path) -> Option<String> {
     }
     let mut file = fs::File::open(path).ok()?;
     let mut buffer = Vec::new();
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(64 * 1024)
         .read_to_end(&mut buffer)
         .ok()?;

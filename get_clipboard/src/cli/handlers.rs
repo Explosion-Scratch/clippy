@@ -120,7 +120,6 @@ fn copy_entry(selector: &str, filters: &FilterFlags) -> Result<()> {
 }
 
 fn delete_item(selector: &str, filters: &FilterFlags) -> Result<()> {
-    let _index = load_index()?;
     let index = load_index()?;
     let selection_filter = build_selection_filter(filters, None);
     let target = resolve_selector(&index, selector, &selection_filter)
@@ -136,7 +135,6 @@ fn delete_item(selector: &str, filters: &FilterFlags) -> Result<()> {
 }
 
 fn show_item(selector: &str, filters: &FilterFlags, mode: OutputMode) -> Result<()> {
-    let _index = load_index()?;
     let index = load_index()?;
     let selection_filter = build_selection_filter(filters, None);
     let target = resolve_selector(&index, selector, &selection_filter)
@@ -252,7 +250,6 @@ fn export_command(path: &Path) -> Result<()> {
         items: Vec<plugins::ClipboardJsonFullItem>,
     }
 
-    let _index = load_index()?;
     let index = load_index()?;
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
@@ -371,7 +368,6 @@ fn run_stats(json: &bool) -> Result<()> {
         summary: Option<String>,
     }
 
-    let _index = load_index()?;
     let index = load_index()?;
     let config = load_config()?;
     let data_dir = ensure_data_dir(&config)?;
@@ -504,7 +500,6 @@ fn compute_dir_storage(path: &Path) -> u64 {
 }
 
 fn print_history(args: HistoryArgs, mode: OutputMode) -> Result<()> {
-    let _index = load_index()?;
     let index = load_index()?;
     let HistoryArgs {
         limit,
@@ -547,7 +542,6 @@ fn print_history(args: HistoryArgs, mode: OutputMode) -> Result<()> {
 }
 
 fn run_search(args: SearchArgs, mode: OutputMode) -> Result<()> {
-    let _index = load_index()?;
     let index = load_index()?;
     let SearchArgs {
         query,
