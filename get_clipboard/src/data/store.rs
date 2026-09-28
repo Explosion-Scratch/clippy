@@ -93,9 +93,79 @@ pub fn sorted_hashes() -> Vec<String> {
             });
             state.sorted_hashes = hashes;
             state.sorted_valid = true;
+
         }
         state.sorted_hashes.clone()
     })
+}
+
+/// Count item directories under `objects/ab/cd/<hash>/`.
+/// Used to detect out-of-band disk changes without a full rescan.
+fn count_items_on_disk(data_dir: &Path) -> Result<usize> {
+    let mut count = 0;
+    let objects_dir = layout::objects_dir(data_dir);
+    if !objects_dir.exists() {
+        return Ok(0);
+    }
+    for first in read_dir_sorted(&objects_dir)? {
+        let first_path = first.path();
+        if !first_path.is_dir() { continue; }
+        for second in read_dir_sorted(&first_path)? {
+            let second_path = second.path();
+            if !second_path.is_dir() { continue; }
+            for item in read_dir_sorted(&second_path)? {
+                let item_path = item.path();
+                if !item_path.is_dir() { continue; }
+                if item_path.join("metadata.json").exists() { count += 1; }
+            }
+        }
+    }
+    Ok(count)
+}
+
+/// Rebuild the search index by scanning every object directory on disk.
+/// Used when the on-disk item count disagrees with the stored count,
+/// meaning items were added or removed outside the journal.
+fn scan_objects_metadata(data_dir: &Path) -> Result<SearchIndex> {
+    let mut index = HashMap::new();
+    let objects_dir = layout::objects_dir(data_dir);
+    if !objects_dir.exists() {
+        return Ok(index);
+    }
+    for first in read_dir_sorted(&objects_dir)? {
+        let first_path = first.path();
+        if !first_path.is_dir() { continue; }
+        for second in read_dir_sorted(&first_path)? {
+            let second_path = second.path();
+            if !second_path.is_dir() { continue; }
+            for item in read_dir_sorted(&second_path)? {
+                let item_dir = item.path();
+                if !item_dir.is_dir() { continue; }
+                let metadata_path = item_dir.join("metadata.json");
+                if !metadata_path.exists() { continue; }
+                let bytes = match fs::read(&metadata_path) {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                };
+                let meta: EntryMetadata = match serde_json::from_slice(&bytes) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                index.insert(meta.hash.clone(), SearchIndexRecord {
+                    hash: meta.hash.clone(),
+                    last_seen: meta.last_seen,
+                    kind: meta.kind.clone(),
+                    copy_count: meta.copy_count,
+                    summary: meta.summary.clone(),
+                    search_text: meta.search_text.clone(),
+                    detected_formats: meta.detected_formats.clone(),
+                    byte_size: meta.byte_size,
+                    relative_path: meta.relative_path.clone(),
+                });
+            }
+        }
+    }
+    Ok(index)
 }
 
 pub fn refresh_index() -> Result<()> {
@@ -104,6 +174,7 @@ pub fn refresh_index() -> Result<()> {
         state.index = Arc::new(new_index);
         state.sorted_valid = false;
     });
+
     Ok(())
 }
 
@@ -161,6 +232,32 @@ fn load_from_journal() -> Result<SearchIndex> {
         }
     }
 
+    // Self-heal when items were added or removed on disk outside the
+    // journal (e.g. manual edits): compare the on-disk object count
+    // against the stored count and rebuild from disk on mismatch.
+    let disk_count = count_items_on_disk(&data_dir).unwrap_or(0);
+    let count_file = data_dir.join("index_count.txt");
+    let stored_count = fs::read_to_string(&count_file)
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(index.len());
+    if disk_count != stored_count {
+        eprintln!(
+            "Warning: on-disk item count ({disk_count}) differs from stored count ({stored_count}); rebuilding index from disk"
+        );
+        index = scan_objects_metadata(&data_dir)?;
+        // Persist the rebuilt index as a fresh snapshot. The journal is
+        // subsumed by it, so truncate the journal and record the new count.
+        let tmp_snapshot = snapshot_file.with_extension("snapshot.tmp");
+        let bytes = serde_json::to_vec(&index)?;
+        fs::write(&tmp_snapshot, bytes)?;
+        fs::rename(&tmp_snapshot, &snapshot_file)?;
+        let _ = fs::write(&journal_file, b"");
+        let _ = fs::write(&count_file, disk_count.to_string());
+    } else if !count_file.exists() {
+        let _ = fs::write(&count_file, disk_count.to_string());
+    }
+
     Ok(index)
 }
 
@@ -213,6 +310,11 @@ fn compact_journal(data_dir: &Path) -> Result<()> {
     fs::rename(&tmp_snapshot, &snapshot_file)?;
 
     let _ = fs::write(&journal_file, b"");
+
+    // Record the on-disk object count so future loads can detect
+    // out-of-band changes without a full rescan.
+    let disk_count = count_items_on_disk(data_dir).unwrap_or(index.len());
+    let _ = fs::write(data_dir.join("index_count.txt"), disk_count.to_string());
 
     with_state_mut(|state| {
         state.journal_len = 0;
@@ -735,6 +837,7 @@ fn clip_search_text_to_max(input: &str, max_chars: usize) -> String {
 
 // --- Query operations ---
 
+
 #[derive(Clone)]
 pub struct HistoryItem {
     pub summary: String,
@@ -1045,6 +1148,7 @@ pub fn delete_entry(hash: &str) -> Result<()> {
         idx.remove(hash);
     });
     append_journal(&JournalEntry::delete(hash));
+
     Ok(())
 }
 
